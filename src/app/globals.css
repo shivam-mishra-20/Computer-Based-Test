@@ -1,26 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Calm & Elegant (Minimal Luxury) palette */
+  --bg-whitesmoke: #FAFAFA; /* background */
+  --sage-green: #A3B18A; /* primary soft tone */
+  --moss-green: #588157; /* highlight / CTA */
+  --beige-sand: #DAD7CD; /* section dividers */
+  --dark-olive: #344E41; /* text / accent */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: var(--bg-whitesmoke);
+  --foreground: var(--dark-olive);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-poppins), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
+
+/* Utility colors for components */
+.bg-primary { background-color: var(--sage-green); }
+.text-primary { color: var(--sage-green); }
+.bg-cta { background-color: var(--moss-green); }
+.text-cta { color: var(--moss-green); }
+.divider { border-color: var(--beige-sand); }
+.muted { color: #6b6b6b; }
+
