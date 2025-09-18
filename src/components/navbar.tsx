@@ -3,13 +3,15 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { getToken, getUser, fetchMe, logout, User } from "../lib/auth";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 
 type Role = "admin" | "teacher" | "student" | null;
 
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname(); // For active link detection
+  const search = useSearchParams();
   const [isAuthed, setAuthed] = useState(false);
   const [role, setRole] = useState<Role>(null);
   const [open, setOpen] = useState(false);
@@ -57,7 +59,11 @@ export default function Navbar() {
       return [
         { href: "/dashboard/admin", label: "Dashboard", icon: "dashboard" },
         { href: "/dashboard/admin?tab=users", label: "Users", icon: "users" },
-        { href: "/dashboard/exam", label: "Exams", icon: "document-text" },
+        {
+          href: "/dashboard/admin?tab=exams",
+          label: "Exams",
+          icon: "document-text",
+        },
         {
           href: "/dashboard/admin?tab=reports",
           label: "Reports",
@@ -78,7 +84,11 @@ export default function Navbar() {
           label: "Question Bank",
           icon: "question",
         },
-        { href: "/dashboard/exam", label: "Exams", icon: "document-text" },
+        {
+          href: "/dashboard/teacher?tab=exams",
+          label: "Exams",
+          icon: "document-text",
+        },
         {
           href: "/dashboard/teacher?tab=ai",
           label: "AI Tools",
@@ -94,12 +104,20 @@ export default function Navbar() {
           label: "Reports",
           icon: "chart-bar",
         },
+        {
+          href: "/dashboard/teacher/reviews",
+          label: "Reviews",
+          icon: "clipboard",
+        },
       ];
     }
     // student
     return [
-      { href: "/dashboard/student", label: "Dashboard", icon: "dashboard" },
-      { href: "/dashboard/exam", label: "My Exams", icon: "document-text" },
+      {
+        href: "/dashboard/student?tab=exams",
+        label: "Exams",
+        icon: "document-text",
+      },
       {
         href: "/dashboard/student?tab=progress",
         label: "Progress",
@@ -120,10 +138,18 @@ export default function Navbar() {
 
   // Helper to check if a menu item is active
   const isActive = (href: string) => {
-    if (href.includes("?")) {
-      return pathname === href.split("?")[0];
+    const [base, query] = href.split("?");
+    if (pathname !== base) return false;
+    const tabInLink = query ? new URLSearchParams(query).get("tab") : null;
+    const currentTab = search?.get("tab");
+    if (!tabInLink) {
+      // base route without tab: active for dashboard defaults or exact base-only routes
+      if (base === "/dashboard/admin" || base === "/dashboard/teacher") {
+        return !currentTab || currentTab === "dashboard";
+      }
+      return true;
     }
-    return pathname === href;
+    return currentTab === tabInLink;
   };
 
   // Icon helper for menu items
@@ -327,7 +353,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 w-full z-50">
+    <nav className="sticky top-0 w-full z-50 ">
       {/* Glassy background effect */}
       <div className="absolute inset-0 bg-white/70 backdrop-blur-md border-b border-gray-200/50 shadow-sm"></div>
 
@@ -433,57 +459,66 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile menu with slide animation */}
-      <div
-        className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out ${
-          open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-        }`}
-      >
-        <div className="relative bg-white shadow-lg">
-          <div className="px-4 py-2 space-y-1">
-            {menu.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                    active
-                      ? "text-green-700 bg-green-50 font-medium"
-                      : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <span className={active ? "text-green-600" : "text-gray-400"}>
-                    {getIcon(item.icon)}
-                  </span>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+      {/* Mobile menu as an animated overlay (framer-motion slide-down using translateY) */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="mobile-menu"
+            initial={{ opacity: 0, translateY: -12 }}
+            animate={{ opacity: 1, translateY: 0 }}
+            exit={{ opacity: 0, translateY: -12 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="md:hidden absolute left-0 right-0 top-full z-40"
+          >
+            <div className="bg-white shadow-lg border-t">
+              <div className="px-4 py-2 space-y-1 max-h-[72vh] overflow-auto">
+                {menu.map((item) => {
+                  const active = isActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setOpen(false)}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                        active
+                          ? "text-green-700 bg-green-50 font-medium"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <span
+                        className={active ? "text-green-600" : "text-gray-400"}
+                      >
+                        {getIcon(item.icon)}
+                      </span>
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
 
-            {/* Auth button for mobile */}
-            <div className="pt-2 pb-3">
-              {!isAuthed ? (
-                <Link
-                  href="/login"
-                  onClick={() => setOpen(false)}
-                  className="block w-full text-center px-4 py-3 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 text-white font-medium shadow-sm"
-                >
-                  Login
-                </Link>
-              ) : (
-                <button
-                  onClick={onLogout}
-                  className="block w-full text-left px-4 py-3 rounded-lg text-red-600 bg-red-50 font-medium"
-                >
-                  Logout
-                </button>
-              )}
+                {/* Auth button for mobile */}
+                <div className="pt-2 pb-3">
+                  {!isAuthed ? (
+                    <Link
+                      href="/login"
+                      onClick={() => setOpen(false)}
+                      className="block w-full text-center px-4 py-3 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 text-white font-medium shadow-sm"
+                    >
+                      Login
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={onLogout}
+                      className="block w-full text-left px-4 py-3 rounded-lg text-red-600 bg-red-50 font-medium"
+                    >
+                      Logout
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </nav>
   );
 }

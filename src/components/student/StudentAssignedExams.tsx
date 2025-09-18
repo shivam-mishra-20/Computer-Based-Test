@@ -21,6 +21,9 @@ interface AttemptLite {
   maxScore?: number;
   resultPublished?: boolean;
 }
+interface MyAttemptDto extends AttemptLite {
+  examTitle?: string;
+}
 
 export default function StudentAssignedExams() {
   const [exams, setExams] = useState<ExamLite[]>([]);
@@ -32,14 +35,23 @@ export default function StudentAssignedExams() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch("/api/attempts/assigned");
-      if (Array.isArray(data)) {
-        setExams(data as ExamLite[]);
+      const [examData, myAttempts] = await Promise.all([
+        apiFetch("/api/attempts/assigned"),
+        apiFetch("/api/attempts/mine"),
+      ]);
+      if (Array.isArray(examData)) {
+        setExams(examData as ExamLite[]);
       } else {
         setExams([]);
       }
-      // optionally load existing attempts for these exams
-      // (could have dedicated endpoint later)
+      if (Array.isArray(myAttempts)) {
+        const map: Record<string, AttemptLite> = {};
+        for (const a of myAttempts as MyAttemptDto[]) {
+          const examId = a.examId;
+          if (examId) map[examId] = a;
+        }
+        setAttemptMap(map);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load";
       setError(msg);

@@ -66,7 +66,6 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       setTimeLeft(diff > 0 ? diff : 0);
       if (diff <= 0 && timerRef.current) {
         clearInterval(timerRef.current);
-        // submission handled externally when user revisits
       }
     }
     tick();
@@ -116,6 +115,28 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     []
   );
 
+  // Auto-submit when timer hits zero
+  const autoSubmitRef = useRef(false);
+  useEffect(() => {
+    if (
+      timeLeft === 0 &&
+      view &&
+      !view.attempt.submittedAt &&
+      !autoSubmitRef.current
+    ) {
+      autoSubmitRef.current = true;
+      apiFetch(`/api/attempts/${attemptId}/submit`, {
+        method: "POST",
+        body: JSON.stringify({ auto: true }),
+      })
+        .then(() => load())
+        .catch(() => {})
+        .finally(() => {
+          // keep flag set to avoid duplicate submissions
+        });
+    }
+  }, [timeLeft, view, attemptId, load]);
+
   // Flatten ordered question ids from sections
   const orderedQuestionIds = view
     ? view.sections.flatMap((sec) => sec.questionIds)
@@ -135,16 +156,32 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     );
     if (idx >= 0) {
       if (Array.isArray(val)) {
-        // multi-select store joined for now (simplified) or first option; leaving improvement for later
         cloned.attempt.answers[idx].textAnswer = JSON.stringify(val);
       } else if (typeof val === "string") {
-        cloned.attempt.answers[idx].textAnswer = val;
+        // For MCQ single, treat val as chosen option id if question is mcq
+        if (["mcq", "mcq-single"].includes(currentQuestion.type)) {
+          cloned.attempt.answers[idx].chosenOptionId = val as unknown as string;
+          // remove textAnswer if present
+          (
+            cloned.attempt.answers[idx] as unknown as Record<string, unknown>
+          ).textAnswer = undefined;
+        } else {
+          cloned.attempt.answers[idx].textAnswer = val;
+        }
       }
     } else {
-      cloned.attempt.answers.push({
-        questionId: currentQid,
-        textAnswer: typeof val === "string" ? val : JSON.stringify(val),
-      });
+      const base: {
+        questionId: string;
+        chosenOptionId?: string;
+        textAnswer?: string;
+      } = { questionId: currentQid };
+      if (Array.isArray(val)) base.textAnswer = JSON.stringify(val);
+      else if (typeof val === "string") {
+        if (["mcq", "mcq-single"].includes(currentQuestion.type))
+          base.chosenOptionId = val;
+        else base.textAnswer = val;
+      }
+      cloned.attempt.answers.push(base);
     }
     setView(cloned);
     scheduleAutosave(currentQid, val);
@@ -160,14 +197,21 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     setSaving(true);
     try {
       // adapt to backend expected fields (textAnswer or chosenOptionId)
+      const payload: {
+        questionId: string;
+        chosenOptionId?: string;
+        textAnswer?: string;
+      } = { questionId };
+      if (Array.isArray(response))
+        payload.textAnswer = JSON.stringify(response);
+      else if (typeof response === "string") {
+        if (["mcq", "mcq-single"].includes(currentQuestion?.type || ""))
+          payload.chosenOptionId = response;
+        else payload.textAnswer = response;
+      }
       await apiFetch(`/api/attempts/${attemptId}/answer`, {
         method: "POST",
-        body: JSON.stringify({
-          questionId,
-          textAnswer: Array.isArray(response)
-            ? JSON.stringify(response)
-            : response,
-        }),
+        body: JSON.stringify(payload),
       });
     } catch {
       // swallow for now; could show toast

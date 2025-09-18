@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useEffect } from "react";
 import Protected from "../../../components/Protected";
 import { useSearchParams, useRouter } from "next/navigation";
 import AdminDashboardHome from "@/components/admin/AdminDashboardHome";
@@ -37,6 +37,13 @@ function TabNav({ current }: { current: Tab }) {
 
 export default function AdminDashboardPage() {
   const search = useSearchParams();
+  const router = useRouter();
+  // Ensure a default tab param exists for consistency with navbar
+  useEffect(() => {
+    if (!search.get("tab")) {
+      router.replace("/dashboard/admin?tab=dashboard");
+    }
+  }, [search, router]);
   const tabParam = (search.get("tab") || "dashboard") as Tab;
   const tab: Tab = TABS.includes(tabParam as Tab)
     ? (tabParam as Tab)

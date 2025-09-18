@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useEffect } from "react";
 import Protected from "../../../components/Protected";
 import { useSearchParams, useRouter } from "next/navigation";
 import TeacherDashboardHome from "@/components/teacher/TeacherDashboardHome";
@@ -54,6 +54,13 @@ function TabNav({ current }: { current: Tab }) {
 
 export default function TeacherDashboardPage() {
   const search = useSearchParams();
+  const router = useRouter();
+  // Ensure a default tab is always present in URL
+  useEffect(() => {
+    if (!search.get("tab")) {
+      router.replace("/dashboard/teacher?tab=dashboard");
+    }
+  }, [search, router]);
   const tabParam = (search.get("tab") || "dashboard") as Tab;
   const tab: Tab = TABS.includes(tabParam as Tab)
     ? (tabParam as Tab)

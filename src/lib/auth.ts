@@ -1,7 +1,7 @@
 import { apiFetch } from './api';
 
 export type Credentials = { email: string; password: string };
-export type User = { id?: string; email?: string; role?: 'admin' | 'teacher' | 'student' | string };
+export type User = { id?: string; email?: string; role?: 'admin' | 'teacher' | 'student' | string; name?: string; classLevel?: string; batch?: string; firebaseUid?: string };
 
 // backend returns { token, user }
 export type LoginResponse = { token?: string; user?: User } | Record<string, unknown>;
@@ -12,13 +12,14 @@ export async function login(credentials: Credentials) {
 		method: 'POST',
 		body: JSON.stringify(credentials),
 	})) as LoginResponse;
-			if (data && typeof data === 'object') {
+						if (data && typeof data === 'object') {
 				const rec = data as Record<string, unknown>;
 				if ('token' in rec && typeof rec['token'] === 'string') {
 					if (typeof window !== 'undefined') {
 						// store as accessToken for existing client code
 						localStorage.setItem('accessToken', rec['token'] as string);
-						localStorage.setItem('user', JSON.stringify((rec['user'] as User) ?? null));
+										// store user with extra firebase fields if present
+										localStorage.setItem('user', JSON.stringify((rec['user'] as User) ?? null));
 					}
 				}
 			}

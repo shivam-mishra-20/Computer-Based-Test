@@ -1,7 +1,8 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Protected from "../../../components/Protected";
 import dynamic from "next/dynamic";
+import { useRouter, useSearchParams } from "next/navigation";
 
 // Lazy load heavier components
 const AssignedExams = dynamic(
@@ -31,7 +32,17 @@ function PracticeTab() {
 type TabKey = "exams" | "progress" | "results" | "practice";
 
 export default function StudentDashboard() {
-  const [tab, setTab] = useState<TabKey>("exams");
+  const router = useRouter();
+  const search = useSearchParams();
+  const initialTab = (search.get("tab") as TabKey) || "exams";
+  const [tab, setTab] = useState<TabKey>(initialTab);
+
+  // Keep local state in sync when URL changes (e.g., via navbar)
+  useEffect(() => {
+    const current = (search.get("tab") as TabKey) || "exams";
+    if (current !== tab) setTab(current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   function renderTab() {
     switch (tab) {
@@ -65,7 +76,10 @@ export default function StudentDashboard() {
           {tabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => {
+                setTab(t.key);
+                router.push(`/dashboard/student?tab=${t.key}`);
+              }}
               className={`px-3 py-1.5 rounded text-sm border ${
                 tab === t.key
                   ? "bg-primary text-white border-primary"

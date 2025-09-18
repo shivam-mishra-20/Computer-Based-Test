@@ -114,8 +114,8 @@ export default function TeacherAITools() {
   const [examTitle, setExamTitle] = useState("");
   const [classLevel, setClassLevel] = useState("");
   const [batch, setBatch] = useState("");
-  const [startAt, setStartAt] = useState("");
-  const [endAt, setEndAt] = useState("");
+  // Timer for exam duration (minutes)
+  const [timerMins, setTimerMins] = useState<string>("60");
   const [autoPublish, setAutoPublish] = useState(true);
   const [creatingExam, setCreatingExam] = useState(false);
 
@@ -125,7 +125,14 @@ export default function TeacherAITools() {
     []
   );
   const [bankExamTitle, setBankExamTitle] = useState("Question Bank Exam");
+  const [bankTimerMins, setBankTimerMins] = useState<string>("60");
   const [bankExamCreating, setBankExamCreating] = useState(false);
+
+  // Create exam from generated questions state
+  const [genExamOpen, setGenExamOpen] = useState(false);
+  const [genExamTitle, setGenExamTitle] = useState("Generated Exam");
+  const [genTimerMins, setGenTimerMins] = useState<string>("60");
+  const [genExamCreating, setGenExamCreating] = useState(false);
 
   // Load blueprints list
   const loadBlueprints = useCallback(async () => {
@@ -213,10 +220,7 @@ export default function TeacherAITools() {
         classLevel: classLevel || undefined,
         batch: batch || undefined,
         autoPublish,
-        schedule:
-          startAt || endAt
-            ? { startAt: startAt || undefined, endAt: endAt || undefined }
-            : undefined,
+        totalDurationMins: timerMins ? Number(timerMins) : undefined,
         blueprintId: selectedBlueprintId || undefined,
       };
       const payload = {
@@ -289,10 +293,7 @@ export default function TeacherAITools() {
           isPublished: autoPublish,
           classLevel: classLevel || undefined,
           batch: batch || undefined,
-          schedule:
-            startAt || endAt
-              ? { startAt: startAt || undefined, endAt: endAt || undefined }
-              : undefined,
+          totalDurationMins: bankTimerMins ? Number(bankTimerMins) : undefined,
         }),
       });
       alert("Exam created from question bank");
@@ -447,6 +448,80 @@ export default function TeacherAITools() {
       // ignore
     } finally {
       setRefiningIdx(null);
+    }
+  }
+
+  // Create Exam from Generated Questions (selected)
+  async function createExamFromGenerated() {
+    const indices = [...selected];
+    if (!indices.length) {
+      alert("Select questions to create an exam");
+      return;
+    }
+    setGenExamCreating(true);
+    try {
+      // 1) Create questions in bank to obtain IDs
+      const createdIds: string[] = [];
+      for (const i of indices) {
+        const q = items[i];
+        if (!q) continue;
+        try {
+          const created = (await apiFetch("/api/exams/questions", {
+            method: "POST",
+            body: JSON.stringify({
+              text: q.text,
+              type: q.type || "mcq",
+              assertion: q.assertion,
+              reason: q.reason,
+              assertionIsTrue: q.assertionIsTrue,
+              reasonIsTrue: q.reasonIsTrue,
+              reasonExplainsAssertion: q.reasonExplainsAssertion,
+              integerAnswer: q.integerAnswer,
+              tags: {
+                subject: meta.subject || q.tags?.subject,
+                topic: meta.topic || q.tags?.topic,
+                difficulty: meta.difficulty || q.tags?.difficulty,
+              },
+              options: q.options,
+              correctAnswerText:
+                q.integerAnswer !== undefined
+                  ? String(q.integerAnswer)
+                  : undefined,
+              explanation: q.explanation,
+            }),
+          })) as { _id?: string };
+          if (created && created._id) createdIds.push(created._id);
+        } catch {
+          // skip failed question
+        }
+      }
+      if (!createdIds.length) throw new Error("No questions created");
+      // 2) Create the exam
+      await apiFetch("/api/exams", {
+        method: "POST",
+        body: JSON.stringify({
+          title: genExamTitle,
+          description: "Created from AI generated questions",
+          sections: [
+            {
+              title: "Section 1",
+              questionIds: createdIds,
+              shuffleQuestions: false,
+              shuffleOptions: false,
+            },
+          ],
+          isPublished: autoPublish,
+          totalDurationMins: genTimerMins ? Number(genTimerMins) : undefined,
+          classLevel: classLevel || undefined,
+          batch: batch || undefined,
+        }),
+      });
+      alert("Exam created from generated questions");
+      setGenExamOpen(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to create exam");
+    } finally {
+      setGenExamCreating(false);
     }
   }
 
@@ -778,6 +853,21 @@ export default function TeacherAITools() {
                     className="text-xs px-3 py-1 rounded-md border"
                   >
                     Add All
+                  </button>
+                  <button
+                    onClick={() => {
+                      setGenExamTitle(
+                        items.length
+                          ? `AI Exam (${items.length} Qs)`
+                          : "AI Exam"
+                      );
+                      setGenExamOpen(true);
+                    }}
+                    disabled={!selected.size}
+                    className="text-xs px-3 py-1 rounded-md border bg-primary text-white disabled:opacity-40"
+                    title="Create an exam from the selected questions"
+                  >
+                    Create Exam
                   </button>
                 </div>
               )}
@@ -1252,21 +1342,13 @@ export default function TeacherAITools() {
                 placeholder="Batch"
                 className="border rounded px-2 py-1"
               />
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px]">Start</span>
+              <label className="flex flex-col gap-1 col-span-2">
+                <span className="text-[10px]">Timer (minutes)</span>
                 <input
-                  type="datetime-local"
-                  value={startAt}
-                  onChange={(e) => setStartAt(e.target.value)}
-                  className="border rounded px-2 py-1"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px]">End</span>
-                <input
-                  type="datetime-local"
-                  value={endAt}
-                  onChange={(e) => setEndAt(e.target.value)}
+                  type="number"
+                  min={1}
+                  value={timerMins}
+                  onChange={(e) => setTimerMins(e.target.value)}
                   className="border rounded px-2 py-1"
                 />
               </label>
@@ -1331,21 +1413,13 @@ export default function TeacherAITools() {
                 placeholder="Batch"
                 className="border rounded px-2 py-1"
               />
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px]">Start</span>
+              <label className="flex flex-col gap-1 col-span-2">
+                <span className="text-[10px]">Timer (minutes)</span>
                 <input
-                  type="datetime-local"
-                  value={startAt}
-                  onChange={(e) => setStartAt(e.target.value)}
-                  className="border rounded px-2 py-1"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px]">End</span>
-                <input
-                  type="datetime-local"
-                  value={endAt}
-                  onChange={(e) => setEndAt(e.target.value)}
+                  type="number"
+                  min={1}
+                  value={bankTimerMins}
+                  onChange={(e) => setBankTimerMins(e.target.value)}
                   className="border rounded px-2 py-1"
                 />
               </label>
@@ -1401,6 +1475,70 @@ export default function TeacherAITools() {
                   {bankExamCreating ? "Creating..." : "Create Exam"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generated Questions -> Create Exam Modal */}
+      {genExamOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-md shadow-lg w-full max-w-md p-4 space-y-4 text-sm">
+            <h3 className="font-medium text-sm">
+              Create Exam from Generated Questions
+            </h3>
+            <input
+              value={genExamTitle}
+              onChange={(e) => setGenExamTitle(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-xs"
+              placeholder="Exam title"
+            />
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <input
+                value={classLevel}
+                onChange={(e) => setClassLevel(e.target.value)}
+                placeholder="Class"
+                className="border rounded px-2 py-1"
+              />
+              <input
+                value={batch}
+                onChange={(e) => setBatch(e.target.value)}
+                placeholder="Batch"
+                className="border rounded px-2 py-1"
+              />
+              <label className="flex flex-col gap-1 col-span-2">
+                <span className="text-[10px]">Timer (minutes)</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={genTimerMins}
+                  onChange={(e) => setGenTimerMins(e.target.value)}
+                  className="border rounded px-2 py-1"
+                />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={autoPublish}
+                onChange={(e) => setAutoPublish(e.target.checked)}
+              />
+              Auto Publish
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setGenExamOpen(false)}
+                className="px-3 py-1 border rounded text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={createExamFromGenerated}
+                disabled={genExamCreating}
+                className="px-3 py-1 rounded bg-primary text-white text-xs disabled:opacity-50"
+              >
+                {genExamCreating ? "Creating..." : "Create"}
+              </button>
             </div>
           </div>
         </div>
