@@ -58,7 +58,7 @@ export function setUser(user: User) {
 }
 
 // Admin-only: create user via backend
-export async function adminCreateUser(payload: { name: string; email: string; password: string; role: 'admin' | 'teacher' | 'student' }) {
+export async function adminCreateUser(payload: { name: string; email: string; password: string; role: 'admin' | 'teacher' | 'student'; classLevel?: string; batch?: string }) {
 	const { apiFetch } = await import('./api');
 	return apiFetch('/api/users', { method: 'POST', body: JSON.stringify(payload) });
 }

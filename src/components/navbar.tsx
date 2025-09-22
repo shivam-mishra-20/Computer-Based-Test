@@ -44,16 +44,13 @@ export default function Navbar() {
     setAuthed(false);
     setRole(null);
     setOpen(false);
-    router.push("/login");
+    router.push("/");
   }
 
   // Build role-based menus (same logic as before)
   const menu = useMemo(() => {
     if (!isAuthed || !role) {
-      return [
-        { href: "/", label: "Home", icon: "home" },
-        { href: "/theme", label: "Theme", icon: "palette" },
-      ];
+      return [{ href: "/", label: "Home", icon: "home" }];
     }
     if (role === "admin") {
       return [
@@ -64,15 +61,25 @@ export default function Navbar() {
           label: "Exams",
           icon: "document-text",
         },
-        {
-          href: "/dashboard/admin?tab=reports",
-          label: "Reports",
-          icon: "chart-bar",
-        },
+        // {
+        //   href: "/dashboard/admin?tab=reports",
+        //   label: "Reports",
+        //   icon: "chart-bar",
+        // },
         {
           href: "/dashboard/admin?tab=analytics",
           label: "Analytics",
           icon: "chart-pie",
+        },
+        {
+          href: "/dashboard/admin?tab=questions",
+          label: "Question Bank",
+          icon: "question",
+        },
+        {
+          href: "/dashboard/admin?tab=papers",
+          label: "Question Papers",
+          icon: "document-text",
         },
       ];
     }
@@ -95,15 +102,20 @@ export default function Navbar() {
           icon: "sparkles",
         },
         {
+          href: "/dashboard/teacher?tab=papers",
+          label: "Question Papers",
+          icon: "document-text",
+        },
+        {
           href: "/dashboard/teacher?tab=analytics",
           label: "Analytics",
           icon: "chart-pie",
         },
-        {
-          href: "/dashboard/teacher?tab=reports",
-          label: "Reports",
-          icon: "chart-bar",
-        },
+        // {
+        //   href: "/dashboard/teacher?tab=reports",
+        //   label: "Reports",
+        //   icon: "chart-bar",
+        // },
         {
           href: "/dashboard/teacher/reviews",
           label: "Reviews",
@@ -394,7 +406,7 @@ export default function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-all duration-300
+                  className={`relative px-2 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-all duration-300
                     ${
                       active
                         ? "text-green-700 bg-green-50 font-medium shadow-sm"
@@ -419,7 +431,7 @@ export default function Navbar() {
             {/* Auth button with animation */}
             {!isAuthed ? (
               <Link
-                href="/login"
+                href="/"
                 className="ml-3 px-5 py-1.5 rounded-full bg-gradient-to-r from-green-600 to-emerald-500 text-white font-medium text-sm shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 hover:brightness-105"
               >
                 Login
@@ -499,7 +511,7 @@ export default function Navbar() {
                 <div className="pt-2 pb-3">
                   {!isAuthed ? (
                     <Link
-                      href="/login"
+                      href="/"
                       onClick={() => setOpen(false)}
                       className="block w-full text-center px-4 py-3 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 text-white font-medium shadow-sm"
                     >

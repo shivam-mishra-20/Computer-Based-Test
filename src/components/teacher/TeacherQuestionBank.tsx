@@ -1,16 +1,30 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
 import { Modal } from "../ui/modal";
 import { notify } from "../ui/toast";
-import { Table, THead, TBody, TR, TH, TD } from "../ui/table";
+//import { Table, THead, TBody, TR, TH, TD } from "../ui/table";
 import { Skeleton } from "../ui/skeleton";
+import {
+  Search,
+  Plus,
+  Edit3,
+  Trash2,
+  CheckCircle,
+  Circle,
+  AlertCircle,
+  BookOpen,
+  Tag,
+  BarChart3,
+} from "lucide-react";
 
 interface QuestionOption {
   _id?: string;
   text: string;
   isCorrect?: boolean;
 }
+
 interface Question {
   _id: string;
   text: string;
@@ -21,6 +35,7 @@ interface Question {
 }
 
 type Draft = Omit<Question, "_id"> & { _id?: string };
+
 const emptyDraft = (): Draft => ({
   text: "",
   type: "mcq",
@@ -33,6 +48,20 @@ const emptyDraft = (): Draft => ({
   ],
   explanation: "",
 });
+
+const difficultyColors = {
+  easy: "bg-green-100 text-green-700 border-green-200",
+  medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
+  hard: "bg-red-100 text-red-700 border-red-200",
+};
+
+const typeLabels = {
+  mcq: "Multiple Choice",
+  truefalse: "True/False",
+  short: "Short Answer",
+  long: "Long Answer",
+  fill: "Fill in the Blank",
+};
 
 export default function TeacherQuestionBank() {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -66,6 +95,7 @@ export default function TeacherQuestionBank() {
     setDraft(emptyDraft());
     setOpen(true);
   }
+
   function onEdit(q: Question) {
     setDraft({ ...q });
     setOpen(true);
@@ -129,6 +159,7 @@ export default function TeacherQuestionBank() {
       options: d.options?.map((o, i) => (i === idx ? { ...o, ...patch } : o)),
     }));
   }
+
   function setCorrect(idx: number) {
     setDraft((d) => ({
       ...d,
@@ -137,134 +168,312 @@ export default function TeacherQuestionBank() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="text-xl font-semibold">Question Bank</h2>
-        <div className="flex gap-2 items-center">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="max-w-8xl mx-auto p-4 sm:p-6 lg:p-2"
+    >
+      {/* Header */}
+      <div className="mb-8">
+        <motion.h1
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="text-3xl font-bold text-gray-900 mb-2"
+        >
+          Question Bank
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-gray-600"
+        >
+          Manage and organize your exam questions
+        </motion.p>
+      </div>
+
+      {/* Actions Bar */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+        className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6"
+      >
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search..."
-            className="border rounded-md px-3 py-2 text-sm"
+            placeholder="Search questions..."
+            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
-          <button
-            onClick={onCreate}
-            className="px-3 py-2 rounded-md bg-primary text-white text-sm"
-          >
-            New
-          </button>
         </div>
-      </div>
-      <div className="mt-4 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm relative">
-        <Table>
-          <THead>
-            <TR>
-              <TH style={{ width: "40%" }}>Text</TH>
-              <TH>Subject</TH>
-              <TH>Topic</TH>
-              <TH>Difficulty</TH>
-              <TH className="text-right">Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {loading && (
-              <TR>
-                <TD colSpan={5}>
-                  <div className="py-4 space-y-2">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-4 w-1/2" />
-                  </div>
-                </TD>
-              </TR>
-            )}
-            {!loading &&
-              questions.map((q) => (
-                <TR key={q._id} className="border-t hover:bg-gray-50">
-                  <TD className="max-w-xs truncate" title={q.text}>
-                    {q.text}
-                  </TD>
-                  <TD>{q.tags?.subject || "-"}</TD>
-                  <TD>{q.tags?.topic || "-"}</TD>
-                  <TD className="capitalize">{q.tags?.difficulty || "-"}</TD>
-                  <TD className="text-right space-x-2">
-                    <button
-                      onClick={() => onEdit(q)}
-                      className="text-xs text-primary underline"
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={onCreate}
+          className="px-6 py-3 rounded-xl bg-primary text-white text-sm font-medium flex items-center gap-2 hover:bg-primary/90 transition-colors shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          New Question
+        </motion.button>
+      </motion.div>
+
+      {/* Questions Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Question
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden sm:table-cell">
+                  Type
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">
+                  Subject
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden lg:table-cell">
+                  Topic
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Difficulty
+                </th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              <AnimatePresence mode="wait">
+                {loading ? (
+                  <motion.tr
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <td colSpan={6} className="px-6 py-8">
+                      <div className="space-y-3">
+                        <Skeleton className="h-4 w-full rounded" />
+                        <Skeleton className="h-4 w-3/4 rounded" />
+                        <Skeleton className="h-4 w-1/2 rounded" />
+                      </div>
+                    </td>
+                  </motion.tr>
+                ) : questions.length > 0 ? (
+                  questions.map((q, index) => (
+                    <motion.tr
+                      key={q._id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="hover:bg-gray-50 transition-colors"
                     >
-                      Edit
-                    </button>
-                    <button
-                      disabled={deletingId === q._id}
-                      onClick={() => onDelete(q._id)}
-                      className="text-xs text-red-600 underline disabled:opacity-50"
-                    >
-                      {deletingId === q._id ? "..." : "Delete"}
-                    </button>
-                  </TD>
-                </TR>
-              ))}
-            {!loading && !questions.length && (
-              <TR>
-                <TD colSpan={5} className="px-3 py-4 text-center text-gray-400">
-                  No questions
-                </TD>
-              </TR>
-            )}
-          </TBody>
-        </Table>
-      </div>
+                      <td className="px-6 py-4">
+                        <div className="max-w-xs lg:max-w-md">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {q.text}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 sm:hidden">
+                            <span className="text-xs text-gray-500">
+                              {typeLabels[q.type as keyof typeof typeLabels]}
+                            </span>
+                            {q.tags?.subject && (
+                              <>
+                                <span className="text-xs text-gray-400">•</span>
+                                <span className="text-xs text-gray-500">
+                                  {q.tags.subject}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 hidden sm:table-cell">
+                        <span className="text-sm text-gray-600">
+                          {typeLabels[q.type as keyof typeof typeLabels]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 hidden md:table-cell">
+                        <span className="text-sm text-gray-600">
+                          {q.tags?.subject || "-"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 hidden lg:table-cell">
+                        <span className="text-sm text-gray-600">
+                          {q.tags?.topic || "-"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
+                            difficultyColors[
+                              q.tags
+                                ?.difficulty as keyof typeof difficultyColors
+                            ] || difficultyColors.medium
+                          }`}
+                        >
+                          {q.tags?.difficulty || "medium"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => onEdit(q)}
+                            className="p-2 text-gray-600 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            disabled={deletingId === q._id}
+                            onClick={() => onDelete(q._id)}
+                            className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {deletingId === q._id ? (
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  ease: "linear",
+                                }}
+                              >
+                                <Circle className="w-4 h-4" />
+                              </motion.div>
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </motion.button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  ))
+                ) : (
+                  <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    <td colSpan={6} className="px-6 py-16 text-center">
+                      <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500">No questions found</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        Create your first question to get started
+                      </p>
+                    </td>
+                  </motion.tr>
+                )}
+              </AnimatePresence>
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
+
+      {/* Modal */}
       <Modal
-        title={draft._id ? "Edit Question" : "New Question"}
+        title={draft._id ? "Edit Question" : "Create New Question"}
         open={open}
         onOpenChange={setOpen}
         wide
         footer={
-          <>
-            <button
+          <div className="flex gap-3">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => setOpen(false)}
-              className="px-4 py-2 rounded-md border text-sm"
+              className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               disabled={saving}
             >
               Cancel
-            </button>
-            <button
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={saveDraft}
               disabled={saving}
-              className="px-4 py-2 rounded-md bg-primary text-white text-sm disabled:opacity-50"
+              className="px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
-              {saving ? "Saving..." : "Save"}
-            </button>
-          </>
+              {saving ? (
+                <>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                  >
+                    <Circle className="w-4 h-4" />
+                  </motion.div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  Save Question
+                </>
+              )}
+            </motion.button>
+          </div>
         }
       >
-        <form onSubmit={saveDraft} className="space-y-4" id="question-form">
-          <div className="space-y-1">
-            <label className="text-xs font-medium">Question Text</label>
+        <div className="space-y-6">
+          {/* Question Text */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-2"
+          >
+            <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              Question Text
+            </label>
             <textarea
               value={draft.text}
               onChange={(e) => setDraft({ ...draft, text: e.target.value })}
-              className="w-full border rounded-md p-2 text-sm h-24"
+              className="w-full border border-gray-200 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none"
+              rows={4}
+              placeholder="Enter your question here..."
               required
             />
-          </div>
-          <div className="grid sm:grid-cols-4 gap-4 text-sm">
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Type</label>
+          </motion.div>
+
+          {/* Question Properties */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+          >
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700">
+                Type
+              </label>
               <select
                 value={draft.type}
                 onChange={(e) => setDraft({ ...draft, type: e.target.value })}
-                className="border rounded-md px-2 py-1 w-full"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
               >
-                <option value="mcq">MCQ</option>
-                <option value="truefalse">True/False</option>
-                <option value="short">Short</option>
-                <option value="long">Long</option>
-                <option value="fill">Fill</option>
+                {Object.entries(typeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Subject</label>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <BookOpen className="w-4 h-4" />
+                Subject
+              </label>
               <input
                 value={draft.tags?.subject || ""}
                 onChange={(e) =>
@@ -273,11 +482,15 @@ export default function TeacherQuestionBank() {
                     tags: { ...draft.tags, subject: e.target.value },
                   })
                 }
-                className="border rounded-md px-2 py-1 w-full"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                placeholder="e.g., Mathematics"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Topic</label>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Tag className="w-4 h-4" />
+                Topic
+              </label>
               <input
                 value={draft.tags?.topic || ""}
                 onChange={(e) =>
@@ -286,11 +499,15 @@ export default function TeacherQuestionBank() {
                     tags: { ...draft.tags, topic: e.target.value },
                   })
                 }
-                className="border rounded-md px-2 py-1 w-full"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                placeholder="e.g., Algebra"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Difficulty</label>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                Difficulty
+              </label>
               <select
                 value={draft.tags?.difficulty || "medium"}
                 onChange={(e) =>
@@ -299,19 +516,30 @@ export default function TeacherQuestionBank() {
                     tags: { ...draft.tags, difficulty: e.target.value },
                   })
                 }
-                className="border rounded-md px-2 py-1 w-full"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
               >
-                <option value="easy">easy</option>
-                <option value="medium">medium</option>
-                <option value="hard">hard</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
               </select>
             </div>
-          </div>
+          </motion.div>
+
+          {/* MCQ Options */}
           {draft.type === "mcq" && (
-            <div className="space-y-2">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="space-y-3"
+            >
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium">Options</label>
-                <button
+                <label className="text-sm font-semibold text-gray-700">
+                  Answer Options
+                </label>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   type="button"
                   onClick={() =>
                     setDraft((d) => ({
@@ -322,73 +550,102 @@ export default function TeacherQuestionBank() {
                       ],
                     }))
                   }
-                  className="text-xs text-primary underline"
+                  className="text-sm text-primary font-medium hover:text-primary/80 transition-colors flex items-center gap-1"
                 >
+                  <Plus className="w-4 h-4" />
                   Add Option
-                </button>
+                </motion.button>
               </div>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {draft.options?.map((o, i) => (
-                  <div
-                    key={i}
-                    className={`border rounded-md p-2 space-y-1 relative ${
-                      o.isCorrect ? "border-green-500" : "border-gray-200"
-                    }`}
-                  >
-                    <input
-                      value={o.text}
-                      onChange={(e) =>
-                        updateOption(i, { text: e.target.value })
-                      }
-                      placeholder={`Option ${i + 1}`}
-                      className="w-full text-sm outline-none"
-                    />
-                    <div className="flex items-center justify-between text-[10px]">
-                      <button
-                        type="button"
-                        onClick={() => setCorrect(i)}
-                        className={`px-2 py-0.5 rounded border ${
-                          o.isCorrect
-                            ? "bg-green-500 text-white border-green-500"
-                            : "border-gray-300"
-                        }`}
-                      >
-                        {o.isCorrect ? "Correct" : "Mark Correct"}
-                      </button>
-                      {draft.options && draft.options.length > 2 && (
-                        <button
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <AnimatePresence>
+                  {draft.options?.map((o, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className={`relative border-2 rounded-xl p-4 transition-all ${
+                        o.isCorrect
+                          ? "border-green-500 bg-green-50/50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <input
+                        value={o.text}
+                        onChange={(e) =>
+                          updateOption(i, { text: e.target.value })
+                        }
+                        placeholder={`Option ${i + 1}`}
+                        className="w-full text-sm bg-transparent outline-none placeholder-gray-400"
+                      />
+                      <div className="flex items-center justify-between mt-3">
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
                           type="button"
-                          onClick={() =>
-                            setDraft((d) => ({
-                              ...d,
-                              options: d.options?.filter((_, idx) => idx !== i),
-                            }))
-                          }
-                          className="text-red-600 underline"
+                          onClick={() => setCorrect(i)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                            o.isCorrect
+                              ? "bg-green-500 text-white"
+                              : "border border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600"
+                          }`}
                         >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                          {o.isCorrect ? (
+                            <CheckCircle className="w-3.5 h-3.5" />
+                          ) : (
+                            <Circle className="w-3.5 h-3.5" />
+                          )}
+                          {o.isCorrect ? "Correct Answer" : "Mark as Correct"}
+                        </motion.button>
+                        {draft.options && draft.options.length > 2 && (
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            type="button"
+                            onClick={() =>
+                              setDraft((d) => ({
+                                ...d,
+                                options: d.options?.filter(
+                                  (_, idx) => idx !== i
+                                ),
+                              }))
+                            }
+                            className="text-red-500 hover:text-red-600 text-xs font-medium transition-colors"
+                          >
+                            Remove
+                          </motion.button>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
-            </div>
+            </motion.div>
           )}
-          <div className="space-y-1">
-            <label className="text-xs font-medium">
-              Explanation (optional)
+
+          {/* Explanation */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="space-y-2"
+          >
+            <label className="text-sm font-semibold text-gray-700">
+              Explanation{" "}
+              <span className="font-normal text-gray-500">(optional)</span>
             </label>
             <textarea
               value={draft.explanation || ""}
               onChange={(e) =>
                 setDraft({ ...draft, explanation: e.target.value })
               }
-              className="w-full border rounded-md p-2 text-sm h-20"
+              className="w-full border border-gray-200 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none"
+              rows={3}
+              placeholder="Provide an explanation for the correct answer..."
             />
-          </div>
-        </form>
+          </motion.div>
+        </div>
       </Modal>
-    </div>
+    </motion.div>
   );
 }

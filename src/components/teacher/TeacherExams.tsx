@@ -1,11 +1,10 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
 import { Modal } from "../ui/modal";
 import { notify } from "../ui/toast";
-import { Table, THead, TBody, TR, TH, TD } from "../ui/table";
-import { Skeleton } from "../ui/skeleton";
-// (Question bank reused via QuestionPicker component below)
+import { InlineLoader } from "../ElegantLoader";
 
 interface ExamSectionDraft {
   title: string;
@@ -14,6 +13,7 @@ interface ExamSectionDraft {
   shuffleQuestions?: boolean;
   shuffleOptions?: boolean;
 }
+
 interface Exam {
   _id: string;
   title: string;
@@ -21,6 +21,8 @@ interface Exam {
   isPublished?: boolean;
   totalDurationMins?: number;
   sections?: ExamSectionDraft[];
+  classLevel?: string;
+  batch?: string;
 }
 
 export default function TeacherExams() {
@@ -32,7 +34,10 @@ export default function TeacherExams() {
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
   const [sectionDrafts, setSectionDrafts] = useState<ExamSectionDraft[]>([]);
   const [saving, setSaving] = useState(false);
-  const [assignList, setAssignList] = useState<string>(""); // comma separated user IDs
+  const [classLevel, setClassLevel] = useState<string>("");
+  const [batch, setBatch] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -41,6 +46,7 @@ export default function TeacherExams() {
       setExams(Array.isArray(data.items) ? data.items : []);
     } catch {
       setExams([]);
+      notify.error("Failed to load exams");
     } finally {
       setLoading(false);
     }
@@ -58,7 +64,7 @@ export default function TeacherExams() {
       await apiFetch("/api/exams", {
         method: "POST",
         body: JSON.stringify({
-          title,
+          title: title.trim(),
           description: "",
           totalDurationMins: 60,
           sections: [],
@@ -66,10 +72,11 @@ export default function TeacherExams() {
         }),
       });
       setTitle("");
+      setShowCreateForm(false);
       await load();
-      notify.success("Exam created");
-    } catch {
-      /* ignore */
+      notify.success("Exam created successfully");
+    } catch (e) {
+      notify.error((e as Error).message || "Failed to create exam");
     } finally {
       setCreating(false);
     }
@@ -78,6 +85,8 @@ export default function TeacherExams() {
   function openBuilder(ex: Exam) {
     setEditingExam(ex);
     setSectionDrafts(ex.sections || []);
+    setClassLevel(ex.classLevel || "");
+    setBatch(ex.batch || "");
     setBuilderOpen(true);
   }
 
@@ -93,13 +102,15 @@ export default function TeacherExams() {
       },
     ]);
   }
+
   function updateSection(idx: number, patch: Partial<ExamSectionDraft>) {
     setSectionDrafts((s) =>
       s.map((sec, i) => (i === idx ? { ...sec, ...patch } : sec))
     );
   }
+
   function removeSection(idx: number) {
-    if (!confirm("Remove section?")) return;
+    if (!confirm("Remove this section?")) return;
     setSectionDrafts((s) => s.filter((_, i) => i !== idx));
   }
 
@@ -117,7 +128,7 @@ export default function TeacherExams() {
           ),
         }),
       });
-      notify.success("Exam updated");
+      notify.success("Exam structure updated successfully");
       setBuilderOpen(false);
       await load();
     } catch (e) {
@@ -133,239 +144,1096 @@ export default function TeacherExams() {
         method: "PUT",
         body: JSON.stringify({ isPublished: !ex.isPublished }),
       });
-      notify.success(!ex.isPublished ? "Published" : "Unpublished");
+      notify.success(
+        `Exam ${!ex.isPublished ? "published" : "unpublished"} successfully`
+      );
       await load();
     } catch (e) {
       notify.error((e as Error).message || "Toggle failed");
     }
   }
 
-  async function assignUsers() {
+  async function assignToClassBatch() {
     if (!editingExam) return;
-    const users = assignList
-      .split(/[,\s]/)
-      .map((u) => u.trim())
-      .filter(Boolean);
-    if (!users.length) {
-      notify.error("Enter user IDs");
+    if (!classLevel || !batch) {
+      notify.error("Select both Class and Batch");
       return;
     }
     try {
+      await apiFetch(`/api/exams/${editingExam._id}`, {
+        method: "PUT",
+        body: JSON.stringify({ classLevel, batch, isPublished: true }),
+      });
       await apiFetch(`/api/exams/${editingExam._id}/assign`, {
         method: "POST",
-        body: JSON.stringify({ users }),
+        body: JSON.stringify({ groups: [classLevel, batch] }),
       });
-      notify.success("Assigned");
-      setAssignList("");
+      notify.success("Assigned to class/batch successfully");
+      await load();
     } catch (e) {
-      notify.error((e as Error).message || "Assign failed");
+      notify.error((e as Error).message || "Assignment failed");
     }
   }
 
-  return (
-    <div>
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-semibold">Exams</h2>
-        <form onSubmit={onCreate} className="flex gap-2">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="New exam title"
-            className="border rounded-md px-3 py-2 text-sm"
-          />
-          <button
-            disabled={creating}
-            className="px-4 py-2 rounded-md bg-primary text-white text-sm disabled:opacity-50"
-          >
-            {creating ? "Adding..." : "Add"}
-          </button>
-        </form>
-      </div>
-      <div className="mt-4 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-        <Table>
-          <THead>
-            <TR>
-              <TH>Title</TH>
-              <TH>Sections</TH>
-              <TH>Published</TH>
-              <TH className="text-right">Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {loading && (
-              <TR>
-                <TD colSpan={4} className="px-3 py-3">
-                  <Skeleton className="h-4 w-1/2" />
-                </TD>
-              </TR>
-            )}
-            {!loading &&
-              exams.map((ex) => (
-                <TR key={ex._id} className="border-t hover:bg-gray-50">
-                  <TD>{ex.title}</TD>
-                  <TD>{ex.sections?.length || 0}</TD>
-                  <TD>{ex.isPublished ? "Yes" : "No"}</TD>
-                  <TD className="text-right space-x-2">
-                    <button
-                      onClick={() => openBuilder(ex)}
-                      className="text-xs text-primary underline"
-                    >
-                      Build
-                    </button>
-                    <button
-                      onClick={() => togglePublish(ex)}
-                      className="text-xs text-gray-700 underline"
-                    >
-                      {ex.isPublished ? "Unpublish" : "Publish"}
-                    </button>
-                  </TD>
-                </TR>
-              ))}
-            {!loading && !exams.length && (
-              <TR>
-                <TD colSpan={4} className="px-3 py-4 text-center text-gray-400">
-                  No exams
-                </TD>
-              </TR>
-            )}
-          </TBody>
-        </Table>
-      </div>
+  const getStatusColor = (isPublished?: boolean) => {
+    return isPublished
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : "bg-amber-50 text-amber-700 border-amber-200";
+  };
 
-      <Modal
-        title={editingExam ? `Build: ${editingExam.title}` : "Exam Builder"}
-        open={builderOpen}
-        onOpenChange={setBuilderOpen}
-        wide
-        footer={
-          <>
-            <button
-              onClick={() => setBuilderOpen(false)}
-              className="px-4 py-2 rounded-md border text-sm"
-            >
-              Close
-            </button>
-            <button
-              disabled={saving}
-              onClick={saveExamStructure}
-              className="px-4 py-2 rounded-md bg-primary text-white text-sm disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Save Structure"}
-            </button>
-          </>
-        }
-      >
-        {!editingExam && (
-          <div className="text-sm text-gray-500">Select an exam to build.</div>
-        )}
-        {editingExam && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium text-sm">Sections</h3>
-              <button
-                onClick={addSection}
-                className="text-xs text-primary underline"
-                type="button"
+  const totalQuestions = sectionDrafts.reduce(
+    (sum, s) => sum + s.questionIds.length,
+    0
+  );
+  const totalDuration = sectionDrafts.reduce(
+    (sum, s) => sum + (s.sectionDurationMins || 0),
+    0
+  );
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50/30 p-4 lg:p-6">
+      <div className="max-w-8xl mx-auto space-y-6">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
+              <svg
+                className="w-5 h-5 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                Add Section
-              </button>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
             </div>
-            <div className="space-y-4">
-              {sectionDrafts.map((sec, i) => (
-                <div
-                  key={i}
-                  className="border border-gray-200 rounded-md p-4 space-y-3 bg-white"
-                >
-                  <div className="flex gap-2 flex-wrap items-center">
-                    <input
-                      value={sec.title}
-                      onChange={(e) =>
-                        updateSection(i, { title: e.target.value })
-                      }
-                      className="border rounded-md px-2 py-1 text-sm"
-                    />
-                    <input
-                      type="number"
-                      min={1}
-                      value={sec.sectionDurationMins || 0}
-                      onChange={(e) =>
-                        updateSection(i, {
-                          sectionDurationMins: Number(e.target.value),
-                        })
-                      }
-                      className="border rounded-md px-2 py-1 text-sm w-24"
-                    />
-                    <label className="text-xs flex items-center gap-1">
-                      <input
-                        type="checkbox"
-                        checked={sec.shuffleQuestions}
-                        onChange={(e) =>
-                          updateSection(i, {
-                            shuffleQuestions: e.target.checked,
-                          })
-                        }
-                      />
-                      Shuffle Q
-                    </label>
-                    <label className="text-xs flex items-center gap-1">
-                      <input
-                        type="checkbox"
-                        checked={sec.shuffleOptions}
-                        onChange={(e) =>
-                          updateSection(i, {
-                            shuffleOptions: e.target.checked,
-                          })
-                        }
-                      />
-                      Shuffle Opt
-                    </label>
-                    <button
-                      onClick={() => removeSection(i)}
-                      className="ml-auto text-xs text-red-600 underline"
-                      type="button"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="text-xs text-gray-600 flex flex-wrap gap-3">
-                    <span>
-                      Questions: <strong>{sec.questionIds.length}</strong>
-                    </span>
-                  </div>
-                  {/* Placeholder for question picker */}
-                  <QuestionPicker
-                    selected={sec.questionIds}
-                    onChange={(ids) => updateSection(i, { questionIds: ids })}
-                  />
-                </div>
-              ))}
-              {!sectionDrafts.length && (
-                <div className="text-xs text-gray-500">No sections yet.</div>
-              )}
-            </div>
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium">Assign Users</h4>
-              <textarea
-                value={assignList}
-                onChange={(e) => setAssignList(e.target.value)}
-                placeholder="Comma or space separated user IDs"
-                className="w-full border rounded-md p-2 text-xs h-20"
-              />
-              <button
-                type="button"
-                onClick={assignUsers}
-                className="text-xs bg-primary text-white px-3 py-2 rounded-md"
-              >
-                Assign
-              </button>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">
+                Exam Management
+              </h1>
+              <p className="text-slate-600">
+                Create and manage your teaching exams
+              </p>
             </div>
           </div>
+
+          <div className="flex items-center gap-3">
+            {/* View Toggle */}
+            <div className="flex bg-slate-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`px-3 py-2 text-sm font-medium rounded-md transition-all ${
+                  viewMode === "grid"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                className={`px-3 py-2 text-sm font-medium rounded-md transition-all ${
+                  viewMode === "table"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => load()}
+              className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              title="Refresh exams"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg hover:shadow-lg transition-all"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
+              </svg>
+              <span className="hidden sm:inline">Create Exam</span>
+              <span className="sm:hidden">Create</span>
+            </motion.button>
+          </div>
+        </motion.div>
+
+        {/* Stats Cards */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-4"
+        >
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-600 text-sm font-medium">Total Exams</p>
+                <p className="text-2xl font-bold text-blue-900">
+                  {exams.length}
+                </p>
+              </div>
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-4 h-4 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-emerald-600 text-sm font-medium">
+                  Published
+                </p>
+                <p className="text-2xl font-bold text-emerald-900">
+                  {exams.filter((e) => e.isPublished).length}
+                </p>
+              </div>
+              <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-4 h-4 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-amber-600 text-sm font-medium">Drafts</p>
+                <p className="text-2xl font-bold text-amber-900">
+                  {exams.filter((e) => !e.isPublished).length}
+                </p>
+              </div>
+              <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-4 h-4 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-purple-600 text-sm font-medium">
+                  Total Sections
+                </p>
+                <p className="text-2xl font-bold text-purple-900">
+                  {exams.reduce((sum, e) => sum + (e.sections?.length || 0), 0)}
+                </p>
+              </div>
+              <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-4 h-4 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Create Form */}
+        <AnimatePresence>
+          {showCreateForm && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-slate-900">
+                    Create New Exam
+                  </h2>
+                  <button
+                    onClick={() => setShowCreateForm(false)}
+                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    <svg
+                      className="w-5 h-5 text-slate-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <form
+                  onSubmit={onCreate}
+                  className="flex flex-col sm:flex-row gap-3"
+                >
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Enter exam title..."
+                    className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200"
+                    required
+                  />
+                  <div className="flex gap-3">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="submit"
+                      disabled={creating || !title.trim()}
+                      className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {creating ? (
+                        <span className="flex items-center gap-2">
+                          <InlineLoader />
+                          Creating...
+                        </span>
+                      ) : (
+                        "Create Exam"
+                      )}
+                    </motion.button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateForm(false)}
+                      className="px-4 py-2.5 border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Loading State */}
+        {loading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center"
+          >
+            <div className="flex items-center justify-center gap-3">
+              <InlineLoader />
+              <span className="text-slate-600 font-medium">
+                Loading exams...
+              </span>
+            </div>
+          </motion.div>
         )}
-      </Modal>
+
+        {/* Exams Display */}
+        {!loading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <AnimatePresence mode="wait">
+              {viewMode === "grid" ? (
+                <motion.div
+                  key="grid"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                >
+                  {exams.map((exam, index) => (
+                    <motion.div
+                      key={exam._id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm hover:shadow-md hover:border-purple-200 transition-all duration-200"
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-slate-900 mb-2 line-clamp-2">
+                            {exam.title}
+                          </h3>
+                          <div className="flex items-center gap-4 text-sm text-slate-600">
+                            <span className="flex items-center gap-1">
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                                />
+                              </svg>
+                              {exam.sections?.length || 0} sections
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              {exam.totalDurationMins || 0}m
+                            </span>
+                          </div>
+                        </div>
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                            exam.isPublished
+                          )}`}
+                        >
+                          <div
+                            className={`w-2 h-2 rounded-full inline-block mr-1 ${
+                              exam.isPublished
+                                ? "bg-emerald-500"
+                                : "bg-amber-500"
+                            }`}
+                          ></div>
+                          {exam.isPublished ? "Published" : "Draft"}
+                        </span>
+                      </div>
+
+                      {exam.classLevel || exam.batch ? (
+                        <div className="flex items-center gap-3 text-sm text-slate-600 mb-4">
+                          {exam.classLevel && (
+                            <div className="flex items-center gap-1">
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                                />
+                              </svg>
+                              <span>Class {exam.classLevel}</span>
+                            </div>
+                          )}
+                          {exam.batch && (
+                            <div className="flex items-center gap-1">
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                                />
+                              </svg>
+                              <span>{exam.batch}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-slate-500 mb-4">
+                          No class or batch assigned
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => openBuilder(exam)}
+                          className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all"
+                        >
+                          Build Exam
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => togglePublish(exam)}
+                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                            exam.isPublished
+                              ? "bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-200"
+                              : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200"
+                          }`}
+                        >
+                          {exam.isPublished ? "Unpublish" : "Publish"}
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="table"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
+                >
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100">
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                            Exam Title
+                          </th>
+                          <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-24">
+                            Sections
+                          </th>
+                          <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">
+                            Duration
+                          </th>
+                          <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">
+                            Status
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider w-36">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {exams.map((exam) => (
+                          <tr
+                            key={exam._id}
+                            className="hover:bg-slate-50 transition-colors"
+                          >
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-slate-900 line-clamp-1">
+                                    {exam.title}
+                                  </div>
+                                  <div className="text-xs text-slate-500 mt-1">
+                                    {exam.classLevel && exam.batch
+                                      ? `Class ${exam.classLevel} • ${exam.batch}`
+                                      : "No assignment"}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 text-center text-sm text-slate-600 py-4">
+                              {exam.sections?.length || 0}
+                            </td>
+                            <td className="px-6 text-center text-sm text-slate-600 py-4">
+                              {exam.totalDurationMins || 0} min
+                            </td>
+                            <td className="px-6 text-center py-4">
+                              <span
+                                className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                                  exam.isPublished
+                                )}`}
+                              >
+                                <div
+                                  className={`w-2 h-2 rounded-full mr-1 ${
+                                    exam.isPublished
+                                      ? "bg-emerald-500"
+                                      : "bg-amber-500"
+                                  }`}
+                                ></div>
+                                {exam.isPublished ? "Published" : "Draft"}
+                              </span>
+                            </td>
+                            <td className="px-6 text-right py-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => openBuilder(exam)}
+                                  className="px-3 py-1.5 text-xs rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors"
+                                >
+                                  Build
+                                </button>
+                                <button
+                                  onClick={() => togglePublish(exam)}
+                                  className={`px-3 py-1.5 text-xs rounded-lg transition border ${
+                                    exam.isPublished
+                                      ? "border-amber-200 text-amber-700 hover:bg-amber-50"
+                                      : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                  }`}
+                                >
+                                  {exam.isPublished ? "Unpublish" : "Publish"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+        {/* Empty State */}
+        {!loading && exams.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center"
+          >
+            <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <svg
+                className="w-8 h-8 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-slate-900 mb-2">
+              No exams found
+            </h3>
+            <p className="text-slate-600 mb-6">
+              Get started by creating your first teaching exam.
+            </p>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowCreateForm(true)}
+              className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg hover:shadow-lg transition-all"
+            >
+              Create First Exam
+            </motion.button>
+          </motion.div>
+        )}
+
+        {/* Enhanced Modal for Exam Builder */}
+        <Modal
+          title={
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-4 h-4 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900">
+                  {editingExam ? `Build: ${editingExam.title}` : "Exam Builder"}
+                </h3>
+                <p className="text-sm text-slate-600">
+                  Configure exam sections and questions
+                </p>
+              </div>
+            </div>
+          }
+          open={builderOpen}
+          onOpenChange={setBuilderOpen}
+          wide
+          footer={
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
+              <div className="flex items-center gap-4 text-sm text-slate-600">
+                <div className="flex items-center gap-1">
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                    />
+                  </svg>
+                  <span>{sectionDrafts.length} sections</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{totalQuestions} questions</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{totalDuration} minutes</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setBuilderOpen(false)}
+                  className="px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  disabled={saving}
+                  onClick={saveExamStructure}
+                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg disabled:opacity-50 hover:shadow-lg transition-all font-medium"
+                >
+                  {saving ? (
+                    <span className="flex items-center gap-2">
+                      <InlineLoader />
+                      Saving...
+                    </span>
+                  ) : (
+                    "Save Structure"
+                  )}
+                </motion.button>
+              </div>
+            </div>
+          }
+        >
+          {!editingExam ? (
+            <div className="text-center py-12 text-slate-500">
+              <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <svg
+                  className="w-8 h-8 text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
+                </svg>
+              </div>
+              <p className="text-lg font-medium text-slate-900 mb-2">
+                Select an exam to configure
+              </p>
+              <p>
+                Choose an exam from the list to set up its structure and
+                sections.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Section Management */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 bg-slate-50 rounded-xl">
+                <div>
+                  <h4 className="font-semibold text-slate-900">
+                    Exam Sections
+                  </h4>
+                  <p className="text-sm text-slate-600">
+                    Add and configure sections for your exam
+                  </p>
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={addSection}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                    />
+                  </svg>
+                  Add Section
+                </motion.button>
+              </div>
+
+              {/* Sections List */}
+              <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                <AnimatePresence>
+                  {sectionDrafts.map((section, index) => (
+                    <motion.div
+                      key={index}
+                      className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      layout
+                    >
+                      <div className="space-y-4">
+                        {/* Section Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                          <input
+                            value={section.title}
+                            onChange={(e) =>
+                              updateSection(index, { title: e.target.value })
+                            }
+                            className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200"
+                            placeholder="Section title"
+                          />
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <label className="text-sm text-slate-600 font-medium">
+                                Duration:
+                              </label>
+                              <input
+                                type="number"
+                                min={1}
+                                value={section.sectionDurationMins || 0}
+                                onChange={(e) =>
+                                  updateSection(index, {
+                                    sectionDurationMins: Number(e.target.value),
+                                  })
+                                }
+                                className="w-20 px-3 py-2 border border-slate-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200"
+                              />
+                              <span className="text-sm text-slate-600">
+                                min
+                              </span>
+                            </div>
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => removeSection(index)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Remove section"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                            </motion.button>
+                          </div>
+                        </div>
+
+                        {/* Section Options */}
+                        <div className="flex flex-wrap gap-6">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={section.shuffleQuestions}
+                              onChange={(e) =>
+                                updateSection(index, {
+                                  shuffleQuestions: e.target.checked,
+                                })
+                              }
+                              className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <span className="text-sm text-slate-700 font-medium">
+                              Shuffle Questions
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={section.shuffleOptions}
+                              onChange={(e) =>
+                                updateSection(index, {
+                                  shuffleOptions: e.target.checked,
+                                })
+                              }
+                              className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <span className="text-sm text-slate-700 font-medium">
+                              Shuffle Options
+                            </span>
+                          </label>
+                        </div>
+
+                        {/* Question Status */}
+                        <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <svg
+                              className="w-5 h-5 text-purple-600"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                            <span className="font-medium text-slate-900">
+                              {section.questionIds.length} Questions Selected
+                            </span>
+                          </div>
+                          {section.questionIds.length === 0 && (
+                            <div className="flex items-center gap-2 text-amber-600">
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                />
+                              </svg>
+                              <span className="text-sm font-medium">
+                                No questions selected
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Question Picker */}
+                        <div className="border-t border-slate-200 pt-4">
+                          <QuestionPicker
+                            selected={section.questionIds}
+                            onChange={(ids) =>
+                              updateSection(index, { questionIds: ids })
+                            }
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+
+                {sectionDrafts.length === 0 && (
+                  <div className="text-center py-12 text-slate-500 border-2 border-dashed border-slate-200 rounded-xl">
+                    <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                      <svg
+                        className="w-8 h-8 text-slate-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                        />
+                      </svg>
+                    </div>
+                    <p className="text-lg font-medium text-slate-900 mb-1">
+                      No sections created
+                    </p>
+                    <p className="text-sm">
+                      Click &apos;Add Section&apos; to get started
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Assignment Section */}
+              <div className="border-t border-slate-200 pt-6">
+                <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-4">
+                  <div>
+                    <h4 className="font-semibold text-purple-900 mb-2">
+                      Assign to Class & Batch
+                    </h4>
+                    <p className="text-sm text-purple-700">
+                      Select a class (7–12) and batch to publish this exam to
+                      specific student groups
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <select
+                      value={classLevel}
+                      onChange={(e) => setClassLevel(e.target.value)}
+                      className="px-4 py-2.5 border border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200 bg-white"
+                    >
+                      <option value="">Select Class</option>
+                      {["7", "8", "9", "10", "11", "12"].map((c) => (
+                        <option key={c} value={c}>
+                          Class {c}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={batch}
+                      onChange={(e) => setBatch(e.target.value)}
+                      className="px-4 py-2.5 border border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200 bg-white"
+                    >
+                      <option value="">Select Batch</option>
+                      {["Lakshya", "Aadharshilla", "Basic", "Commerce"].map(
+                        (b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        )
+                      )}
+                    </select>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={assignToClassBatch}
+                      disabled={!classLevel || !batch}
+                      className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-sm"
+                    >
+                      Assign & Publish
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </Modal>
+      </div>
     </div>
   );
 }
 
+// Enhanced Question Picker Component
 interface QuestionPickerProps {
   selected: string[];
   onChange(ids: string[]): void;
@@ -383,7 +1251,8 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
     }[]
   >([]);
   const [loading, setLoading] = useState(false);
-  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   async function loadQuestions() {
     setLoading(true);
@@ -394,7 +1263,7 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
         tags?: { subject?: string; topic?: string; difficulty?: string };
       }
       const data = (await apiFetch(
-        `/api/exams/questions${q ? `?q=${encodeURIComponent(q)}` : ""}`
+        `/api/exams/questions${query ? `?q=${encodeURIComponent(query)}` : ""}`
       )) as { items: QShape[] };
       setList(data.items || []);
     } catch {
@@ -403,61 +1272,182 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
       setLoading(false);
     }
   }
+
   useEffect(() => {
     loadQuestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [query]);
 
   function toggle(id: string) {
-    if (selected.includes(id)) onChange(selected.filter((x) => x !== id));
-    else onChange([...selected, id]);
+    if (selected.includes(id)) {
+      onChange(selected.filter((x) => x !== id));
+    } else {
+      onChange([...selected, id]);
+    }
   }
 
+  const displayedQuestions = showAll ? list : list.slice(0, 5);
+
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2 items-center">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search bank..."
-          className="border rounded-md px-2 py-1 text-xs"
-        />
-        <button
-          type="button"
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="flex-1 relative">
+          <svg
+            className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search question bank..."
+            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200"
+          />
+        </div>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           onClick={loadQuestions}
-          className="text-xs px-3 py-1 rounded-md border"
+          disabled={loading}
+          className="px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 flex items-center gap-2"
         >
-          Refresh
-        </button>
-        <span className="text-[10px] text-gray-500">
-          {selected.length} selected
-        </span>
-      </div>
-      <div className="max-h-60 overflow-auto border rounded-md divide-y">
-        {loading && <div className="p-2 text-xs text-gray-500">Loading...</div>}
-        {!loading &&
-          list.map((it) => (
-            <label
-              key={it._id}
-              className="flex items-start gap-2 p-2 text-xs cursor-pointer hover:bg-gray-50"
+          {loading ? (
+            <InlineLoader />
+          ) : (
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <input
-                type="checkbox"
-                checked={selected.includes(it._id)}
-                onChange={() => toggle(it._id)}
-                className="mt-0.5"
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               />
-              <span className="flex-1">
-                <span className="font-medium line-clamp-2">{it.text}</span>
-                <span className="block text-[10px] text-gray-500 mt-0.5">
-                  {it.tags?.subject || "-"} / {it.tags?.topic || "-"} /{" "}
-                  {it.tags?.difficulty || "-"}
-                </span>
-              </span>
-            </label>
-          ))}
-        {!loading && !list.length && (
-          <div className="p-2 text-[10px] text-gray-400">No questions</div>
+            </svg>
+          )}
+          <span className="hidden sm:inline">Refresh</span>
+        </motion.button>
+        <div className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium">
+          {selected.length} selected
+        </div>
+      </div>
+
+      <div className="border border-slate-200 rounded-xl overflow-hidden">
+        {loading && (
+          <div className="p-8 text-center text-slate-500">
+            <InlineLoader className="mb-2" />
+            <p>Loading questions...</p>
+          </div>
+        )}
+
+        {!loading && (
+          <>
+            <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+              {displayedQuestions.map((question) => (
+                <motion.label
+                  key={question._id}
+                  className="flex items-start gap-3 p-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                  whileHover={{ x: 2 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(question._id)}
+                    onChange={() => toggle(question._id)}
+                    className="mt-1 w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 line-clamp-2 mb-2">
+                      {question.text}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {question.tags?.subject && (
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium">
+                          {question.tags.subject}
+                        </span>
+                      )}
+                      {question.tags?.topic && (
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-medium">
+                          {question.tags.topic}
+                        </span>
+                      )}
+                      {question.tags?.difficulty && (
+                        <span
+                          className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                            question.tags.difficulty === "easy"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : question.tags.difficulty === "medium"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-red-100 text-red-700"
+                          }`}
+                        >
+                          {question.tags.difficulty}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.label>
+              ))}
+            </div>
+
+            {list.length > 5 && !showAll && (
+              <div className="p-3 bg-slate-50 text-center border-t border-slate-100">
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="px-4 py-2 text-sm rounded-lg border border-slate-200 hover:bg-white transition-colors font-medium"
+                >
+                  Show {list.length - 5} more questions
+                </button>
+              </div>
+            )}
+
+            {showAll && list.length > 5 && (
+              <div className="p-3 bg-slate-50 text-center border-t border-slate-100">
+                <button
+                  onClick={() => setShowAll(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-slate-200 hover:bg-white transition-colors font-medium"
+                >
+                  Show less
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {!loading && list.length === 0 && (
+          <div className="p-12 text-center text-slate-500">
+            <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <svg
+                className="w-8 h-8 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-slate-900 mb-2">
+              No questions found
+            </h3>
+            <p className="text-slate-600">
+              Try adjusting your search criteria or create some questions first.
+            </p>
+          </div>
         )}
       </div>
     </div>

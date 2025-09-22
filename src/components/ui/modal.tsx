@@ -2,15 +2,16 @@
 import * as React from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 
-export interface ModalProps {
-  title?: string;
-  description?: string;
+interface ModalProps {
+  title?: React.ReactNode;
+  description?: React.ReactNode;
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?(open: boolean): void;
   children: React.ReactNode;
   footer?: React.ReactNode;
   wide?: boolean;
+  className?: string;
 }
 
 export const Modal: React.FC<ModalProps> = ({

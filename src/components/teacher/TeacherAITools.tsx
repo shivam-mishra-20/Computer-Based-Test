@@ -1,6 +1,34 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useEffect, useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
+import BlueprintModal, {
+  SavedBlueprint as ModalBlueprint,
+} from "./modals/BlueprintModal";
+import CreateExamFromPaperModal from "./modals/CreateExamFromPaperModal";
+import BankExamModal from "./modals/BankExamModal";
+import GenExamModal from "./modals/GenExamModal";
+import {
+  DocumentTextIcon,
+  PlusCircleIcon,
+  XMarkIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
+  //PrinterIcon,
+  AcademicCapIcon,
+  BookOpenIcon,
+  Cog6ToothIcon,
+  ClipboardDocumentCheckIcon,
+  BeakerIcon,
+  QuestionMarkCircleIcon,
+  ChartBarIcon,
+  RocketLaunchIcon,
+  ArrowDownTrayIcon,
+} from "@heroicons/react/24/outline";
+import { CheckIcon } from "@heroicons/react/24/solid";
+import Image from "next/image";
 
 interface GenQuestion {
   _id?: string;
@@ -15,13 +43,17 @@ interface GenQuestion {
   reasonIsTrue?: boolean;
   reasonExplainsAssertion?: boolean;
   explanation?: string;
+  // Optional diagram for paper printing (kept in-memory as data URL)
+  diagramDataUrl?: string;
+  // Optional persisted URL from backend after upload
+  diagramUrl?: string;
 }
 
 interface PaperSectionBlueprint {
   title: string;
   instructions: string;
   marksPerQuestion: number;
-  questionCounts: Record<string, number>; // per type
+  questionCounts: Record<string, number>;
   difficultyDistribution: { easy: number; medium: number; hard: number };
 }
 
@@ -38,18 +70,50 @@ interface GeneratedPaperResult {
 }
 
 const ALL_TYPES = [
-  "mcq",
-  "truefalse",
-  "fill",
-  "short",
-  "long",
-  "assertionreason",
-  "integer",
+  { id: "mcq", label: "MCQ", icon: "radio", color: "blue" },
+  { id: "truefalse", label: "True/False", icon: "check", color: "green" },
+  { id: "fill", label: "Fill in Blank", icon: "pencil", color: "purple" },
+  { id: "short", label: "Short Answer", icon: "chat", color: "orange" },
+  { id: "long", label: "Essay", icon: "document", color: "red" },
+  {
+    id: "assertionreason",
+    label: "Assertion-Reason",
+    icon: "scale",
+    color: "indigo",
+  },
+  { id: "integer", label: "Integer", icon: "calculator", color: "teal" },
 ];
+
+// Animation variants
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5 },
+  },
+};
+
+const tabVariants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: { duration: 0.3 },
+  },
+};
 
 export default function TeacherAITools() {
   const [tab, setTab] = useState<"generate" | "paper">("generate");
-  const [mode, setMode] = useState<"pdf" | "text">("pdf");
+  const [mode, setMode] = useState<"pdf" | "image" | "text">("pdf");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -61,9 +125,13 @@ export default function TeacherAITools() {
     topic: "",
     difficulty: "medium",
     count: 10,
-    types: [...ALL_TYPES],
+    types: ["mcq", "truefalse", "fill", "short", "long"],
   });
   const [refiningIdx, setRefiningIdx] = useState<number | null>(null);
+  // Editing state for generated items
+  const [editing, setEditing] = useState<Set<number>>(new Set());
+  // Paper preview editing state (per section:question)
+  const [paperEditing, setPaperEditing] = useState<Set<string>>(new Set());
 
   // Paper blueprint state
   const [paperBlueprint, setPaperBlueprint] = useState({
@@ -85,12 +153,19 @@ export default function TeacherAITools() {
   });
   const [paperSource, setPaperSource] = useState("");
   const [paperPdfFile, setPaperPdfFile] = useState<File | null>(null);
-  const [paperInputMode, setPaperInputMode] = useState<"text" | "pdf">("text");
+  const [paperImageFile, setPaperImageFile] = useState<File | null>(null);
+  const [paperInputMode, setPaperInputMode] = useState<
+    "text" | "pdf" | "image"
+  >("text");
   const [paperLoading, setPaperLoading] = useState(false);
   const [paperResult, setPaperResult] = useState<GeneratedPaperResult | null>(
     null
   );
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [savingPaper, setSavingPaper] = useState(false);
+
   // Blueprint persistence
   interface SavedBlueprint {
     _id: string;
@@ -114,12 +189,11 @@ export default function TeacherAITools() {
   const [examTitle, setExamTitle] = useState("");
   const [classLevel, setClassLevel] = useState("");
   const [batch, setBatch] = useState("");
-  // Timer for exam duration (minutes)
   const [timerMins, setTimerMins] = useState<string>("60");
   const [autoPublish, setAutoPublish] = useState(true);
   const [creatingExam, setCreatingExam] = useState(false);
 
-  // Question bank exam creation (simplified) state
+  // Question bank exam creation state
   const [bankExamOpen, setBankExamOpen] = useState(false);
   const [bankSelectedQuestions, setBankSelectedQuestions] = useState<string[]>(
     []
@@ -365,10 +439,113 @@ export default function TeacherAITools() {
     }
   }
 
+  async function generateFromImage() {
+    if (!file) {
+      setError("Select image");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      Object.entries(meta).forEach(([k, v]) => {
+        if (k === "types") form.append("types", (v as string[]).join(","));
+        else form.append(k, String(v));
+      });
+      const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+      const res = await fetch(base + "/api/ai/generate/image", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken") || ""}`,
+        },
+        body: form,
+      });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      setItems(data.items || []);
+      setSelected(new Set());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Helpers for editing and diagrams
+  function toggleEdit(i: number) {
+    setEditing((prev) => {
+      const n = new Set(prev);
+      if (n.has(i)) n.delete(i);
+      else n.add(i);
+      return n;
+    });
+  }
+
+  function updateGeneratedQuestion(i: number, patch: Partial<GenQuestion>) {
+    setItems((arr) =>
+      arr.map((q, idx) => (idx === i ? { ...q, ...patch } : q))
+    );
+  }
+
+  function handleGeneratedDiagram(i: number, file: File | null) {
+    if (!file) return;
+    if (file.size > 1.5 * 1024 * 1024) {
+      alert("Image too large. Please keep under ~1.5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () =>
+      updateGeneratedQuestion(i, { diagramDataUrl: String(reader.result) });
+    reader.readAsDataURL(file);
+  }
+
+  // Paper editing helpers
+  const isDataUrl = (src?: string) => !!src && src.startsWith("data:");
+  const pqKey = (si: number, qi: number) => `${si}:${qi}`;
+  function togglePaperEdit(si: number, qi: number) {
+    setPaperEditing((prev) => {
+      const n = new Set(prev);
+      const k = pqKey(si, qi);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  }
+  function updatePaperQuestion(
+    si: number,
+    qi: number,
+    patch: Partial<GenQuestion>
+  ) {
+    setPaperResult((pr) => {
+      if (!pr) return pr;
+      const sections = pr.sections.map((sec, i) => {
+        if (i !== si) return sec;
+        const questions = sec.questions.map((q, j) =>
+          j === qi ? { ...q, ...patch } : q
+        );
+        return { ...sec, questions };
+      });
+      return { ...pr, sections };
+    });
+  }
+  function handlePaperDiagram(si: number, qi: number, file: File | null) {
+    if (!file) return;
+    if (file.size > 1.5 * 1024 * 1024) {
+      alert("Image too large. Please keep under ~1.5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () =>
+      updatePaperQuestion(si, qi, { diagramDataUrl: String(reader.result) });
+    reader.readAsDataURL(file);
+  }
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (mode === "text") generateFromText();
-    else generateFromPdf();
+    else if (mode === "pdf") generateFromPdf();
+    else generateFromImage();
   }
 
   async function addToBank(indices: number[]) {
@@ -377,6 +554,37 @@ export default function TeacherAITools() {
     let ok = 0;
     for (const q of toAdd) {
       try {
+        // Upload diagram if present (data URL) to obtain a persistent URL
+        let diagramUrl: string | undefined;
+        if (q.diagramDataUrl && q.diagramDataUrl.startsWith("data:")) {
+          try {
+            const blob = await (await fetch(q.diagramDataUrl)).blob();
+            const form = new FormData();
+            form.append(
+              "image",
+              new File([blob], "diagram.png", {
+                type: blob.type || "image/png",
+              })
+            );
+            const base =
+              process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+            const resp = await fetch(base + "/api/upload/image", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${
+                  localStorage.getItem("accessToken") || ""
+                }`,
+              },
+              body: form,
+            });
+            if (resp.ok) {
+              const d = await resp.json();
+              diagramUrl = d.url as string;
+            }
+          } catch {
+            // ignore diagram upload failure; proceed without diagram
+          }
+        }
         await apiFetch("/api/exams/questions", {
           method: "POST",
           body: JSON.stringify({
@@ -399,6 +607,8 @@ export default function TeacherAITools() {
                 ? String(q.integerAnswer)
                 : undefined,
             explanation: q.explanation,
+            diagramUrl,
+            diagramAlt: "Diagram",
           }),
         });
         ok++;
@@ -406,10 +616,10 @@ export default function TeacherAITools() {
         // continue
       }
     }
-    // simple feedback (could use toast)
     alert(`Added ${ok}/${toAdd.length} questions to bank`);
   }
 
+  // Selection helpers
   function toggle(idx: number) {
     setSelected((s) => {
       const n = new Set(s);
@@ -451,6 +661,8 @@ export default function TeacherAITools() {
     }
   }
 
+  // Paper editing helpers will be added alongside the preview editing UI
+
   // Create Exam from Generated Questions (selected)
   async function createExamFromGenerated() {
     const indices = [...selected];
@@ -460,12 +672,42 @@ export default function TeacherAITools() {
     }
     setGenExamCreating(true);
     try {
-      // 1) Create questions in bank to obtain IDs
       const createdIds: string[] = [];
       for (const i of indices) {
         const q = items[i];
         if (!q) continue;
         try {
+          // Upload diagram if present (data URL)
+          let diagramUrl: string | undefined;
+          if (q.diagramDataUrl && q.diagramDataUrl.startsWith("data:")) {
+            try {
+              const blob = await (await fetch(q.diagramDataUrl)).blob();
+              const form = new FormData();
+              form.append(
+                "image",
+                new File([blob], "diagram.png", {
+                  type: blob.type || "image/png",
+                })
+              );
+              const base =
+                process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+              const resp = await fetch(base + "/api/upload/image", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${
+                    localStorage.getItem("accessToken") || ""
+                  }`,
+                },
+                body: form,
+              });
+              if (resp.ok) {
+                const d = await resp.json();
+                diagramUrl = d.url as string;
+              }
+            } catch {
+              // ignore
+            }
+          }
           const created = (await apiFetch("/api/exams/questions", {
             method: "POST",
             body: JSON.stringify({
@@ -488,6 +730,8 @@ export default function TeacherAITools() {
                   ? String(q.integerAnswer)
                   : undefined,
               explanation: q.explanation,
+              diagramUrl,
+              diagramAlt: "Diagram",
             }),
           })) as { _id?: string };
           if (created && created._id) createdIds.push(created._id);
@@ -496,7 +740,6 @@ export default function TeacherAITools() {
         }
       }
       if (!createdIds.length) throw new Error("No questions created");
-      // 2) Create the exam
       await apiFetch("/api/exams", {
         method: "POST",
         body: JSON.stringify({
@@ -534,6 +777,7 @@ export default function TeacherAITools() {
       return { ...pb, sections };
     });
   }
+
   function addSection() {
     setPaperBlueprint((pb) => ({
       ...pb,
@@ -549,6 +793,7 @@ export default function TeacherAITools() {
       ],
     }));
   }
+
   function removeSection(i: number) {
     setPaperBlueprint((pb) => ({
       ...pb,
@@ -568,6 +813,7 @@ export default function TeacherAITools() {
       },
     });
   }
+
   function updateDifficulty(
     sectionIdx: number,
     key: keyof PaperSectionBlueprint["difficultyDistribution"],
@@ -598,7 +844,17 @@ export default function TeacherAITools() {
           }),
         })) as GeneratedPaperResult;
         setPaperResult(res);
-      } else {
+        // persist to history
+        try {
+          await apiFetch("/api/papers", {
+            method: "POST",
+            body: JSON.stringify({
+              ...res,
+              meta: { source: "ai", blueprint: paperBlueprint },
+            }),
+          });
+        } catch {}
+      } else if (paperInputMode === "pdf") {
         if (!paperPdfFile) {
           alert("Select PDF");
           setPaperLoading(false);
@@ -621,6 +877,47 @@ export default function TeacherAITools() {
         if (!res.ok) throw new Error("Failed");
         const data = (await res.json()) as GeneratedPaperResult;
         setPaperResult(data);
+        try {
+          await apiFetch("/api/papers", {
+            method: "POST",
+            body: JSON.stringify({
+              ...data,
+              meta: { source: "ai-pdf", blueprint: paperBlueprint },
+            }),
+          });
+        } catch {}
+      } else {
+        if (!paperImageFile) {
+          alert("Select image");
+          setPaperLoading(false);
+          return;
+        }
+        const form = new FormData();
+        form.append("image", paperImageFile);
+        form.append("blueprint", JSON.stringify(paperBlueprint));
+        const base =
+          process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+        const res = await fetch(base + "/api/ai/generate/paper-image", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${
+              localStorage.getItem("accessToken") || ""
+            }`,
+          },
+          body: form,
+        });
+        if (!res.ok) throw new Error("Failed");
+        const data = (await res.json()) as GeneratedPaperResult;
+        setPaperResult(data);
+        try {
+          await apiFetch("/api/papers", {
+            method: "POST",
+            body: JSON.stringify({
+              ...data,
+              meta: { source: "ai-image", blueprint: paperBlueprint },
+            }),
+          });
+        } catch {}
       }
     } catch {
       alert("Paper generation failed");
@@ -632,7 +929,7 @@ export default function TeacherAITools() {
   function printablePaper() {
     if (!paperResult) return null;
     return (
-      <div className="p-6 text-[13px] leading-relaxed max-w-4xl mx-auto">
+      <div className="printable-paper p-6 text-[13px] leading-relaxed max-w-4xl mx-auto print:text-black">
         <h1 className="text-center text-xl font-semibold mb-1">
           {paperResult.examTitle}
         </h1>
@@ -662,18 +959,49 @@ export default function TeacherAITools() {
                   <div className="font-medium mb-1">
                     {qi + 1}. {q.text}
                   </div>
+                  {q.diagramDataUrl && (
+                    <div className="ml-4 mb-2">
+                      {isDataUrl(q.diagramDataUrl) ? (
+                        <img
+                          src={q.diagramDataUrl}
+                          alt="Diagram"
+                          className="h-auto w-auto max-h-52"
+                        />
+                      ) : (
+                        <Image
+                          src={q.diagramDataUrl}
+                          alt="Diagram"
+                          width={400}
+                          height={300}
+                          className="h-auto w-auto max-h-52"
+                        />
+                      )}
+                    </div>
+                  )}
                   {q.type === "assertionreason" && (
                     <div className="ml-4 text-xs text-gray-600 space-y-1">
                       {q.assertion && (
                         <div>
-                          <strong>Assertion:</strong> {q.assertion}
+                          <strong>Assertion (A):</strong> {q.assertion}
                         </div>
                       )}
                       {q.reason && (
                         <div>
-                          <strong>Reason:</strong> {q.reason}
+                          <strong>Reason (R):</strong> {q.reason}
                         </div>
                       )}
+                      <ol className="ml-5 list-[upper-alpha] space-y-0.5 mt-1">
+                        <li>
+                          Both A and R are true, and R is the correct
+                          explanation of A.
+                        </li>
+                        <li>
+                          Both A and R are true, but R is not the correct
+                          explanation of A.
+                        </li>
+                        <li>A is true, but R is false.</li>
+                        <li>A is false, but R is true.</li>
+                      </ol>
                     </div>
                   )}
                   {q.type === "mcq" && q.options && (
@@ -697,860 +1025,1765 @@ export default function TeacherAITools() {
     );
   }
 
-  function handlePrint() {
-    setShowPrintPreview(true);
+  // function handlePrint() {
+  //   // Open the print preview modal. Actual printing is triggered by the
+  //   // Print button inside the modal (so we only print the question paper)
+  //   setShowPrintPreview(true);
+  // }
+
+  function closePrintPreview() {
+    setShowPrintPreview(false);
+  }
+
+  function doPrint() {
+    // Guard
+    if (printing) return;
+    setPrinting(true);
+    // Apply the helper class so the @media print rules show only the paper
+    document.body.classList.add("print-paper-only");
+
+    // Allow the browser to repaint and apply the class before printing
     setTimeout(() => {
-      window.print();
-      setShowPrintPreview(false);
-    }, 100);
+      try {
+        window.print();
+      } finally {
+        // cleanup
+        document.body.classList.remove("print-paper-only");
+        setShowPrintPreview(false);
+        setPrinting(false);
+      }
+    }, 200);
+  }
+
+  async function downloadPdfFromServer() {
+    if (!paperResult) return;
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paper: paperResult }),
+      });
+      if (!res.ok) throw new Error("Failed to generate PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeTitle = (paperResult.examTitle || "question-paper").replace(
+        /[^a-z0-9\-_]+/gi,
+        "_"
+      );
+      a.download = `${safeTitle}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "PDF download failed");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function savePaperToHistory() {
+    if (!paperResult) return;
+    if (savingPaper) return;
+    setSavingPaper(true);
+    try {
+      await apiFetch("/api/papers", {
+        method: "POST",
+        body: JSON.stringify({
+          ...paperResult,
+          meta: { source: "manual", blueprint: paperBlueprint },
+        }),
+      });
+      alert("Saved to Papers");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingPaper(false);
+    }
   }
 
   return (
-    <div>
-      <div className="flex gap-4 mb-4 border-b">
-        <button
-          onClick={() => setTab("generate")}
-          className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-            tab === "generate"
-              ? "border-primary text-primary"
-              : "border-transparent text-gray-500"
-          }`}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={containerVariants}
+        // Updated container to be more responsive and constrained on small screens
+        className="mx-auto px-4 sm:px-6 py-8 max-w-5xl lg:max-w-7xl"
+      >
+        {/* Navigation Tabs */}
+        <motion.div
+          variants={itemVariants}
+          className="flex justify-center mb-8 px-2"
         >
-          Generate Questions
-        </button>
-        <button
-          onClick={() => setTab("paper")}
-          className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-            tab === "paper"
-              ? "border-primary text-primary"
-              : "border-transparent text-gray-500"
-          }`}
-        >
-          Paper Generator
-        </button>
-      </div>
-
-      {tab === "generate" && (
-        <div>
-          <form
-            onSubmit={onSubmit}
-            className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm space-y-3 max-w-xl"
-          >
-            <div className="flex flex-wrap gap-3 text-xs">
-              <div className="flex gap-3">
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="mode"
-                    value="pdf"
-                    checked={mode === "pdf"}
-                    onChange={() => setMode("pdf")}
-                  />{" "}
-                  PDF
-                </label>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="mode"
-                    value="text"
-                    checked={mode === "text"}
-                    onChange={() => setMode("text")}
-                  />{" "}
-                  Text
-                </label>
-              </div>
-              <div className="flex flex-wrap gap-2 items-center">
-                {ALL_TYPES.map((t) => (
-                  <label
-                    key={t}
-                    className="flex items-center gap-1 bg-gray-50 border px-2 py-0.5 rounded"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={meta.types.includes(t)}
-                      onChange={() => toggleType(t)}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2 shadow-lg border border-gray-200/50 max-w-full overflow-hidden">
+            {/* Use flex-wrap so tabs don't overflow on small screens */}
+            <div className="flex flex-wrap gap-2 justify-center">
+              {[
+                {
+                  id: "generate",
+                  label: "Generate Questions",
+                  icon: QuestionMarkCircleIcon,
+                },
+                {
+                  id: "paper",
+                  label: "Paper Generator",
+                  icon: DocumentTextIcon,
+                },
+              ].map((tabItem) => (
+                <motion.button
+                  key={tabItem.id}
+                  onClick={() => setTab(tabItem.id as "generate" | "paper")}
+                  className={`relative flex items-center gap-2 min-w-0 w-full sm:w-auto sm:px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                    tab === tabItem.id
+                      ? "text-white shadow-lg"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                  }`}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {tab === tabItem.id && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl"
+                      transition={{ duration: 0.3 }}
                     />
-                    <span className="capitalize">{t}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            {mode === "pdf" ? (
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="text-sm"
-              />
-            ) : (
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Paste source text (>= 50 chars)"
-                className="w-full border rounded-md p-2 text-sm h-32"
-              />
-            )}
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <input
-                placeholder="Subject"
-                value={meta.subject}
-                onChange={(e) => setMeta({ ...meta, subject: e.target.value })}
-                className="border rounded-md px-2 py-1"
-              />
-              <input
-                placeholder="Topic"
-                value={meta.topic}
-                onChange={(e) => setMeta({ ...meta, topic: e.target.value })}
-                className="border rounded-md px-2 py-1"
-              />
-              <select
-                value={meta.difficulty}
-                onChange={(e) =>
-                  setMeta({ ...meta, difficulty: e.target.value })
-                }
-                className="border rounded-md px-2 py-1"
-              >
-                <option value="easy">easy</option>
-                <option value="medium">medium</option>
-                <option value="hard">hard</option>
-              </select>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={meta.count}
-                onChange={(e) =>
-                  setMeta({ ...meta, count: Number(e.target.value) })
-                }
-                className="border rounded-md px-2 py-1"
-              />
-            </div>
-            {error && <div className="text-xs text-red-600">{error}</div>}
-            <button
-              disabled={loading}
-              className="px-4 py-2 rounded-md bg-primary text-white text-sm disabled:opacity-50"
-            >
-              {loading ? "Generating..." : "Generate"}
-            </button>
-          </form>
-
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium">
-                Generated Questions ({items.length})
-              </h3>
-              {items.length > 0 && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => addToBank([...selected])}
-                    disabled={!selected.size}
-                    className="text-xs px-3 py-1 rounded-md border disabled:opacity-40"
-                  >
-                    Add Selected ({selected.size})
-                  </button>
-                  <button
-                    onClick={() => addToBank(items.map((_, i) => i))}
-                    className="text-xs px-3 py-1 rounded-md border"
-                  >
-                    Add All
-                  </button>
-                  <button
-                    onClick={() => {
-                      setGenExamTitle(
-                        items.length
-                          ? `AI Exam (${items.length} Qs)`
-                          : "AI Exam"
-                      );
-                      setGenExamOpen(true);
-                    }}
-                    disabled={!selected.size}
-                    className="text-xs px-3 py-1 rounded-md border bg-primary text-white disabled:opacity-40"
-                    title="Create an exam from the selected questions"
-                  >
-                    Create Exam
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="border rounded-md divide-y">
-              {items.length > 0 && (
-                <label className="flex items-center gap-2 p-2 text-[11px] font-medium bg-gray-50">
-                  <input
-                    type="checkbox"
-                    checked={allSelected()}
-                    onChange={toggleAll}
-                  />
-                  Select All
-                </label>
-              )}
-              {items.map((q, i) => (
-                <div key={i} className="p-3 text-xs space-y-1">
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(i)}
-                      onChange={() => toggle(i)}
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium mb-1 flex flex-wrap gap-2">
-                        <span>
-                          {i + 1}. {q.text}
-                        </span>
-                        <span className="px-2 py-0.5 bg-gray-100 rounded capitalize text-[10px]">
-                          {q.type}
-                        </span>
-                      </div>
-                      {q.type === "assertionreason" && (
-                        <div className="ml-3 text-[11px] text-gray-600 space-y-0.5">
-                          {q.assertion && (
-                            <div>
-                              <strong>A:</strong> {q.assertion}
-                            </div>
-                          )}
-                          {q.reason && (
-                            <div>
-                              <strong>R:</strong> {q.reason}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {q.type === "mcq" && q.options && (
-                        <ol className="ml-5 list-[upper-alpha] space-y-0.5">
-                          {q.options.map((o, oi) => (
-                            <li key={oi}>{o.text}</li>
-                          ))}
-                        </ol>
-                      )}
-                      {q.type === "integer" &&
-                        q.integerAnswer !== undefined && (
-                          <div className="ml-3 text-[11px] text-gray-600">
-                            (Integer answer expected)
-                          </div>
-                        )}
-                      <div className="flex flex-wrap gap-2 mt-1 text-[10px] text-gray-500">
-                        <span className="px-2 py-0.5 bg-gray-100 rounded">
-                          {q.tags?.subject || meta.subject || "-"}
-                        </span>
-                        <span className="px-2 py-0.5 bg-gray-100 rounded">
-                          {q.tags?.topic || meta.topic || "-"}
-                        </span>
-                        <span className="px-2 py-0.5 bg-gray-100 rounded capitalize">
-                          {q.tags?.difficulty || meta.difficulty || "-"}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => refine(i)}
-                      disabled={refiningIdx === i}
-                      className="text-[10px] px-2 py-1 border rounded disabled:opacity-50"
-                    >
-                      {refiningIdx === i ? "Refining..." : "Refine"}
-                    </button>
+                  )}
+                  <div className="relative flex items-center gap-2 whitespace-nowrap px-1">
+                    <tabItem.icon className="w-5 h-5" />
+                    <span className="whitespace-nowrap">{tabItem.label}</span>
                   </div>
-                </div>
+                </motion.button>
               ))}
-              {!items.length && !loading && (
-                <div className="text-xs text-gray-400 p-3">None yet</div>
-              )}
             </div>
           </div>
-        </div>
-      )}
+        </motion.div>
 
-      {tab === "paper" && (
-        <div className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div className="bg-white border rounded p-4 space-y-3 shadow-sm">
-                <h3 className="font-medium text-sm">Paper Blueprint</h3>
-                <input
-                  value={paperBlueprint.examTitle}
-                  onChange={(e) =>
-                    setPaperBlueprint({
-                      ...paperBlueprint,
-                      examTitle: e.target.value,
-                    })
-                  }
-                  className="w-full border rounded px-2 py-1 text-sm"
-                  placeholder="Exam Title"
-                />
-                <input
-                  value={paperBlueprint.subject}
-                  onChange={(e) =>
-                    setPaperBlueprint({
-                      ...paperBlueprint,
-                      subject: e.target.value,
-                    })
-                  }
-                  className="w-full border rounded px-2 py-1 text-sm"
-                  placeholder="Subject"
-                />
-                <div className="space-y-2">
-                  <label className="text-xs font-medium">
-                    General Instructions
-                  </label>
-                  {paperBlueprint.generalInstructions.map((ins, i) => (
-                    <input
-                      key={i}
-                      value={ins}
-                      onChange={(e) =>
-                        setPaperBlueprint((pb) => {
-                          const gi = [...pb.generalInstructions];
-                          gi[i] = e.target.value;
-                          return { ...pb, generalInstructions: gi };
-                        })
-                      }
-                      className="w-full border rounded px-2 py-1 text-xs"
-                    />
-                  ))}
-                  <button
-                    onClick={() =>
-                      setPaperBlueprint((pb) => ({
-                        ...pb,
-                        generalInstructions: [...pb.generalInstructions, ""],
-                      }))
-                    }
-                    className="text-[10px] px-2 py-1 border rounded"
-                  >
-                    + Add Instruction
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {paperBlueprint.sections.map((sec, si) => (
-                    <div key={si} className="border rounded p-3 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <input
-                          value={sec.title}
-                          onChange={(e) =>
-                            updateSection(si, { title: e.target.value })
-                          }
-                          className="font-medium text-xs border rounded px-2 py-1"
-                        />
-                        <button
-                          onClick={() => removeSection(si)}
-                          className="text-[10px] px-2 py-1 border rounded"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <textarea
-                        value={sec.instructions}
-                        onChange={(e) =>
-                          updateSection(si, { instructions: e.target.value })
-                        }
-                        className="w-full border rounded px-2 py-1 text-xs h-16"
-                        placeholder="Instructions"
-                      />
-                      <div className="grid grid-cols-3 gap-2 text-[10px]">
-                        <label className="flex flex-col gap-1">
-                          <span>Marks/Q</span>
-                          <input
-                            type="number"
-                            value={sec.marksPerQuestion}
-                            onChange={(e) =>
-                              updateSection(si, {
-                                marksPerQuestion: Number(e.target.value),
-                              })
-                            }
-                            className="border rounded px-2 py-1"
-                          />
-                        </label>
-                        {ALL_TYPES.map((t) => (
-                          <label key={t} className="flex flex-col gap-1">
-                            <span className="capitalize">{t}</span>
-                            <input
-                              type="number"
-                              min={0}
-                              value={sec.questionCounts[t] || 0}
-                              onChange={(e) =>
-                                updateQuestionCount(
-                                  si,
-                                  t,
-                                  Number(e.target.value)
-                                )
-                              }
-                              className="border rounded px-2 py-1"
-                            />
-                          </label>
-                        ))}
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-[10px] mt-2">
-                        {(["easy", "medium", "hard"] as const).map((d) => (
-                          <label key={d} className="flex flex-col gap-1">
-                            <span>{d}</span>
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={sec.difficultyDistribution[d]}
-                              onChange={(e) =>
-                                updateDifficulty(si, d, Number(e.target.value))
-                              }
-                              className="border rounded px-2 py-1"
-                            />
-                          </label>
-                        ))}
-                      </div>
+        {/* Tab Content */}
+        <AnimatePresence mode="wait">
+          {tab === "generate" ? (
+            <motion.div
+              key="generate"
+              variants={tabVariants}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
+              className="space-y-6"
+            >
+              {/* Generation Form */}
+              <motion.div
+                variants={itemVariants}
+                className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg overflow-hidden"
+              >
+                <form onSubmit={onSubmit} className="p-6 space-y-6">
+                  {/* Header */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white">
+                      <BeakerIcon className="w-5 h-5" />
                     </div>
-                  ))}
-                  <button
-                    onClick={addSection}
-                    className="text-[10px] px-2 py-1 border rounded"
-                  >
-                    + Add Section
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <div className="bg-white border rounded p-4 space-y-3 shadow-sm">
-                <h3 className="font-medium text-sm">Source</h3>
-                <div className="flex gap-4 text-xs mb-2">
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="radio"
-                      value="text"
-                      checked={paperInputMode === "text"}
-                      onChange={() => setPaperInputMode("text")}
-                    />{" "}
-                    Text
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="radio"
-                      value="pdf"
-                      checked={paperInputMode === "pdf"}
-                      onChange={() => setPaperInputMode("pdf")}
-                    />{" "}
-                    PDF
-                  </label>
-                </div>
-                {paperInputMode === "text" ? (
-                  <textarea
-                    value={paperSource}
-                    onChange={(e) => setPaperSource(e.target.value)}
-                    className="w-full border rounded px-2 py-1 text-sm h-48"
-                    placeholder="Paste study material (>=100 chars)"
-                  />
-                ) : (
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(e) =>
-                      setPaperPdfFile(e.target.files?.[0] || null)
-                    }
-                    className="text-xs"
-                  />
-                )}
-                <button
-                  onClick={generatePaper}
-                  disabled={paperLoading}
-                  className="px-4 py-2 bg-primary text-white rounded text-sm disabled:opacity-50"
-                >
-                  {paperLoading ? "Generating Paper..." : "Generate Paper"}
-                </button>
-                <div className="flex gap-2 flex-wrap text-[10px]">
-                  <button
-                    type="button"
-                    onClick={openBlueprintModal}
-                    className="px-2 py-1 border rounded"
-                  >
-                    Blueprints
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBankExamOpen(true)}
-                    className="px-2 py-1 border rounded"
-                  >
-                    Bank Exam
-                  </button>
-                </div>
-                {paperResult && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setPaperResult(null)}
-                      className="text-[10px] px-2 py-1 border rounded"
-                    >
-                      Reset
-                    </button>
-                    <button
-                      onClick={handlePrint}
-                      className="text-[10px] px-2 py-1 border rounded"
-                    >
-                      Print / PDF
-                    </button>
-                    <button
-                      onClick={openCreateExam}
-                      className="text-[10px] px-2 py-1 border rounded bg-primary text-white"
-                    >
-                      Create Exam
-                    </button>
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      Generate Questions
+                    </h2>
                   </div>
-                )}
-              </div>
-              {paperResult && (
-                <div className="bg-white border rounded p-4 space-y-4 shadow-sm max-h-[70vh] overflow-auto">
-                  <h3 className="font-medium text-sm">Preview</h3>
-                  {paperResult.sections.map((sec, si) => (
-                    <div key={si} className="border rounded p-3 mb-3">
-                      <div className="font-semibold text-xs mb-2">
-                        {sec.title}
-                      </div>
+
+                  {/* Input Mode Selection */}
+                  <div className="space-y-4">
+                    <label className="text-sm font-medium text-gray-700">
+                      Input Mode
+                    </label>
+                    <div className="flex gap-3 flex-wrap">
+                      {[
+                        {
+                          id: "pdf",
+                          label: "PDF Upload",
+                          icon: DocumentTextIcon,
+                        },
+                        {
+                          id: "image",
+                          label: "Image (OCR)",
+                          icon: ArrowDownTrayIcon,
+                        },
+                        { id: "text", label: "Text Input", icon: BookOpenIcon },
+                      ].map((modeItem) => (
+                        <motion.label
+                          key={modeItem.id}
+                          className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 cursor-pointer transition-all duration-200 w-full sm:w-auto ${
+                            mode === modeItem.id
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-gray-200 hover:border-gray-300 bg-white"
+                          }`}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <input
+                            type="radio"
+                            name="mode"
+                            value={modeItem.id}
+                            checked={mode === modeItem.id}
+                            onChange={() =>
+                              setMode(modeItem.id as "pdf" | "text")
+                            }
+                            className="sr-only"
+                          />
+                          <modeItem.icon className="w-5 h-5" />
+                          <span className="font-medium">{modeItem.label}</span>
+                          {mode === modeItem.id && (
+                            <CheckCircleIcon className="w-5 h-5 text-blue-500 ml-auto" />
+                          )}
+                        </motion.label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Question Types */}
+                  <div className="space-y-4">
+                    <label className="text-sm font-medium text-gray-700">
+                      Question Types
+                    </label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {ALL_TYPES.map((typeItem) => {
+                        // map colors to concrete Tailwind classes to avoid
+                        // dynamic class name issues (Tailwind purge/compile)
+                        const colorMap: Record<
+                          string,
+                          {
+                            bg: string;
+                            border: string;
+                            text: string;
+                            checkBg: string;
+                          }
+                        > = {
+                          blue: {
+                            bg: "bg-blue-50",
+                            border: "border-blue-500",
+                            text: "text-blue-700",
+                            checkBg: "bg-blue-500",
+                          },
+                          green: {
+                            bg: "bg-green-50",
+                            border: "border-green-500",
+                            text: "text-green-700",
+                            checkBg: "bg-green-500",
+                          },
+                          purple: {
+                            bg: "bg-purple-50",
+                            border: "border-purple-500",
+                            text: "text-purple-700",
+                            checkBg: "bg-purple-500",
+                          },
+                          orange: {
+                            bg: "bg-orange-50",
+                            border: "border-orange-500",
+                            text: "text-orange-700",
+                            checkBg: "bg-orange-500",
+                          },
+                          red: {
+                            bg: "bg-red-50",
+                            border: "border-red-500",
+                            text: "text-red-700",
+                            checkBg: "bg-red-500",
+                          },
+                          indigo: {
+                            bg: "bg-indigo-50",
+                            border: "border-indigo-500",
+                            text: "text-indigo-700",
+                            checkBg: "bg-indigo-500",
+                          },
+                          teal: {
+                            bg: "bg-teal-50",
+                            border: "border-teal-500",
+                            text: "text-teal-700",
+                            checkBg: "bg-teal-500",
+                          },
+                        };
+                        const cols = colorMap[typeItem.color] || colorMap.blue;
+                        const active = meta.types.includes(typeItem.id);
+                        return (
+                          <motion.label
+                            key={typeItem.id}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all duration-200 ${
+                              active
+                                ? `${cols.border} ${cols.bg} ${cols.text}`
+                                : "border-gray-200 hover:border-gray-300 bg-white"
+                            }`}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={active}
+                              onChange={() => toggleType(typeItem.id)}
+                              className="sr-only"
+                            />
+                            <div
+                              className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                                active
+                                  ? `${cols.checkBg} border-transparent`
+                                  : "border-gray-300 bg-white"
+                              }`}
+                            >
+                              {active && (
+                                <CheckIcon className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                            <span className="text-sm font-medium">
+                              {typeItem.label}
+                            </span>
+                          </motion.label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Input Area */}
+                  <div className="space-y-4">
+                    {mode === "pdf" || mode === "image" ? (
                       <div className="space-y-2">
-                        {sec.questions.map((q, qi) => (
-                          <div key={qi} className="text-[11px] border-b pb-2">
-                            <div className="flex gap-2 items-start">
-                              <span className="font-medium">{qi + 1}.</span>
-                              <div className="flex-1">
-                                {q.text}
-                                {q.type === "mcq" && q.options && (
-                                  <ol className="ml-5 list-[upper-alpha] space-y-0.5 mt-1">
-                                    {q.options.map((o, oi) => (
-                                      <li key={oi}>{o.text}</li>
-                                    ))}
-                                  </ol>
-                                )}
-                                {q.type === "assertionreason" && (
-                                  <div className="ml-3 mt-1 space-y-0.5 text-[10px] text-gray-600">
-                                    {q.assertion && (
+                        <label className="text-sm font-medium text-gray-700">
+                          Upload{" "}
+                          {mode === "pdf" ? "PDF" : "Image (PNG/JPG/WEBP)"}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="file"
+                            accept={
+                              mode === "pdf" ? "application/pdf" : "image/*"
+                            }
+                            {...(mode === "image"
+                              ? { capture: "environment" }
+                              : {})}
+                            onChange={(e) =>
+                              setFile(e.target.files?.[0] || null)
+                            }
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          Source Text
+                        </label>
+                        <textarea
+                          value={text}
+                          onChange={(e) => setText(e.target.value)}
+                          placeholder="Paste your source content here (minimum 50 characters)..."
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none h-32"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Metadata */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Subject
+                      </label>
+                      <input
+                        placeholder="e.g., Mathematics"
+                        value={meta.subject}
+                        onChange={(e) =>
+                          setMeta({ ...meta, subject: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Topic
+                      </label>
+                      <input
+                        placeholder="e.g., Algebra"
+                        value={meta.topic}
+                        onChange={(e) =>
+                          setMeta({ ...meta, topic: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Difficulty
+                      </label>
+                      <select
+                        value={meta.difficulty}
+                        onChange={(e) =>
+                          setMeta({ ...meta, difficulty: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      >
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Count
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={meta.count}
+                        onChange={(e) =>
+                          setMeta({ ...meta, count: Number(e.target.value) })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Error Display */}
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600"
+                      >
+                        <ExclamationTriangleIcon className="w-5 h-5" />
+                        <span className="text-sm">{error}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Submit Button */}
+                  <motion.button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                    whileHover={{ scale: loading ? 1 : 1.02 }}
+                    whileTap={{ scale: loading ? 1 : 0.98 }}
+                  >
+                    {loading ? (
+                      <>
+                        <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <RocketLaunchIcon className="w-5 h-5" />
+                        Generate Questions
+                      </>
+                    )}
+                  </motion.button>
+                </form>
+              </motion.div>
+
+              {/* Generated Questions */}
+              <motion.div variants={itemVariants}>
+                {/* Make header stack on small screens and actions wrap */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg text-white">
+                      <ClipboardDocumentCheckIcon className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900">
+                      Generated Questions ({items.length})
+                    </h3>
+                  </div>
+
+                  {items.length > 0 && (
+                    <div className="flex flex-wrap gap-2 items-center justify-end w-full sm:w-auto">
+                      <motion.button
+                        onClick={() => addToBank([...selected])}
+                        disabled={!selected.size}
+                        className="w-full sm:w-auto flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-all duration-200"
+                        whileHover={{ scale: selected.size ? 1.02 : 1 }}
+                        whileTap={{ scale: selected.size ? 0.98 : 1 }}
+                      >
+                        <PlusCircleIcon className="w-4 h-4" />
+                        <span className="truncate">
+                          Add Selected ({selected.size})
+                        </span>
+                      </motion.button>
+
+                      <motion.button
+                        onClick={() => addToBank(items.map((_, i) => i))}
+                        className="w-full sm:w-auto flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-all duration-200"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <PlusCircleIcon className="w-4 h-4" />
+                        <span className="truncate">Add All</span>
+                      </motion.button>
+
+                      <motion.button
+                        onClick={() => {
+                          setGenExamTitle(
+                            items.length
+                              ? `AI Exam (${items.length} Questions)`
+                              : "AI Exam"
+                          );
+                          setGenExamOpen(true);
+                        }}
+                        disabled={!selected.size}
+                        className="w-full sm:w-auto flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all duration-200"
+                        whileHover={{ scale: selected.size ? 1.02 : 1 }}
+                        whileTap={{ scale: selected.size ? 0.98 : 1 }}
+                      >
+                        <AcademicCapIcon className="w-4 h-4" />
+                        <span className="truncate">Create Exam</span>
+                      </motion.button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-2xl shadow-lg overflow-hidden">
+                  {items.length > 0 && (
+                    <motion.div
+                      className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-gray-50 border-b border-gray-200 gap-2"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                    >
+                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={allSelected()}
+                          onChange={toggleAll}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="truncate">Select All Questions</span>
+                      </label>
+                      <span className="text-sm text-gray-500">
+                        {selected.size} of {items.length} selected
+                      </span>
+                    </motion.div>
+                  )}
+
+                  <div className="divide-y divide-gray-200">
+                    <AnimatePresence>
+                      {items.map((q, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -20 }}
+                          transition={{ delay: i * 0.05 }}
+                          className={`p-6 transition-all duration-200 ${
+                            selected.has(i)
+                              ? "bg-blue-50 border-l-4 border-blue-500"
+                              : "hover:bg-gray-50"
+                          }`}
+                        >
+                          <div className="flex items-start gap-4">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(i)}
+                              onChange={() => toggle(i)}
+                              className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-1 flex-shrink-0"
+                            />
+
+                            <div className="flex-1 space-y-3 min-w-0">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                      Q{i + 1}
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                        q.type === "mcq"
+                                          ? "bg-blue-100 text-blue-800"
+                                          : q.type === "truefalse"
+                                          ? "bg-green-100 text-green-800"
+                                          : q.type === "fill"
+                                          ? "bg-purple-100 text-purple-800"
+                                          : q.type === "short"
+                                          ? "bg-orange-100 text-orange-800"
+                                          : q.type === "long"
+                                          ? "bg-red-100 text-red-800"
+                                          : q.type === "assertionreason"
+                                          ? "bg-indigo-100 text-indigo-800"
+                                          : "bg-teal-100 text-teal-800"
+                                      }`}
+                                    >
+                                      {ALL_TYPES.find((t) => t.id === q.type)
+                                        ?.label || q.type}
+                                    </span>
+                                  </div>
+                                  {editing.has(i) ? (
+                                    <textarea
+                                      className="w-full border rounded-md p-2 text-sm mb-2"
+                                      value={q.text}
+                                      onChange={(e) =>
+                                        updateGeneratedQuestion(i, {
+                                          text: e.target.value,
+                                        })
+                                      }
+                                    />
+                                  ) : (
+                                    <h4 className="text-gray-900 font-medium leading-relaxed mb-3 break-words whitespace-pre-wrap">
+                                      {q.text}
+                                    </h4>
+                                  )}
+
+                                  {q.type === "mcq" && q.options && (
+                                    <ol className="ml-6 space-y-1 text-sm text-gray-600">
+                                      {q.options.map((o, oi) => (
+                                        <li
+                                          key={oi}
+                                          className="flex items-start gap-2"
+                                        >
+                                          <span className="font-medium text-gray-400 mt-0.5">
+                                            {String.fromCharCode(65 + oi)}.
+                                          </span>
+                                          {editing.has(i) ? (
+                                            <div className="flex-1 flex items-center gap-2">
+                                              <input
+                                                className="flex-1 border rounded px-2 py-1 text-sm"
+                                                value={o.text}
+                                                onChange={(e) =>
+                                                  updateGeneratedQuestion(i, {
+                                                    options: q.options?.map(
+                                                      (x, idx) =>
+                                                        idx === oi
+                                                          ? {
+                                                              ...x,
+                                                              text: e.target
+                                                                .value,
+                                                            }
+                                                          : x
+                                                    ),
+                                                  })
+                                                }
+                                              />
+                                              <label className="text-xs text-gray-600 flex items-center gap-1">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={!!o.isCorrect}
+                                                  onChange={(e) =>
+                                                    updateGeneratedQuestion(i, {
+                                                      options: q.options?.map(
+                                                        (x, idx) =>
+                                                          idx === oi
+                                                            ? {
+                                                                ...x,
+                                                                isCorrect:
+                                                                  e.target
+                                                                    .checked,
+                                                              }
+                                                            : x
+                                                      ),
+                                                    })
+                                                  }
+                                                />
+                                                Correct
+                                              </label>
+                                            </div>
+                                          ) : (
+                                            <span
+                                              className={
+                                                o.isCorrect
+                                                  ? "text-green-600 font-medium"
+                                                  : ""
+                                              }
+                                            >
+                                              {o.text}
+                                            </span>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  )}
+
+                                  {q.type === "assertionreason" && (
+                                    <div className="ml-4 space-y-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
                                       <div>
-                                        <strong>Assertion:</strong>{" "}
-                                        {q.assertion}
+                                        <strong className="text-gray-700">
+                                          Assertion (A):
+                                        </strong>{" "}
+                                        {editing.has(i) ? (
+                                          <input
+                                            className="border rounded px-2 py-1 text-sm w-full mt-1"
+                                            value={q.assertion || ""}
+                                            onChange={(e) =>
+                                              updateGeneratedQuestion(i, {
+                                                assertion: e.target.value,
+                                              })
+                                            }
+                                          />
+                                        ) : (
+                                          <span>{q.assertion}</span>
+                                        )}
                                       </div>
-                                    )}
-                                    {q.reason && (
                                       <div>
-                                        <strong>Reason:</strong> {q.reason}
+                                        <strong className="text-gray-700">
+                                          Reason (R):
+                                        </strong>{" "}
+                                        {editing.has(i) ? (
+                                          <input
+                                            className="border rounded px-2 py-1 text-sm w-full mt-1"
+                                            value={q.reason || ""}
+                                            onChange={(e) =>
+                                              updateGeneratedQuestion(i, {
+                                                reason: e.target.value,
+                                              })
+                                            }
+                                          />
+                                        ) : (
+                                          <span>{q.reason}</span>
+                                        )}
                                       </div>
+                                      <ol className="ml-5 list-[upper-alpha] space-y-0.5 mt-2">
+                                        <li>
+                                          Both A and R are true, and R is the
+                                          correct explanation of A.
+                                        </li>
+                                        <li>
+                                          Both A and R are true, but R is not
+                                          the correct explanation of A.
+                                        </li>
+                                        <li>A is true, but R is false.</li>
+                                        <li>A is false, but R is true.</li>
+                                      </ol>
+                                    </div>
+                                  )}
+
+                                  <div className="mt-2">
+                                    {q.diagramDataUrl &&
+                                      (isDataUrl(q.diagramDataUrl) ? (
+                                        <img
+                                          src={q.diagramDataUrl}
+                                          alt="Diagram"
+                                          className="max-h-40 rounded border"
+                                        />
+                                      ) : (
+                                        <Image
+                                          src={q.diagramDataUrl}
+                                          alt="Diagram"
+                                          width={320}
+                                          height={240}
+                                          className="h-auto w-auto max-h-40 rounded border"
+                                        />
+                                      ))}
+                                    {editing.has(i) && (
+                                      <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={(e) =>
+                                            handleGeneratedDiagram(
+                                              i,
+                                              e.target.files?.[0] || null
+                                            )
+                                          }
+                                        />
+                                        Upload Diagram (optional)
+                                      </label>
                                     )}
                                   </div>
-                                )}
+                                </div>
+
+                                <div className="flex flex-col gap-2 ml-2">
+                                  <motion.button
+                                    onClick={() => toggleEdit(i)}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                  >
+                                    <Cog6ToothIcon className="w-3 h-3" />
+                                    {editing.has(i) ? "Done" : "Edit"}
+                                  </motion.button>
+                                  <motion.button
+                                    onClick={() => refine(i)}
+                                    disabled={refiningIdx === i}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                                    whileHover={{
+                                      scale: refiningIdx === i ? 1 : 1.05,
+                                    }}
+                                    whileTap={{
+                                      scale: refiningIdx === i ? 1 : 0.95,
+                                    }}
+                                  >
+                                    {refiningIdx === i ? (
+                                      <>
+                                        <ArrowPathIcon className="w-3 h-3 animate-spin" />
+                                        Refining...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Cog6ToothIcon className="w-3 h-3" />
+                                        Refine
+                                      </>
+                                    )}
+                                  </motion.button>
+                                </div>
                               </div>
                             </div>
                           </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+
+                  {items.length === 0 && !loading && (
+                    <div className="p-12 text-center text-gray-500">
+                      <BeakerIcon className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-lg font-medium mb-2">
+                        No questions generated yet
+                      </p>
+                      <p className="text-sm">
+                        Upload a PDF or enter text content to generate questions
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="paper"
+              variants={tabVariants}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
+              className="space-y-6"
+            >
+              {/* Paper Generator Content */}
+              <motion.div
+                variants={itemVariants}
+                className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6 space-y-6"
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg text-white">
+                    <DocumentTextIcon className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Paper Blueprint
+                  </h2>
+                </div>
+
+                {/* Basic Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Exam Title
+                    </label>
+                    <input
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      placeholder="Enter exam title"
+                      value={paperBlueprint.examTitle}
+                      onChange={(e) =>
+                        setPaperBlueprint((pb) => ({
+                          ...pb,
+                          examTitle: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Subject (optional)
+                    </label>
+                    <input
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      placeholder="e.g., Mathematics"
+                      value={paperBlueprint.subject}
+                      onChange={(e) =>
+                        setPaperBlueprint((pb) => ({
+                          ...pb,
+                          subject: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* General Instructions */}
+                <div className="space-y-4">
+                  <label className="text-sm font-medium text-gray-700">
+                    General Instructions
+                  </label>
+                  <div className="space-y-3">
+                    {paperBlueprint.generalInstructions.map((ins, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="flex items-center gap-2"
+                      >
+                        <input
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                          value={ins}
+                          onChange={(e) =>
+                            setPaperBlueprint((pb) => {
+                              const gi = [...pb.generalInstructions];
+                              gi[i] = e.target.value;
+                              return { ...pb, generalInstructions: gi };
+                            })
+                          }
+                        />
+                        <motion.button
+                          type="button"
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                          onClick={() =>
+                            setPaperBlueprint((pb) => ({
+                              ...pb,
+                              generalInstructions:
+                                pb.generalInstructions.filter(
+                                  (_, idx) => idx !== i
+                                ),
+                            }))
+                          }
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                        >
+                          <XMarkIcon className="w-5 h-5" />
+                        </motion.button>
+                      </motion.div>
+                    ))}
+                    <motion.button
+                      type="button"
+                      className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 border border-purple-300 rounded-lg hover:bg-purple-50 transition-all duration-200"
+                      onClick={() =>
+                        setPaperBlueprint((pb) => ({
+                          ...pb,
+                          generalInstructions: [...pb.generalInstructions, ""],
+                        }))
+                      }
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <PlusCircleIcon className="w-4 h-4" />
+                      Add Instruction
+                    </motion.button>
+                  </div>
+                </div>
+
+                {/* Sections */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Exam Sections
+                    </label>
+                    <motion.button
+                      type="button"
+                      className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 border border-purple-300 rounded-lg hover:bg-purple-50 transition-all duration-200"
+                      onClick={addSection}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <PlusCircleIcon className="w-4 h-4" />
+                      Add Section
+                    </motion.button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {paperBlueprint.sections.map((s, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="border border-gray-200 rounded-xl p-4 space-y-4 bg-gray-50/50"
+                      >
+                        {/* Section Basic Info */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-600">
+                              Section Title
+                            </label>
+                            <input
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              placeholder="e.g., Section A"
+                              value={s.title}
+                              onChange={(e) =>
+                                updateSection(i, { title: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-600">
+                              Instructions
+                            </label>
+                            <input
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              placeholder="e.g., Single correct MCQs"
+                              value={s.instructions}
+                              onChange={(e) =>
+                                updateSection(i, {
+                                  instructions: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-600">
+                              Marks per Question
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              value={s.marksPerQuestion}
+                              onChange={(e) =>
+                                updateSection(i, {
+                                  marksPerQuestion: Number(e.target.value),
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        {/* Question Counts */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-medium text-gray-600">
+                            Question Distribution
+                          </label>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {ALL_TYPES.map((t) => (
+                              <div key={t.id} className="space-y-1">
+                                <label className="text-xs text-gray-500">
+                                  {t.label}
+                                </label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                  value={s.questionCounts[t.id] || 0}
+                                  onChange={(e) =>
+                                    updateQuestionCount(
+                                      i,
+                                      t.id,
+                                      Number(e.target.value)
+                                    )
+                                  }
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Difficulty Distribution */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-medium text-gray-600">
+                            Difficulty Distribution (%)
+                          </label>
+                          <div className="grid grid-cols-3 gap-3">
+                            {["easy", "medium", "hard"].map((level) => (
+                              <div key={level} className="space-y-1">
+                                <label className="text-xs text-gray-500 capitalize">
+                                  {level}
+                                </label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                  value={
+                                    s.difficultyDistribution[
+                                      level as keyof typeof s.difficultyDistribution
+                                    ]
+                                  }
+                                  onChange={(e) =>
+                                    updateDifficulty(
+                                      i,
+                                      level as keyof PaperSectionBlueprint["difficultyDistribution"],
+                                      Number(e.target.value)
+                                    )
+                                  }
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Remove Section */}
+                        <div className="flex justify-end pt-2">
+                          <motion.button
+                            type="button"
+                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-all duration-200"
+                            onClick={() => removeSection(i)}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            <XMarkIcon className="w-3 h-3" />
+                            Remove Section
+                          </motion.button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Blueprint Management */}
+                <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-gray-200">
+                  <motion.button
+                    type="button"
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                    onClick={openBlueprintModal}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <BookOpenIcon className="w-4 h-4" />
+                    Manage Blueprints
+                  </motion.button>
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+                    <input
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full sm:w-auto"
+                      placeholder="Blueprint name"
+                      value={newBlueprintName}
+                      onChange={(e) => setNewBlueprintName(e.target.value)}
+                    />
+                    <motion.button
+                      type="button"
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 w-full sm:w-auto"
+                      onClick={saveCurrentBlueprint}
+                      disabled={savingBlueprint}
+                      whileHover={{ scale: savingBlueprint ? 1 : 1.02 }}
+                      whileTap={{ scale: savingBlueprint ? 1 : 0.98 }}
+                    >
+                      {savingBlueprint ? (
+                        <>
+                          <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <CheckIcon className="w-4 h-4" />
+                          Save Blueprint
+                        </>
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Source Input & Generate */}
+              <motion.div
+                variants={itemVariants}
+                className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6 space-y-6"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg text-white">
+                    <ChartBarIcon className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Generate Paper
+                  </h2>
+                </div>
+
+                {/* Input Mode Selection */}
+                <div className="flex gap-3">
+                  {[
+                    { id: "text", label: "Text Source", icon: BookOpenIcon },
+                    { id: "pdf", label: "PDF Source", icon: DocumentTextIcon },
+                    {
+                      id: "image",
+                      label: "Image (OCR)",
+                      icon: ArrowDownTrayIcon,
+                    },
+                  ].map((modeItem) => (
+                    <motion.label
+                      key={modeItem.id}
+                      className={`
+                        flex items-center gap-2 px-2 py-3 rounded-xl border-2 cursor-pointer transition-all duration-200
+                        ${
+                          paperInputMode === modeItem.id
+                            ? "border-green-500 bg-green-50 text-green-700"
+                            : "border-gray-200 hover:border-gray-300 bg-white"
+                        }
+                      `}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <input
+                        type="radio"
+                        name="paper-input-mode"
+                        value={modeItem.id}
+                        checked={paperInputMode === modeItem.id}
+                        onChange={() =>
+                          setPaperInputMode(
+                            modeItem.id as "text" | "pdf" | "image"
+                          )
+                        }
+                        className="sr-only"
+                      />
+                      <modeItem.icon className="w-5 h-5" />
+                      <span className="font-medium">{modeItem.label}</span>
+                      {paperInputMode === modeItem.id && (
+                        <CheckCircleIcon className="w-5 h-5 text-green-500 ml-auto" />
+                      )}
+                    </motion.label>
+                  ))}
+                </div>
+
+                {/* Input Area */}
+                {paperInputMode === "text" ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Source Content
+                    </label>
+                    <textarea
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 resize-none h-36"
+                      placeholder="Paste your source content here (minimum 100 characters)..."
+                      value={paperSource}
+                      onChange={(e) => setPaperSource(e.target.value)}
+                    />
+                  </div>
+                ) : paperInputMode === "pdf" ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Upload PDF
+                    </label>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
+                      onChange={(e) =>
+                        setPaperPdfFile(e.target.files?.[0] || null)
+                      }
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Upload Image (PNG/JPG/WEBP)
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
+                      onChange={(e) =>
+                        setPaperImageFile(e.target.files?.[0] || null)
+                      }
+                    />
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap gap-3 pt-4">
+                  <motion.button
+                    type="button"
+                    className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 w-full sm:w-auto"
+                    onClick={generatePaper}
+                    disabled={paperLoading}
+                    whileHover={{ scale: paperLoading ? 1 : 1.02 }}
+                    whileTap={{ scale: paperLoading ? 1 : 0.98 }}
+                  >
+                    {paperLoading ? (
+                      <>
+                        <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <RocketLaunchIcon className="w-5 h-5" />
+                        Generate Paper
+                      </>
+                    )}
+                  </motion.button>
+
+                  {paperResult && (
+                    <>
+                      {/* <motion.button
+                        type="button"
+                        className="flex items-center gap-2 px-4 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-all duration-200 w-full sm:w-auto"
+                        onClick={handlePrint}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <PrinterIcon className="w-5 h-5" />
+                        Print Paper
+                      </motion.button> */}
+
+                      <motion.button
+                        type="button"
+                        className="flex items-center gap-2 px-4 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-all duration-200 w-full sm:w-auto"
+                        onClick={savePaperToHistory}
+                        disabled={savingPaper}
+                        whileHover={{ scale: savingPaper ? 1 : 1.02 }}
+                        whileTap={{ scale: savingPaper ? 1 : 0.98 }}
+                      >
+                        {savingPaper ? (
+                          <>
+                            <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                            Saving…
+                          </>
+                        ) : (
+                          <>
+                            <DocumentTextIcon className="w-5 h-5" />
+                            Save to Papers
+                          </>
+                        )}
+                      </motion.button>
+
+                      <motion.button
+                        type="button"
+                        className="flex items-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-700 disabled:opacity-50 transition-all duration-200 w-full sm:w-auto"
+                        onClick={downloadPdfFromServer}
+                        disabled={downloading}
+                        whileHover={{ scale: downloading ? 1 : 1.02 }}
+                        whileTap={{ scale: downloading ? 1 : 0.98 }}
+                      >
+                        {downloading ? (
+                          <>
+                            <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                            Preparing PDF…
+                          </>
+                        ) : (
+                          <>
+                            <ArrowDownTrayIcon className="w-5 h-5" />
+                            Download PDF
+                          </>
+                        )}
+                      </motion.button>
+
+                      <motion.button
+                        type="button"
+                        className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 w-full sm:w-auto"
+                        onClick={openCreateExam}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <AcademicCapIcon className="w-5 h-5" />
+                        Create Exam
+                      </motion.button>
+                    </>
+                  )}
+                </div>
+              </motion.div>
+
+              {/* Paper Preview */}
+              <AnimatePresence>
+                {paperResult && (
+                  <motion.div
+                    variants={itemVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="hidden"
+                    className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg overflow-hidden"
+                  >
+                    <div className="p-6">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white">
+                          <DocumentTextIcon className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-xl font-semibold text-gray-900">
+                          Paper Preview
+                        </h3>
+                      </div>
+
+                      <div className="max-h-[70vh] overflow-auto space-y-6">
+                        {paperResult.sections.map((sec, si) => (
+                          <motion.div
+                            key={si}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: si * 0.1 }}
+                            className="border border-gray-200 rounded-xl p-4 bg-gray-50/30"
+                          >
+                            <div className="flex items-center gap-2 mb-4">
+                              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">
+                                {String.fromCharCode(65 + si)}
+                              </div>
+                              <h4 className="font-semibold text-gray-900">
+                                {sec.title}
+                              </h4>
+                              {sec.instructions && (
+                                <span className="text-sm text-gray-500">
+                                  - {sec.instructions}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-4">
+                              {sec.questions.map((q, qi) => (
+                                <motion.div
+                                  key={qi}
+                                  initial={{ opacity: 0, x: -20 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: si * 0.1 + qi * 0.05 }}
+                                  className="p-3 bg-white rounded-lg border border-gray-200"
+                                >
+                                  <div className="flex gap-3">
+                                    <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
+                                      {qi + 1}
+                                    </span>
+                                    <div className="flex-1 mt-2">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          {paperEditing.has(pqKey(si, qi)) ? (
+                                            <textarea
+                                              className="w-full border rounded-md p-2 text-sm mb-2"
+                                              value={q.text}
+                                              onChange={(e) =>
+                                                updatePaperQuestion(si, qi, {
+                                                  text: e.target.value,
+                                                })
+                                              }
+                                            />
+                                          ) : (
+                                            <div className="text-gray-900 font-medium leading-relaxed mb-2 break-words whitespace-pre-wrap">
+                                              {q.text}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="ml-2">
+                                          <button
+                                            onClick={() =>
+                                              togglePaperEdit(si, qi)
+                                            }
+                                            className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50"
+                                          >
+                                            {paperEditing.has(pqKey(si, qi))
+                                              ? "Done"
+                                              : "Edit"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                      {q.diagramDataUrl &&
+                                        (isDataUrl(q.diagramDataUrl) ? (
+                                          <img
+                                            src={q.diagramDataUrl}
+                                            alt="Diagram"
+                                            className="h-auto w-auto max-h-40 rounded border"
+                                          />
+                                        ) : (
+                                          <Image
+                                            src={q.diagramDataUrl}
+                                            alt="Diagram"
+                                            width={320}
+                                            height={240}
+                                            className="h-auto w-auto max-h-40 rounded border"
+                                          />
+                                        ))}
+
+                                      {paperEditing.has(pqKey(si, qi)) && (
+                                        <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) =>
+                                              handlePaperDiagram(
+                                                si,
+                                                qi,
+                                                e.target.files?.[0] || null
+                                              )
+                                            }
+                                          />
+                                          Upload Diagram (optional)
+                                        </label>
+                                      )}
+
+                                      {q.type === "mcq" && q.options && (
+                                        <ol className="ml-4 space-y-1 text-sm text-gray-600">
+                                          {q.options.map((o, oi) => (
+                                            <li
+                                              key={oi}
+                                              className="flex items-start gap-2"
+                                            >
+                                              <span className="font-medium text-gray-400 mt-0.5">
+                                                {String.fromCharCode(65 + oi)}.
+                                              </span>
+                                              {paperEditing.has(
+                                                pqKey(si, qi)
+                                              ) ? (
+                                                <div className="flex-1 flex items-center gap-2">
+                                                  <input
+                                                    className="flex-1 border rounded px-2 py-1 text-sm"
+                                                    value={o.text}
+                                                    onChange={(e) =>
+                                                      updatePaperQuestion(
+                                                        si,
+                                                        qi,
+                                                        {
+                                                          options:
+                                                            q.options?.map(
+                                                              (x, idx) =>
+                                                                idx === oi
+                                                                  ? {
+                                                                      ...x,
+                                                                      text: e
+                                                                        .target
+                                                                        .value,
+                                                                    }
+                                                                  : x
+                                                            ),
+                                                        }
+                                                      )
+                                                    }
+                                                  />
+                                                  <label className="text-xs text-gray-600 flex items-center gap-1">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={!!o.isCorrect}
+                                                      onChange={(e) =>
+                                                        updatePaperQuestion(
+                                                          si,
+                                                          qi,
+                                                          {
+                                                            options:
+                                                              q.options?.map(
+                                                                (x, idx) =>
+                                                                  idx === oi
+                                                                    ? {
+                                                                        ...x,
+                                                                        isCorrect:
+                                                                          e
+                                                                            .target
+                                                                            .checked,
+                                                                      }
+                                                                    : x
+                                                              ),
+                                                          }
+                                                        )
+                                                      }
+                                                    />
+                                                    Correct
+                                                  </label>
+                                                </div>
+                                              ) : (
+                                                <span
+                                                  className={
+                                                    o.isCorrect
+                                                      ? "text-green-600 font-medium"
+                                                      : ""
+                                                  }
+                                                >
+                                                  {o.text}
+                                                </span>
+                                              )}
+                                            </li>
+                                          ))}
+                                        </ol>
+                                      )}
+
+                                      {q.type === "assertionreason" && (
+                                        <div className="ml-4 space-y-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                                          <div>
+                                            <strong className="text-gray-700">
+                                              Assertion (A):
+                                            </strong>{" "}
+                                            {paperEditing.has(pqKey(si, qi)) ? (
+                                              <input
+                                                className="border rounded px-2 py-1 text-sm w-full mt-1"
+                                                value={q.assertion || ""}
+                                                onChange={(e) =>
+                                                  updatePaperQuestion(si, qi, {
+                                                    assertion: e.target.value,
+                                                  })
+                                                }
+                                              />
+                                            ) : (
+                                              <span>{q.assertion}</span>
+                                            )}
+                                          </div>
+                                          <div>
+                                            <strong className="text-gray-700">
+                                              Reason (R):
+                                            </strong>{" "}
+                                            {paperEditing.has(pqKey(si, qi)) ? (
+                                              <input
+                                                className="border rounded px-2 py-1 text-sm w-full mt-1"
+                                                value={q.reason || ""}
+                                                onChange={(e) =>
+                                                  updatePaperQuestion(si, qi, {
+                                                    reason: e.target.value,
+                                                  })
+                                                }
+                                              />
+                                            ) : (
+                                              <span>{q.reason}</span>
+                                            )}
+                                          </div>
+                                          {/* Fixed options A–D per Assertion–Reason format */}
+                                          <ol className="ml-5 list-[upper-alpha] space-y-0.5 mt-2">
+                                            <li>
+                                              Both A and R are true, and R is
+                                              the correct explanation of A.
+                                            </li>
+                                            <li>
+                                              Both A and R are true, but R is
+                                              not the correct explanation of A.
+                                            </li>
+                                            <li>A is true, but R is false.</li>
+                                            <li>A is false, but R is true.</li>
+                                          </ol>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              ))}
+                            </div>
+                          </motion.div>
                         ))}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showPrintPreview && (
-        <div className="fixed inset-0 bg-white z-50 overflow-auto print:static print:bg-transparent">
-          {printablePaper()}
-        </div>
-      )}
-
-      {/* Blueprint Modal */}
-      {blueprintModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <div className="bg-white rounded-md shadow-lg w-full max-w-2xl max-h-[80vh] overflow-auto p-4 space-y-4 text-sm">
-            <div className="flex justify-between items-center">
-              <h3 className="font-medium">Blueprints</h3>
-              <button
-                onClick={() => setBlueprintModalOpen(false)}
-                className="text-xs px-2 py-1 border rounded"
-              >
-                Close
-              </button>
-            </div>
-            <div className="space-y-2">
-              <div className="flex gap-2 flex-wrap items-center">
-                <input
-                  value={newBlueprintName}
-                  onChange={(e) => setNewBlueprintName(e.target.value)}
-                  placeholder="Blueprint name"
-                  className="border rounded px-2 py-1 text-xs"
-                />
-                <button
-                  onClick={saveCurrentBlueprint}
-                  disabled={savingBlueprint}
-                  className="text-xs px-3 py-1 rounded bg-primary text-white disabled:opacity-50"
-                >
-                  {savingBlueprint ? "Saving..." : "Save Current"}
-                </button>
-              </div>
-              <div className="border rounded divide-y">
-                {loadingBlueprints && (
-                  <div className="p-2 text-xs">Loading...</div>
+                  </motion.div>
                 )}
-                {!loadingBlueprints && !blueprints.length && (
-                  <div className="p-2 text-[11px] text-gray-500">
-                    No blueprints
-                  </div>
-                )}
-                {!loadingBlueprints &&
-                  blueprints.map((bp) => (
-                    <div
-                      key={bp._id}
-                      className="p-2 flex items-center gap-2 text-xs hover:bg-gray-50"
-                    >
-                      <div className="flex-1">
-                        <div className="font-medium">
-                          {bp.name || bp.examTitle}
-                        </div>
-                        <div className="text-[10px] text-gray-500">
-                          Sections: {bp.sections?.length || 0}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => applyBlueprint(bp)}
-                        className="px-2 py-1 border rounded"
-                      >
-                        Load
-                      </button>
-                      <button
-                        onClick={() => deleteBlueprint(bp._id)}
-                        className="px-2 py-1 border rounded text-red-600"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
-      {/* Create Exam Modal */}
-      {createExamOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-md shadow-lg w-full max-w-md p-4 space-y-4 text-sm">
-            <h3 className="font-medium text-sm">Create Exam from Paper</h3>
-            <input
-              value={examTitle}
-              onChange={(e) => setExamTitle(e.target.value)}
-              className="w-full border rounded px-2 py-1 text-xs"
-              placeholder="Exam title"
-            />
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <input
-                value={classLevel}
-                onChange={(e) => setClassLevel(e.target.value)}
-                placeholder="Class"
-                className="border rounded px-2 py-1"
-              />
-              <input
-                value={batch}
-                onChange={(e) => setBatch(e.target.value)}
-                placeholder="Batch"
-                className="border rounded px-2 py-1"
-              />
-              <label className="flex flex-col gap-1 col-span-2">
-                <span className="text-[10px]">Timer (minutes)</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={timerMins}
-                  onChange={(e) => setTimerMins(e.target.value)}
-                  className="border rounded px-2 py-1"
-                />
-              </label>
-            </div>
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={autoPublish}
-                onChange={(e) => setAutoPublish(e.target.checked)}
-              />
-              Auto Publish
-            </label>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setCreateExamOpen(false)}
-                className="px-3 py-1 border rounded text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={createExamFromPaper}
-                disabled={creatingExam}
-                className="px-3 py-1 rounded bg-primary text-white text-xs disabled:opacity-50"
-              >
-                {creatingExam ? "Creating..." : "Create"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bank Exam Modal */}
-      {bankExamOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-md shadow-lg w-full max-w-3xl p-4 space-y-4 text-sm">
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium text-sm">
-                Create Exam from Question Bank
-              </h3>
-              <button
-                onClick={() => setBankExamOpen(false)}
-                className="text-xs px-2 py-1 border rounded"
-              >
-                Close
-              </button>
-            </div>
-            <input
-              value={bankExamTitle}
-              onChange={(e) => setBankExamTitle(e.target.value)}
-              className="w-full border rounded px-2 py-1 text-xs"
-            />
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <input
-                value={classLevel}
-                onChange={(e) => setClassLevel(e.target.value)}
-                placeholder="Class"
-                className="border rounded px-2 py-1"
-              />
-              <input
-                value={batch}
-                onChange={(e) => setBatch(e.target.value)}
-                placeholder="Batch"
-                className="border rounded px-2 py-1"
-              />
-              <label className="flex flex-col gap-1 col-span-2">
-                <span className="text-[10px]">Timer (minutes)</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={bankTimerMins}
-                  onChange={(e) => setBankTimerMins(e.target.value)}
-                  className="border rounded px-2 py-1"
-                />
-              </label>
-            </div>
-            <div className="border rounded max-h-72 overflow-auto divide-y text-xs">
-              {bankLoading && <div className="p-2">Loading...</div>}
-              {!bankLoading &&
-                bankQuestionsList.map((q: BankQuestion) => {
-                  const checked = bankSelectedQuestions.includes(q._id);
-                  return (
-                    <label
-                      key={q._id}
-                      className="flex gap-2 p-2 items-start cursor-pointer hover:bg-gray-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          setBankSelectedQuestions((prev) =>
-                            checked
-                              ? prev.filter((id) => id !== q._id)
-                              : [...prev, q._id]
-                          );
-                        }}
-                        className="mt-0.5"
-                      />
-                      <span className="flex-1">
-                        <span className="font-medium text-[11px]">
-                          {q.text}
-                        </span>
-                        <span className="block text-[10px] text-gray-500 mt-0.5">
-                          {q.tags?.subject || "-"} / {q.tags?.topic || "-"} /{" "}
-                          {q.tags?.difficulty || "-"}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              {!bankLoading && !bankQuestionsList.length && (
-                <div className="p-2 text-[11px] text-gray-500">
-                  No questions
+      {/* Print Preview Modal */}
+      <AnimatePresence>
+        {showPrintPreview && (
+          <motion.div
+            key="print-preview"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 z-50 overflow-auto p-6 flex items-start justify-center"
+          >
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mt-12">
+              <div className="flex items-center justify-between p-4 border-b">
+                <h3 className="text-lg font-semibold">Print Preview</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={closePrintPreview}
+                    disabled={printing}
+                    className="px-3 py-1.5 rounded-md border text-sm bg-white hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={doPrint}
+                    disabled={printing}
+                    className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {printing ? "Printing..." : "Print"}
+                  </button>
                 </div>
-              )}
-            </div>
-            <div className="flex justify-between items-center text-[11px]">
-              <div>Selected: {bankSelectedQuestions.length}</div>
-              <div className="flex gap-2">
-                <button
-                  onClick={createExamFromBank}
-                  disabled={bankExamCreating}
-                  className="px-3 py-1 bg-primary text-white rounded text-xs disabled:opacity-50"
-                >
-                  {bankExamCreating ? "Creating..." : "Create Exam"}
-                </button>
+              </div>
+
+              <div className="p-6 overflow-auto print:p-0 print:overflow-visible">
+                {printablePaper()}
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Generated Questions -> Create Exam Modal */}
-      {genExamOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-md shadow-lg w-full max-w-md p-4 space-y-4 text-sm">
-            <h3 className="font-medium text-sm">
-              Create Exam from Generated Questions
-            </h3>
-            <input
-              value={genExamTitle}
-              onChange={(e) => setGenExamTitle(e.target.value)}
-              className="w-full border rounded px-2 py-1 text-xs"
-              placeholder="Exam title"
-            />
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <input
-                value={classLevel}
-                onChange={(e) => setClassLevel(e.target.value)}
-                placeholder="Class"
-                className="border rounded px-2 py-1"
-              />
-              <input
-                value={batch}
-                onChange={(e) => setBatch(e.target.value)}
-                placeholder="Batch"
-                className="border rounded px-2 py-1"
-              />
-              <label className="flex flex-col gap-1 col-span-2">
-                <span className="text-[10px]">Timer (minutes)</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={genTimerMins}
-                  onChange={(e) => setGenTimerMins(e.target.value)}
-                  className="border rounded px-2 py-1"
-                />
-              </label>
-            </div>
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={autoPublish}
-                onChange={(e) => setAutoPublish(e.target.checked)}
-              />
-              Auto Publish
-            </label>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setGenExamOpen(false)}
-                className="px-3 py-1 border rounded text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={createExamFromGenerated}
-                disabled={genExamCreating}
-                className="px-3 py-1 rounded bg-primary text-white text-xs disabled:opacity-50"
-              >
-                {genExamCreating ? "Creating..." : "Create"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modals */}
+      <BlueprintModal
+        open={blueprintModalOpen}
+        blueprints={blueprints as unknown as ModalBlueprint[]}
+        loading={loadingBlueprints}
+        newBlueprintName={newBlueprintName}
+        onChangeBlueprintName={setNewBlueprintName}
+        onSaveCurrent={saveCurrentBlueprint}
+        saving={savingBlueprint}
+        onApply={(bp) => applyBlueprint(bp as unknown as SavedBlueprint)}
+        onDelete={deleteBlueprint}
+        onClose={() => setBlueprintModalOpen(false)}
+      />
+      <CreateExamFromPaperModal
+        open={createExamOpen}
+        examTitle={examTitle}
+        classLevel={classLevel}
+        batch={batch}
+        timerMins={timerMins}
+        autoPublish={autoPublish}
+        creating={creatingExam}
+        onChangeExamTitle={setExamTitle}
+        onChangeClass={setClassLevel}
+        onChangeBatch={setBatch}
+        onChangeTimer={setTimerMins}
+        onChangeAutoPublish={setAutoPublish}
+        onCancel={() => setCreateExamOpen(false)}
+        onCreate={createExamFromPaper}
+      />
+      <BankExamModal
+        open={bankExamOpen}
+        onClose={() => setBankExamOpen(false)}
+        bankExamTitle={bankExamTitle}
+        onChangeTitle={setBankExamTitle}
+        classLevel={classLevel}
+        onChangeClass={setClassLevel}
+        batch={batch}
+        onChangeBatch={setBatch}
+        timerMins={bankTimerMins}
+        onChangeTimer={setBankTimerMins}
+        questions={bankQuestionsList}
+        loading={bankLoading}
+        selected={bankSelectedQuestions}
+        toggleSelect={(id: string) =>
+          setBankSelectedQuestions((prev) =>
+            prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+          )
+        }
+        creating={bankExamCreating}
+        onCreate={createExamFromBank}
+      />
+      <GenExamModal
+        open={genExamOpen}
+        title={genExamTitle}
+        onChangeTitle={setGenExamTitle}
+        classLevel={classLevel}
+        onChangeClass={setClassLevel}
+        batch={batch}
+        onChangeBatch={setBatch}
+        timerMins={genTimerMins}
+        onChangeTimer={setGenTimerMins}
+        autoPublish={autoPublish}
+        onChangeAutoPublish={setAutoPublish}
+        creating={genExamCreating}
+        onCancel={() => setGenExamOpen(false)}
+        onCreate={createExamFromGenerated}
+      />
 
-      {/* Print styles */}
-      <style>{`
+      {/* Print Styles */}
+      <style jsx>{`
         @media print {
-          body { background: #fff; }
-          .no-print { display: none !important; }
-          h1,h2,h3 { page-break-after: avoid; }
-          .page-break { page-break-before: always; }
+          /* Use zero/controlled page margins so content can align to top-left
+             Note: many browsers still render user-agent headers/footers (date, URL)
+             in the page margin area. Those cannot be reliably removed from CSS.
+             To remove them, disable "Headers and footers" in the print dialog
+             (or generate the PDF server-side with a headless browser that
+             controls headers/footers).
+          */
+          @page {
+            margin: 10mm;
+          }
+
+          /* Hide everything by default when printing; we'll reveal only the paper */
+          body.print-paper-only * {
+            visibility: hidden !important;
+          }
+          /* Reveal the printable paper and its children */
+          body.print-paper-only .printable-paper,
+          body.print-paper-only .printable-paper * {
+            visibility: visible !important;
+          }
+
+          /* Put the printable content at the very top-left of the printable area */
+          body.print-paper-only .printable-paper {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 10mm !important;
+            box-shadow: none !important;
+            background: #fff !important;
+            color: #000 !important;
+          }
+
+          /* Ensure headings are black and centered as intended */
+          body.print-paper-only .printable-paper h1,
+          body.print-paper-only .printable-paper h2,
+          body.print-paper-only .printable-paper h3 {
+            color: #000 !important;
+            -webkit-print-color-adjust: exact !important;
+          }
+
+          /* Helpful page-break utility */
+          .page-break {
+            page-break-before: always;
+          }
         }
       `}</style>
     </div>
