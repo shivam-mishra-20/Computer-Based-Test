@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import React, { Suspense } from "react";
 import { Poppins } from "next/font/google";
 import "./globals.css";
 import Navbar from "../components/navbar";
@@ -23,9 +24,19 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${poppins.variable} antialiased`}>
-        <Navbar />
-        {children}
-        <Toaster richColors position="top-right" />
+        {/* Navbar and other client components must be rendered inside a Suspense boundary
+            to allow client-side hooks like useSearchParams/usePathname to work during
+            server rendering without causing a CSR bailout error. */}
+        <Suspense fallback={<div style={{ height: 64 }} />}>
+          <Navbar />
+        </Suspense>
+
+        {/* Page content (children) may include client components too — wrap in Suspense */}
+        <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+
+        <Suspense fallback={null}>
+          <Toaster richColors position="top-right" />
+        </Suspense>
       </body>
     </html>
   );
