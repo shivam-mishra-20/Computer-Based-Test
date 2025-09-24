@@ -420,7 +420,8 @@ export default function TeacherAITools() {
         if (k === "types") form.append("types", (v as string[]).join(","));
         else form.append(k, String(v));
       });
-      const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+      const base =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
       const res = await fetch(base + "/api/ai/generate/pdf", {
         method: "POST",
         headers: {
@@ -453,7 +454,8 @@ export default function TeacherAITools() {
         if (k === "types") form.append("types", (v as string[]).join(","));
         else form.append(k, String(v));
       });
-      const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+      const base =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
       const res = await fetch(base + "/api/ai/generate/image", {
         method: "POST",
         headers: {
@@ -567,7 +569,7 @@ export default function TeacherAITools() {
               })
             );
             const base =
-              process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+              process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
             const resp = await fetch(base + "/api/upload/image", {
               method: "POST",
               headers: {
@@ -690,7 +692,7 @@ export default function TeacherAITools() {
                 })
               );
               const base =
-                process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+                process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
               const resp = await fetch(base + "/api/upload/image", {
                 method: "POST",
                 headers: {
@@ -864,7 +866,7 @@ export default function TeacherAITools() {
         form.append("file", paperPdfFile);
         form.append("blueprint", JSON.stringify(paperBlueprint));
         const base =
-          process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+          process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
         const res = await fetch(base + "/api/ai/generate/paper-pdf", {
           method: "POST",
           headers: {
@@ -896,7 +898,7 @@ export default function TeacherAITools() {
         form.append("image", paperImageFile);
         form.append("blueprint", JSON.stringify(paperBlueprint));
         const base =
-          process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+          process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
         const res = await fetch(base + "/api/ai/generate/paper-image", {
           method: "POST",
           headers: {

@@ -3,7 +3,7 @@
 // Replace or extend with refresh-token logic / cookie-based auth as needed.
 
 // default to local backend per API_Implementation.md
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:5000';
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
 	const url = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;

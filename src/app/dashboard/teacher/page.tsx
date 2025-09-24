@@ -160,7 +160,7 @@ export default function TeacherDashboardPage() {
     (async () => {
       try {
         const data = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000"}`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000"}`,
           {
             headers: {
               Authorization: `Bearer ${

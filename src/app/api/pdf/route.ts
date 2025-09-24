@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const reqUrl = new URL(req.url);
   const baseHref = `${reqUrl.protocol}//${reqUrl.host}`;
     const assetBase =
-      process.env.NEXT_PUBLIC_API_BASE ||
+      process.env.NEXT_PUBLIC_API_BASE_URL ||
       process.env.NEXT_PUBLIC_API_BASE_URL ||
       process.env.PUBLIC_BASE_URL ||
       baseHref;

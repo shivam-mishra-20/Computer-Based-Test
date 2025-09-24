@@ -147,7 +147,8 @@ export default function QuestionPapers() {
   async function downloadPaper(p: Paper, type: "pdf" | "doc") {
     setDownloading(`${p._id}:${type}`);
     try {
-      const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+      const base =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
       const url = `${base}/api/papers/${p._id}/export/${type}${
         type === "pdf" ? "?solutions=true" : ""
       }`;
