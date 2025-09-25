@@ -82,6 +82,56 @@ const ALL_TYPES = [
     color: "indigo",
   },
   { id: "integer", label: "Integer", icon: "calculator", color: "teal" },
+  // English formats
+  {
+    id: "english:letter-formal",
+    label: "Letter (Formal)",
+    icon: "document",
+    color: "emerald",
+  },
+  {
+    id: "english:letter-informal",
+    label: "Letter (Informal)",
+    icon: "document",
+    color: "emerald",
+  },
+  {
+    id: "english:story",
+    label: "Story Writing",
+    icon: "document",
+    color: "emerald",
+  },
+  {
+    id: "english:essay",
+    label: "Essay Writing",
+    icon: "document",
+    color: "emerald",
+  },
+  {
+    id: "english:diary",
+    label: "Diary Entry",
+    icon: "document",
+    color: "emerald",
+  },
+  {
+    id: "english:advertisement",
+    label: "Advertisement",
+    icon: "document",
+    color: "emerald",
+  },
+  { id: "english:notice", label: "Notice", icon: "document", color: "emerald" },
+  {
+    id: "english:unseen-passage",
+    label: "Unseen Passage",
+    icon: "book",
+    color: "emerald",
+  },
+  {
+    id: "english:unseen-poem",
+    label: "Unseen Poem",
+    icon: "book",
+    color: "emerald",
+  },
 ];
 
 // Animation variants
@@ -876,7 +926,16 @@ export default function TeacherAITools() {
           },
           body: form,
         });
-        if (!res.ok) throw new Error("Failed");
+        if (!res.ok) {
+          let msg = "Paper PDF generation failed";
+          try {
+            const err = await res.json();
+            if (err?.message) msg = err.message as string;
+          } catch {
+            /* ignore parse error */
+          }
+          throw new Error(msg);
+        }
         const data = (await res.json()) as GeneratedPaperResult;
         setPaperResult(data);
         try {
@@ -908,7 +967,16 @@ export default function TeacherAITools() {
           },
           body: form,
         });
-        if (!res.ok) throw new Error("Failed");
+        if (!res.ok) {
+          let msg = "Paper Image generation failed";
+          try {
+            const err = await res.json();
+            if (err?.message) msg = err.message as string;
+          } catch {
+            /* ignore parse error */
+          }
+          throw new Error(msg);
+        }
         const data = (await res.json()) as GeneratedPaperResult;
         setPaperResult(data);
         try {
@@ -921,8 +989,8 @@ export default function TeacherAITools() {
           });
         } catch {}
       }
-    } catch {
-      alert("Paper generation failed");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Paper generation failed");
     } finally {
       setPaperLoading(false);
     }
@@ -2365,24 +2433,24 @@ export default function TeacherAITools() {
                     exit="hidden"
                     className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg overflow-hidden"
                   >
-                    <div className="p-6">
+                    <div className="p-2">
                       <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white">
                           <DocumentTextIcon className="w-5 h-5" />
                         </div>
-                        <h3 className="text-xl font-semibold text-gray-900">
+                        <h3 className="md:text-xl text-lg font-semibold text-gray-900">
                           Paper Preview
                         </h3>
                       </div>
 
-                      <div className="max-h-[70vh] overflow-auto space-y-6">
+                      <div className="max-h-[80vh] overflow-auto space-y-6">
                         {paperResult.sections.map((sec, si) => (
                           <motion.div
                             key={si}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: si * 0.1 }}
-                            className="border border-gray-200 rounded-xl p-4 bg-gray-50/30"
+                            className="border border-gray-200 rounded-xl p-2 bg-gray-50/30"
                           >
                             <div className="flex items-center gap-2 mb-4">
                               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">
@@ -2407,7 +2475,7 @@ export default function TeacherAITools() {
                                   transition={{ delay: si * 0.1 + qi * 0.05 }}
                                   className="p-3 bg-white rounded-lg border border-gray-200"
                                 >
-                                  <div className="flex gap-3">
+                                  <div className="flex gap-2">
                                     <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
                                       {qi + 1}
                                     </span>
@@ -2416,7 +2484,7 @@ export default function TeacherAITools() {
                                         <div className="flex-1 min-w-0">
                                           {paperEditing.has(pqKey(si, qi)) ? (
                                             <textarea
-                                              className="w-full border rounded-md p-2 text-sm mb-2"
+                                              className="w-full border rounded-md p-2 text-xs mb-2"
                                               value={q.text}
                                               onChange={(e) =>
                                                 updatePaperQuestion(si, qi, {
@@ -2425,7 +2493,7 @@ export default function TeacherAITools() {
                                               }
                                             />
                                           ) : (
-                                            <div className="text-gray-900 font-medium leading-relaxed mb-2 break-words whitespace-pre-wrap">
+                                            <div className="text-gray-900 text-sm leading-relaxed mb-2 break-words whitespace-pre-wrap">
                                               {q.text}
                                             </div>
                                           )}

@@ -19,6 +19,8 @@ export interface PdfSection {
   title: string;
   instructions?: string;
   questions: PdfQuestion[];
+  // Optional for display in PDF
+  marksPerQuestion?: number;
 }
 
 export interface PdfPaper {
@@ -26,6 +28,8 @@ export interface PdfPaper {
   subject?: string;
   generalInstructions?: string[];
   sections: PdfSection[];
+  totalMarks?: number;
+  durationMins?: number;
 }
 
 const escapeHtml = (s: unknown) =>
@@ -191,6 +195,7 @@ export function renderPaperHtml(
       <div class="first-page-heading">Abhigyan Gurukul</div>
       ${paper.examTitle ? `<h1>${escapeHtml(paper.examTitle)}</h1>` : ""}
       ${paper.subject ? `<div class="subject">Subject: ${escapeHtml(paper.subject)}</div>` : ""}
+      ${(paper.totalMarks || paper.durationMins) ? `<div class="subject">${paper.totalMarks ? `Total Marks: ${escapeHtml(paper.totalMarks)}` : ''}${paper.totalMarks && paper.durationMins ? ' | ' : ''}${paper.durationMins ? `Time: ${escapeHtml(paper.durationMins)} mins` : ''}</div>` : ''}
       ${Array.isArray(paper.generalInstructions) && paper.generalInstructions.length
         ? `<ol class="instructions">${paper.generalInstructions
             .map((i) => `<li>${escapeHtml(i)}</li>`) 
@@ -201,7 +206,7 @@ export function renderPaperHtml(
             .map(
               (sec) => `
         <section>
-          <h2>${escapeHtml(sec.title)}${sec.instructions ? ` - ${escapeHtml(sec.instructions)}` : ""}</h2>
+          <h2>${escapeHtml(sec.title)}${sec.instructions ? ` - ${escapeHtml(sec.instructions)}` : ""}${sec.marksPerQuestion ? ` (Marks/Q: ${escapeHtml(sec.marksPerQuestion)})` : ''}</h2>
           ${Array.isArray(sec.questions)
             ? sec.questions
                 .map(
