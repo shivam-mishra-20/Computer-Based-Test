@@ -2174,7 +2174,7 @@ export default function TeacherAITools() {
                 </div>
 
                 {/* Input Mode Selection */}
-                <div className="flex gap-3">
+                <div className="flex-1 gap-2 ">
                   {[
                     { id: "text", label: "Text Source", icon: BookOpenIcon },
                     { id: "pdf", label: "PDF Source", icon: DocumentTextIcon },

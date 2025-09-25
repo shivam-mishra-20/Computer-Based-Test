@@ -8,36 +8,47 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // seconds
 
 export async function POST(req: NextRequest) {
+  let content: string | undefined;
   try {
     const body = await req.json();
-  const { html, paper } = body as { html?: string; paper?: PdfPaper };
-  // Derive a base URL so that relative assets like /uploads/... resolve.
-  const reqUrl = new URL(req.url);
-  const baseHref = `${reqUrl.protocol}//${reqUrl.host}`;
+    const { html, paper } = body as { html?: string; paper?: PdfPaper };
+    // Derive a base URL so that relative assets like /uploads/... resolve.
+    const reqUrl = new URL(req.url);
+    const baseHref = `${reqUrl.protocol}//${reqUrl.host}`;
     const assetBase =
-      process.env.NEXT_PUBLIC_API_BASE_URL ||
+      process.env.NEXT_PUBLIC_ASSET_BASE_URL ||
       process.env.NEXT_PUBLIC_API_BASE_URL ||
       process.env.PUBLIC_BASE_URL ||
       baseHref;
-  const content = html || (paper ? renderPaperHtml(paper, { baseHref, assetBase }) : undefined);
+    content = html || (paper ? renderPaperHtml(paper, { baseHref, assetBase }) : undefined);
     if (!content) {
       return NextResponse.json({ error: 'html or paper required' }, { status: 400 });
     }
 
-    // Configure Chromium for Vercel
-    let browser: Awaited<ReturnType<typeof puppeteerCore.launch>>;
-    if (process.env.VERCEL) {
+    // Try serverless-friendly Chromium first (works on Vercel/Render),
+    // fall back to full Puppeteer locally or if chromium path is unavailable.
+    let browser: Awaited<ReturnType<typeof puppeteerCore.launch>> | undefined;
+    try {
       const executablePath = await chromium.executablePath();
-      browser = await puppeteerCore.launch({
-        args: chromium.args,
-        executablePath,
-        headless: true,
-      });
-    } else {
-      // Local dev fallback to full puppeteer
-      const puppeteer = (await import('puppeteer')).default;
-      browser = await puppeteer.launch({ headless: true });
+      if (executablePath) {
+        browser = await puppeteerCore.launch({
+          args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+          executablePath,
+          headless: true,
+        });
+      }
+    } catch {
+      // Ignore and attempt local puppeteer next
     }
+
+    if (!browser) {
+      const puppeteer = (await import('puppeteer')).default;
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+    }
+
     const page = await browser.newPage();
     await page.setContent(content, { waitUntil: 'networkidle0' });
 
@@ -50,10 +61,8 @@ export async function POST(req: NextRequest) {
 
     await browser.close();
 
-    // Convert Buffer/Uint8Array to ArrayBuffer for Web Response
-    const uint8 = new Uint8Array(pdfBuffer);
-    const blob = new Blob([uint8], { type: 'application/pdf' });
-    return new Response(blob, {
+    const blob = new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' });
+    return new NextResponse(blob.stream(), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename="paper.pdf"',
@@ -62,6 +71,16 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     console.error('PDF generation error', e);
+    // Graceful fallback: return HTML if we have it, instead of a hard 500
+    if (content) {
+      return new NextResponse(content, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="paper.html"',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
     return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
   }
 }
