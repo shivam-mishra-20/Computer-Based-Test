@@ -159,6 +159,16 @@ export default function QuestionPapers() {
         },
       });
       if (!res.ok) throw new Error("Failed to export");
+      const contentType = res.headers.get("Content-Type") || "";
+      if (type === "pdf" && !contentType.includes("application/pdf")) {
+        // Do not download unexpected content like HTML; try to read message
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Export did not return a PDF");
+      }
+      if (type === "doc" && !contentType.includes("application/msword")) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Export did not return a DOC file");
+      }
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);

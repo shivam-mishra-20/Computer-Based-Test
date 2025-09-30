@@ -71,16 +71,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     console.error('PDF generation error', e);
-    // Graceful fallback: return HTML if we have it, instead of a hard 500
-    if (content) {
-      return new NextResponse(content, {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Content-Disposition': 'attachment; filename="paper.html"',
-          'Cache-Control': 'no-store',
-        },
-      });
-    }
+    // Strict behavior: never return HTML fallback to avoid .html downloads
     return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
   }
 }

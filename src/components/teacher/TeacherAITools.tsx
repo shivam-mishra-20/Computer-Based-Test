@@ -1136,6 +1136,11 @@ export default function TeacherAITools() {
         body: JSON.stringify({ paper: paperResult }),
       });
       if (!res.ok) throw new Error("Failed to generate PDF");
+      const contentType = res.headers.get("Content-Type") || "";
+      if (!contentType.includes("application/pdf")) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Server did not return a PDF");
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
