@@ -32,31 +32,52 @@ export async function POST(req: NextRequest) {
       const executablePath = await chromium.executablePath();
       if (executablePath) {
         browser = await puppeteerCore.launch({
-          args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+          args: [
+            ...chromium.args, 
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process'
+          ],
           executablePath,
           headless: true,
         });
       }
-    } catch {
-      // Ignore and attempt local puppeteer next
+    } catch (error) {
+      console.warn('Chromium launch failed, trying local puppeteer:', error);
     }
 
     if (!browser) {
       const puppeteer = (await import('puppeteer')).default;
       browser = await puppeteer.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu'
+        ],
       });
     }
 
     const page = await browser.newPage();
-    await page.setContent(content, { waitUntil: 'networkidle0' });
+    
+    // Set viewport and content
+    await page.setViewport({ width: 1200, height: 800 });
+    await page.setContent(content, { 
+      waitUntil: 'networkidle0', 
+      timeout: 30000 
+    });
 
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
       displayHeaderFooter: false,
       margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
+      timeout: 30000,
     });
 
     await browser.close();

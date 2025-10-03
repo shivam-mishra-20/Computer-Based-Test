@@ -165,14 +165,20 @@ export default function QuestionPapers() {
         const text = await res.text().catch(() => "");
         throw new Error(text || "Export did not return a PDF");
       }
-      if (type === "doc" && !contentType.includes("application/msword")) {
+      if (
+        type === "doc" &&
+        !contentType.includes(
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ) &&
+        !contentType.includes("application/msword")
+      ) {
         const text = await res.text().catch(() => "");
-        throw new Error(text || "Export did not return a DOC file");
+        throw new Error(text || "Export did not return a Word document");
       }
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `${slugify(p.examTitle)}.${type}`;
+      a.download = `${slugify(p.examTitle)}.${type === "doc" ? "docx" : type}`;
       document.body.appendChild(a);
       a.click();
       a.remove();

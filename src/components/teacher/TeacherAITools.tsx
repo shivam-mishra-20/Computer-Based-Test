@@ -1161,6 +1161,47 @@ export default function TeacherAITools() {
     }
   }
 
+  async function downloadWordFromServer() {
+    if (!paperResult) return;
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/word`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paper: paperResult }),
+      });
+      if (!res.ok) throw new Error("Failed to generate Word document");
+      const contentType = res.headers.get("Content-Type") || "";
+      if (
+        !contentType.includes(
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ) &&
+        !contentType.includes("application/msword")
+      ) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Server did not return a Word document");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeTitle = (paperResult.examTitle || "question-paper").replace(
+        /[^a-z0-9\-_]+/gi,
+        "_"
+      );
+      a.download = `${safeTitle}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Word document download failed");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function savePaperToHistory() {
     if (!paperResult) return;
     if (savingPaper) return;
@@ -2409,6 +2450,27 @@ export default function TeacherAITools() {
                           <>
                             <ArrowDownTrayIcon className="w-5 h-5" />
                             Download PDF
+                          </>
+                        )}
+                      </motion.button>
+
+                      <motion.button
+                        type="button"
+                        className="flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 disabled:opacity-50 transition-all duration-200 w-full sm:w-auto"
+                        onClick={downloadWordFromServer}
+                        disabled={downloading}
+                        whileHover={{ scale: downloading ? 1 : 1.02 }}
+                        whileTap={{ scale: downloading ? 1 : 0.98 }}
+                      >
+                        {downloading ? (
+                          <>
+                            <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                            Preparing Word…
+                          </>
+                        ) : (
+                          <>
+                            <ArrowDownTrayIcon className="w-5 h-5" />
+                            Download Word
                           </>
                         )}
                       </motion.button>
