@@ -36,6 +36,18 @@ interface Question {
 
 type Draft = Omit<Question, "_id"> & { _id?: string };
 
+type ImportedAPIItem = {
+  _id: string;
+  text: string;
+  type: string;
+  options?: QuestionOption[];
+  correctAnswerText?: string;
+  explanation?: string;
+  subject?: string;
+  topic?: string;
+  difficulty?: string;
+};
+
 const emptyDraft = (): Draft => ({
   text: "",
   type: "mcq",
@@ -72,6 +84,41 @@ export default function TeacherQuestionBank() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Imports browsing state
+  const [subjects, setSubjects] = useState<
+    { subject: string; count: number }[]
+  >([]);
+  const [topics, setTopics] = useState<
+    { subject: string; topic: string; count: number }[]
+  >([]);
+  const [selectedSubject, setSelectedSubject] = useState<string>("");
+  const [selectedTopic, setSelectedTopic] = useState<string>("");
+  const [imported, setImported] = useState<Question[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [selectedImportedIds, setSelectedImportedIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [draftPaper, setDraftPaper] = useState({
+    examTitle: "Draft Question Paper",
+    subject: "",
+    generalInstructions: [
+      "All questions are compulsory.",
+      "Read the questions carefully before answering.",
+    ],
+    sections: [
+      {
+        title: "Section A",
+        instructions: "Answer all questions.",
+        marksPerQuestion: 1,
+        questions: [] as Array<{
+          text: string;
+          type: string;
+          options?: QuestionOption[];
+        }>,
+      },
+    ],
+  });
+
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -90,6 +137,20 @@ export default function TeacherQuestionBank() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Load subjects on mount for Imports
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = (await apiFetch(`/api/imports/subjects`)) as {
+          subjects: { subject: string; count: number }[];
+        };
+        setSubjects(data.subjects || []);
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
   function onCreate() {
     setDraft(emptyDraft());
@@ -167,6 +228,133 @@ export default function TeacherQuestionBank() {
     }));
   }
 
+  // -------- Imported Questions Browser --------
+  const loadTopics = async (subj: string) => {
+    setSelectedSubject(subj);
+    setSelectedTopic("");
+    setImported([]);
+    setSelectedImportedIds(new Set());
+    if (!subj) {
+      setTopics([]);
+      return;
+    }
+    try {
+      const data = (await apiFetch(
+        `/api/imports/topics?subject=${encodeURIComponent(subj)}`
+      )) as { topics: { subject: string; topic: string; count: number }[] };
+      setTopics(data.topics || []);
+    } catch {
+      setTopics([]);
+    }
+  };
+
+  const loadImportedQuestions = async () => {
+    if (!selectedSubject) {
+      notify.error("Select a subject");
+      return;
+    }
+    setImportLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("subject", selectedSubject);
+      if (selectedTopic) params.set("topic", selectedTopic);
+      const data = (await apiFetch(
+        `/api/imports/questions?${params.toString()}`
+      )) as { items: ImportedAPIItem[]; total: number };
+      // Map to Question shape used in this component
+      const mapped: Question[] = (data.items || []).map((q) => ({
+        _id: q._id,
+        text: q.text || "",
+        type: q.type || "mcq",
+        options: q.options || [],
+        explanation: (q.correctAnswerText || q.explanation || "") as string,
+        tags: {
+          subject: q.subject || "",
+          topic: q.topic || "",
+          difficulty:
+            (q.difficulty as "easy" | "medium" | "hard" | undefined) ||
+            "medium",
+        },
+      }));
+      setImported(mapped);
+      setSelectedImportedIds(new Set());
+      // default paper subject
+      setDraftPaper((p) => ({ ...p, subject: selectedSubject }));
+    } catch {
+      setImported([]);
+      notify.error("Failed to load imported questions");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const toggleImportedSelect = (id: string) => {
+    setSelectedImportedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  };
+
+  const addSelectedToDraftPaper = () => {
+    if (selectedImportedIds.size === 0) {
+      notify.error("Select questions to add");
+      return;
+    }
+    const chosen = imported.filter((q) => selectedImportedIds.has(q._id));
+    setDraftPaper((p) => ({
+      ...p,
+      sections: [
+        {
+          ...p.sections[0],
+          questions: [
+            ...p.sections[0].questions,
+            ...chosen.map((q) => ({
+              text: q.text,
+              type: q.type,
+              options: q.options,
+            })),
+          ],
+        },
+      ],
+    }));
+    notify.success(`${chosen.length} added to draft`);
+  };
+
+  const exportDraftToWord = async () => {
+    try {
+      if (draftPaper.sections[0].questions.length === 0) {
+        notify.error("Add some questions to the draft first");
+        return;
+      }
+      const base = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+      const res = await fetch(`${base}/api/papers/temp/export/doc`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("accessToken") || ""}`,
+        },
+        body: JSON.stringify({ paper: draftPaper }),
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(draftPaper.examTitle || "paper").replace(
+        /[^a-z0-9-_]+/gi,
+        "_"
+      )}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      notify.error((e as Error).message || "Export failed");
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -218,6 +406,173 @@ export default function TeacherQuestionBank() {
           <Plus className="w-4 h-4" />
           New Question
         </motion.button>
+      </motion.div>
+
+      {/* Imported Questions Browser */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8"
+      >
+        <div className="p-4 border-b border-gray-100 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full md:w-auto">
+            <div>
+              <label className="text-xs text-gray-600">Subject</label>
+              <select
+                className="w-full mt-1 border border-gray-200 rounded-lg p-2 text-sm"
+                value={selectedSubject}
+                onChange={(e) => loadTopics(e.target.value)}
+              >
+                <option value="">Select subject</option>
+                {subjects.map((s) => (
+                  <option key={s.subject} value={s.subject}>
+                    {s.subject} ({s.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600">Topic</label>
+              <select
+                className="w-full mt-1 border border-gray-200 rounded-lg p-2 text-sm"
+                value={selectedTopic}
+                onChange={(e) => setSelectedTopic(e.target.value)}
+                disabled={!selectedSubject}
+              >
+                <option value="">All topics</option>
+                {topics.map((t) => (
+                  <option key={`${t.subject}-${t.topic}`} value={t.topic}>
+                    {t.topic} ({t.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={loadImportedQuestions}
+                className="w-full md:w-auto px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium"
+                disabled={!selectedSubject || importLoading}
+              >
+                {importLoading ? "Loading..." : "Load Imported"}
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={addSelectedToDraftPaper}
+              className="px-4 py-2 rounded-lg border border-gray-200 text-sm"
+              disabled={selectedImportedIds.size === 0}
+            >
+              Add Selected to Draft
+            </button>
+          </div>
+        </div>
+        <div className="p-4">
+          {imported.length === 0 ? (
+            <div className="text-sm text-gray-500">
+              No imported questions loaded.
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {imported.map((q) => (
+                <div key={q._id} className="flex items-start gap-3 py-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={selectedImportedIds.has(q._id)}
+                    onChange={() => toggleImportedSelect(q._id)}
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-gray-900">{q.text}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {q.tags?.subject || ""}
+                      {q.tags?.topic ? ` • ${q.tags.topic}` : ""}
+                      {q.type
+                        ? ` • ${
+                            typeLabels[q.type as keyof typeof typeLabels] ||
+                            q.type
+                          }`
+                        : ""}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Draft Paper Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8"
+      >
+        <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-gray-600">Paper Title</label>
+              <input
+                className="w-full mt-1 border border-gray-200 rounded-lg p-2 text-sm"
+                value={draftPaper.examTitle}
+                onChange={(e) =>
+                  setDraftPaper((p) => ({ ...p, examTitle: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600">Subject</label>
+              <input
+                className="w-full mt-1 border border-gray-200 rounded-lg p-2 text-sm"
+                value={draftPaper.subject}
+                onChange={(e) =>
+                  setDraftPaper((p) => ({ ...p, subject: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600">Marks / Question</label>
+              <input
+                type="number"
+                className="w-full mt-1 border border-gray-200 rounded-lg p-2 text-sm"
+                value={draftPaper.sections[0].marksPerQuestion}
+                onChange={(e) =>
+                  setDraftPaper((p) => ({
+                    ...p,
+                    sections: [
+                      {
+                        ...p.sections[0],
+                        marksPerQuestion: Number(e.target.value || 0),
+                      },
+                    ],
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">
+              {draftPaper.sections[0].questions.length} in draft
+            </span>
+            <button
+              onClick={exportDraftToWord}
+              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium"
+              disabled={draftPaper.sections[0].questions.length === 0}
+            >
+              Export Word
+            </button>
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="text-sm text-gray-700 mb-2">General Instructions</div>
+          <ul className="list-disc ml-5 text-sm text-gray-600">
+            {draftPaper.generalInstructions.map((ins, idx) => (
+              <li key={idx}>{ins}</li>
+            ))}
+          </ul>
+        </div>
       </motion.div>
 
       {/* Questions Table */}

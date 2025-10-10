@@ -268,4 +268,6 @@ Potential improvements (not yet implemented):
 ---
 
 **Status**: ✅ Implemented and Ready to Use
+**Smart Import Integration**: The Smart Question Import tool renders extracted questions with KaTeX automatically. Mathematical expressions returned by the backend are expected to be wrapped in $...$/$$...$$.
+**OCR**: The backend now supports Tesseract.js OCR (default) for exact text extraction from PDFs and images, with Gemini/Groq as optional providers. Choose the provider in the Smart Import UI.
 **Next Step**: Test with questions containing mathematical expressions

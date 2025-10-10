@@ -27,6 +27,183 @@ import {
   RocketLaunchIcon,
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
+import katex from "katex";
+import "katex/dist/katex.min.css";
+/* Lines 30-32 omitted */
+
+// --- LaTeX helpers: render in UI (HTML+MathML) and convert to MathML for export ---
+type LatexSegment = {
+  type: "text" | "math";
+  content: string;
+  display: boolean;
+};
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Split a string into text/math segments based on common LaTeX delimiters
+function splitLatexMixed(text: string): LatexSegment[] {
+  const segments: LatexSegment[] = [];
+  if (!text) return segments;
+
+  let i = 0;
+  const pushText = (s: string) => {
+    if (s) segments.push({ type: "text", content: s, display: false });
+  };
+  const pushMath = (s: string, display: boolean) => {
+    segments.push({ type: "math", content: s, display });
+  };
+
+  const findNext = (src: string, start: number, needle: string) =>
+    src.indexOf(needle, start);
+
+  while (i < text.length) {
+    // Order matters: $$...$$, \[...\], \(...\), $...$
+    if (text.startsWith("$$", i)) {
+      const end = findNext(text, i + 2, "$$");
+      if (end !== -1) {
+        pushMath(text.slice(i + 2, end), true);
+        i = end + 2;
+        continue;
+      }
+    }
+    if (text.startsWith("\\[", i)) {
+      const end = findNext(text, i + 2, "\\]");
+      if (end !== -1) {
+        pushMath(text.slice(i + 2, end), true);
+        i = end + 2;
+        continue;
+      }
+    }
+    if (text.startsWith("\\(", i)) {
+      const end = findNext(text, i + 2, "\\)");
+      if (end !== -1) {
+        pushMath(text.slice(i + 2, end), false);
+        i = end + 2;
+        continue;
+      }
+    }
+    if (text[i] === "$") {
+      // naive search for next unescaped $
+      let j = i + 1;
+      let found = -1;
+      while (j < text.length) {
+        if (text[j] === "$" && text[j - 1] !== "\\") {
+          found = j;
+          break;
+        }
+        j++;
+      }
+      if (found !== -1) {
+        pushMath(text.slice(i + 1, found), false);
+        i = found + 1;
+        continue;
+      }
+    }
+    // If no delimiter matched at i, accumulate normal text until next potential delimiter
+    let next = text.length;
+    const candidates = [
+      text.indexOf("$$", i),
+      text.indexOf("$", i),
+      text.indexOf("\\[", i),
+      text.indexOf("\\(", i),
+    ];
+    for (const pos of candidates) {
+      if (pos !== -1 && pos < next) next = pos;
+    }
+    pushText(text.slice(i, next));
+    i = next;
+  }
+  return segments;
+}
+
+function renderLatexMixedToHtml(text: string): string {
+  if (!text) return "";
+  const segs = splitLatexMixed(text);
+  let html = "";
+  for (const s of segs) {
+    if (s.type === "text") {
+      // Preserve line breaks for print/export readability
+      html += escapeHtml(s.content).replace(/\n/g, "<br/>");
+    } else {
+      try {
+        html += katex.renderToString(s.content, {
+          displayMode: s.display,
+          throwOnError: false,
+          trust: true,
+          output: "htmlAndMathml",
+        });
+      } catch {
+        html += `<span class="katex-error">${escapeHtml(s.content)}</span>`;
+      }
+    }
+  }
+  return html;
+}
+
+function renderLatexMixedToMathML(text: string): string {
+  if (!text) return "";
+  const segs = splitLatexMixed(text);
+  let html = "";
+  for (const s of segs) {
+    if (s.type === "text") {
+      html += escapeHtml(s.content).replace(/\n/g, "<br/>");
+    } else {
+      try {
+        html += katex.renderToString(s.content, {
+          displayMode: s.display,
+          throwOnError: false,
+          trust: true,
+          output: "mathml",
+        });
+      } catch {
+        html += `<span class="katex-error">${escapeHtml(s.content)}</span>`;
+      }
+    }
+  }
+  return html;
+}
+
+function convertPaperToMathMLHtml(
+  paper: GeneratedPaperResult
+): GeneratedPaperResult {
+  return {
+    ...paper,
+    generalInstructions: paper.generalInstructions?.map((t) => t) || [],
+    sections: paper.sections.map((sec) => ({
+      ...sec,
+      // Convert question text and related fields to MathML-embedded HTML
+      questions: sec.questions.map((q) => ({
+        ...q,
+        text: renderLatexMixedToMathML(q.text || ""),
+        assertion: q.assertion
+          ? renderLatexMixedToMathML(q.assertion)
+          : q.assertion,
+        reason: q.reason ? renderLatexMixedToMathML(q.reason) : q.reason,
+        explanation: q.explanation
+          ? renderLatexMixedToMathML(q.explanation)
+          : q.explanation,
+        options: q.options?.map((o) => ({
+          ...o,
+          text: renderLatexMixedToMathML(o.text || ""),
+        })),
+      })),
+    })),
+  };
+}
+
+function MathText({ text, className }: { text?: string; className?: string }) {
+  const html = renderLatexMixedToHtml(text || "");
+  return (
+    <span className={className} dangerouslySetInnerHTML={{ __html: html }} />
+  );
+}
 import { CheckIcon } from "@heroicons/react/24/solid";
 import Image from "next/image";
 
@@ -1010,7 +1187,9 @@ export default function TeacherAITools() {
         )}
         <ol className="text-xs mb-4 list-decimal pl-5 space-y-0.5">
           {paperResult.generalInstructions.map((ins, i) => (
-            <li key={i}>{ins}</li>
+            <li key={i}>
+              <MathText text={ins} />
+            </li>
           ))}
         </ol>
         {paperResult.sections.map((sec, si) => (
@@ -1019,7 +1198,7 @@ export default function TeacherAITools() {
               {sec.title}{" "}
               {sec.instructions && (
                 <span className="text-gray-500 font-normal">
-                  - {sec.instructions}
+                  - <MathText text={sec.instructions} />
                 </span>
               )}
             </h2>
@@ -1027,7 +1206,7 @@ export default function TeacherAITools() {
               {sec.questions.map((q, qi) => (
                 <div key={qi} className="border-b pb-2">
                   <div className="font-medium mb-1">
-                    {qi + 1}. {q.text}
+                    <MathText text={`${qi + 1}. ${q.text || ""}`} />
                   </div>
                   {q.diagramDataUrl && (
                     <div className="ml-4 mb-2">
@@ -1052,12 +1231,14 @@ export default function TeacherAITools() {
                     <div className="ml-4 text-xs text-gray-600 space-y-1">
                       {q.assertion && (
                         <div>
-                          <strong>Assertion (A):</strong> {q.assertion}
+                          <strong>Assertion (A):</strong>{" "}
+                          <MathText text={q.assertion} />
                         </div>
                       )}
                       {q.reason && (
                         <div>
-                          <strong>Reason (R):</strong> {q.reason}
+                          <strong>Reason (R):</strong>{" "}
+                          <MathText text={q.reason} />
                         </div>
                       )}
                       <ol className="ml-5 list-[upper-alpha] space-y-0.5 mt-1">
@@ -1077,7 +1258,9 @@ export default function TeacherAITools() {
                   {q.type === "mcq" && q.options && (
                     <ol className="ml-5 list-[upper-alpha] space-y-0.5 text-xs">
                       {q.options.map((o, oi) => (
-                        <li key={oi}>{o.text}</li>
+                        <li key={oi}>
+                          <MathText text={o.text} />
+                        </li>
                       ))}
                     </ol>
                   )}
@@ -1130,10 +1313,12 @@ export default function TeacherAITools() {
     if (downloading) return;
     setDownloading(true);
     try {
+      // Convert LaTeX to MathML before sending to server so exported PDF contains proper MathML
+      const mathmlPaper = convertPaperToMathMLHtml(paperResult);
       const res = await fetch(`/api/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paper: paperResult }),
+        body: JSON.stringify({ paper: mathmlPaper, mathFormat: "mathml" }),
       });
       if (!res.ok) throw new Error("Failed to generate PDF");
       const contentType = res.headers.get("Content-Type") || "";
@@ -1166,10 +1351,12 @@ export default function TeacherAITools() {
     if (downloading) return;
     setDownloading(true);
     try {
+      // Convert LaTeX to MathML prior to Word export
+      const mathmlPaper = convertPaperToMathMLHtml(paperResult);
       const res = await fetch(`/api/word`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paper: paperResult }),
+        body: JSON.stringify({ paper: mathmlPaper, mathFormat: "mathml" }),
       });
       if (!res.ok) throw new Error("Failed to generate Word document");
       const contentType = res.headers.get("Content-Type") || "";
