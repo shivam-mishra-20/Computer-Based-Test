@@ -72,8 +72,8 @@ export default function Navbar() {
           icon: "chart-pie",
         },
         {
-          href: "/dashboard/admin?tab=questions",
-          label: "Question Bank",
+          href: "/dashboard/admin?tab=create-paper",
+          label: "Create paper",
           icon: "question",
         },
         {
@@ -85,10 +85,10 @@ export default function Navbar() {
     }
     if (role === "teacher") {
       return [
-        { href: "/dashboard/teacher", label: "Dashboard", icon: "dashboard" },
+        { href: "/dashboard/teacher", label: "Home", icon: "dashboard" },
         {
-          href: "/dashboard/teacher?tab=bank",
-          label: "Question Bank",
+          href: "/dashboard/teacher?tab=create-paper",
+          label: "Create paper",
           icon: "question",
         },
         {

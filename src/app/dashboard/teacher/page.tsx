@@ -9,6 +9,7 @@ import TeacherExams from "@/components/teacher/TeacherExams";
 import TeacherAITools from "@/components/teacher/TeacherAITools";
 import SmartQuestionImport from "@/components/teacher/SmartQuestionImport";
 import TeacherAnalytics from "@/components/teacher/TeacherAnalytics";
+import CreatePaperFlow from "@/components/teacher/CreatePaperFlow";
 //import TeacherReports from "@/components/teacher/TeacherReports";
 import QuestionPapers from "@/components/teacher/QuestionPapers";
 import DashboardHeader from "@/components/ui/dashboard-header";
@@ -16,6 +17,7 @@ import DashboardHeader from "@/components/ui/dashboard-header";
 
 const TABS = [
   "dashboard",
+  "create-paper",
   "bank",
   "exams",
   "ai",
@@ -29,6 +31,7 @@ type Tab = (typeof TABS)[number];
 // Map tab keys to display names
 const tabLabels: Record<Tab, string> = {
   dashboard: "Dashboard",
+  "create-paper": "Create Paper",
   bank: "Question Bank",
   exams: "Exams",
   ai: "AI Tools",
@@ -203,7 +206,7 @@ export default function TeacherDashboardPage() {
 
   // Ensure a default tab is always present in URL
   useEffect(() => {
-    if (!search.get("tab")) {
+    if (!search?.get("tab")) {
       router.replace("/dashboard/teacher?tab=dashboard");
       return;
     }
@@ -231,6 +234,9 @@ export default function TeacherDashboardPage() {
   switch (currentTab) {
     case "dashboard":
       content = <TeacherDashboardHome />;
+      break;
+    case "create-paper":
+      content = <CreatePaperFlow />;
       break;
     case "bank":
       content = <TeacherQuestionBank />;

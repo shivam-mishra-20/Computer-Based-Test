@@ -9,7 +9,7 @@ interface Params {
 
 export default function AttemptPage({ params }: { params: Params }) {
   const search = useSearchParams();
-  const review = search.get("review");
+  const review = search?.get("review");
   return (
     <AttemptPlayer
       attemptId={params.attemptId}

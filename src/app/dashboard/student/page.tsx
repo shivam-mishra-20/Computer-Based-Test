@@ -179,7 +179,7 @@ export default function StudentDashboard() {
 
   // Keep local state in sync when URL changes (e.g., via navbar)
   useEffect(() => {
-    const current = (search.get("tab") as TabKey) || "exams";
+    const current = (search?.get("tab") as TabKey) || "exams";
     if (tabsMetadata[current]) {
       setTab(current);
     } else {

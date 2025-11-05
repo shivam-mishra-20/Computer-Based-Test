@@ -353,6 +353,11 @@ export default function TeacherAITools() {
     difficulty: "medium",
     count: 10,
     types: ["mcq", "truefalse", "fill", "short", "long"],
+    class: "",
+    board: "",
+    chapter: "",
+    section: "",
+    marks: 1,
   });
   const [refiningIdx, setRefiningIdx] = useState<number | null>(null);
   // Editing state for generated items
@@ -778,74 +783,111 @@ export default function TeacherAITools() {
   }
 
   async function addToBank(indices: number[]) {
+    if (!meta.class || !meta.class.trim()) {
+      alert(
+        "Class is required to save questions (per-class storage). Please set the Class field."
+      );
+      return;
+    }
     const toAdd = indices.map((i) => items[i]).filter(Boolean);
     if (!toAdd.length) return;
-    let ok = 0;
-    for (const q of toAdd) {
-      try {
-        // Upload diagram if present (data URL) to obtain a persistent URL
-        let diagramUrl: string | undefined;
-        if (q.diagramDataUrl && q.diagramDataUrl.startsWith("data:")) {
-          try {
-            const blob = await (await fetch(q.diagramDataUrl)).blob();
-            const form = new FormData();
-            form.append(
-              "image",
-              new File([blob], "diagram.png", {
-                type: blob.type || "image/png",
-              })
-            );
-            const base =
-              process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-            const resp = await fetch(base + "/api/upload/image", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${
-                  localStorage.getItem("accessToken") || ""
-                }`,
-              },
-              body: form,
-            });
-            if (resp.ok) {
-              const d = await resp.json();
-              diagramUrl = d.url as string;
+
+    try {
+      // Upload diagrams first if they exist
+      const questionsWithUrls = await Promise.all(
+        toAdd.map(async (q) => {
+          let diagramUrl = q.diagramUrl;
+
+          // Upload data URL diagram to get persistent URL
+          if (q.diagramDataUrl && q.diagramDataUrl.startsWith("data:")) {
+            try {
+              const blob = await (await fetch(q.diagramDataUrl)).blob();
+              const form = new FormData();
+              form.append(
+                "image",
+                new File([blob], "diagram.png", {
+                  type: blob.type || "image/png",
+                })
+              );
+              const base =
+                process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+              const resp = await fetch(base + "/api/upload/image", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${
+                    localStorage.getItem("accessToken") || ""
+                  }`,
+                },
+                body: form,
+              });
+              if (resp.ok) {
+                const d = await resp.json();
+                diagramUrl = d.url;
+              }
+            } catch (e) {
+              console.error("Diagram upload failed:", e);
             }
-          } catch {
-            // ignore diagram upload failure; proceed without diagram
           }
-        }
-        await apiFetch("/api/exams/questions", {
-          method: "POST",
-          body: JSON.stringify({
+
+          return {
             text: q.text,
             type: q.type || "mcq",
-            assertion: q.assertion,
-            reason: q.reason,
-            assertionIsTrue: q.assertionIsTrue,
-            reasonIsTrue: q.reasonIsTrue,
-            reasonExplainsAssertion: q.reasonExplainsAssertion,
-            integerAnswer: q.integerAnswer,
-            tags: {
-              subject: meta.subject || q.tags?.subject,
-              topic: meta.topic || q.tags?.topic,
-              difficulty: meta.difficulty || q.tags?.difficulty,
-            },
+            subject: meta.subject || q.tags?.subject || "",
+            topic: meta.topic || q.tags?.topic,
+            difficulty: meta.difficulty || q.tags?.difficulty || "medium",
+            // Add metadata fields
+            class: meta.class || undefined,
+            board: meta.board || undefined,
+            chapter: meta.chapter || undefined,
+            section: meta.section || undefined,
+            marks: meta.marks || undefined,
+            source: "Manual",
             options: q.options,
             correctAnswerText:
               q.integerAnswer !== undefined
                 ? String(q.integerAnswer)
                 : undefined,
+            integerAnswer: q.integerAnswer,
+            assertion: q.assertion,
+            reason: q.reason,
+            assertionIsTrue: q.assertionIsTrue,
+            reasonIsTrue: q.reasonIsTrue,
+            reasonExplainsAssertion: q.reasonExplainsAssertion,
             explanation: q.explanation,
             diagramUrl,
             diagramAlt: "Diagram",
-          }),
-        });
-        ok++;
-      } catch {
-        // continue
-      }
+          };
+        })
+      );
+
+      // Use new validation endpoint
+      const result = (await apiFetch("/api/ai/save-questions", {
+        method: "POST",
+        body: JSON.stringify({ questions: questionsWithUrls }),
+      })) as {
+        success: boolean;
+        data: { saved: number; skipped: number; questions: unknown[] };
+      };
+
+      alert(
+        `✅ Added ${result.data.saved}/${
+          toAdd.length
+        } questions to bank with validation!\n${
+          result.data.skipped > 0
+            ? `⚠️ Skipped ${result.data.skipped} duplicates.`
+            : ""
+        }`
+      );
+
+      // Clear selection after successful save
+      setSelected(new Set());
+    } catch (error) {
+      console.error("Failed to add questions:", error);
+      alert(
+        "❌ Failed to add questions: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
     }
-    alert(`Added ${ok}/${toAdd.length} questions to bank`);
   }
 
   // Selection helpers
@@ -1539,6 +1581,92 @@ export default function TeacherAITools() {
                           )}
                         </motion.label>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Metadata Fields */}
+                  <div className="bg-emerald-50 rounded-xl p-4 border-2 border-emerald-200 space-y-4">
+                    <h4 className="text-sm font-semibold text-emerald-900">
+                      Question Metadata (Optional)
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-emerald-900 block mb-1">
+                          Class
+                        </label>
+                        <input
+                          type="text"
+                          value={meta.class}
+                          onChange={(e) =>
+                            setMeta({ ...meta, class: e.target.value })
+                          }
+                          placeholder="e.g., 10"
+                          className="w-full px-3 py-2 text-sm border-2 border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-emerald-900 block mb-1">
+                          Board
+                        </label>
+                        <input
+                          type="text"
+                          value={meta.board}
+                          onChange={(e) =>
+                            setMeta({ ...meta, board: e.target.value })
+                          }
+                          placeholder="e.g., CBSE"
+                          className="w-full px-3 py-2 text-sm border-2 border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-emerald-900 block mb-1">
+                          Chapter
+                        </label>
+                        <input
+                          type="text"
+                          value={meta.chapter}
+                          onChange={(e) =>
+                            setMeta({ ...meta, chapter: e.target.value })
+                          }
+                          placeholder="e.g., Algebra"
+                          className="w-full px-3 py-2 text-sm border-2 border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-emerald-900 block mb-1">
+                          Section
+                        </label>
+                        <input
+                          type="text"
+                          value={meta.section}
+                          onChange={(e) =>
+                            setMeta({ ...meta, section: e.target.value })
+                          }
+                          placeholder="e.g., Objective"
+                          className="w-full px-3 py-2 text-sm border-2 border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-emerald-900 block mb-1">
+                          Marks
+                        </label>
+                        <input
+                          type="number"
+                          value={meta.marks}
+                          onChange={(e) =>
+                            setMeta({
+                              ...meta,
+                              marks: parseInt(e.target.value) || 1,
+                            })
+                          }
+                          placeholder="1"
+                          className="w-full px-3 py-2 text-sm border-2 border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
+                        />
+                      </div>
                     </div>
                   </div>
 

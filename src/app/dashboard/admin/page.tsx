@@ -9,11 +9,13 @@ import AdminExams from "@/components/admin/AdminExams";
 import AdminGuidance from "@/components/admin/AdminGuidance";
 import AdminAnalytics from "@/components/admin/AdminAnalytics";
 import AdminQuestionBank from "@/components/admin/AdminQuestionBank";
+import CreatePaperFlow from "@/components/teacher/CreatePaperFlow";
 import AdminPapers from "@/components/admin/AdminPapers";
 import DashboardHeader from "@/components/ui/dashboard-header";
 //import DashboardTabs from "@/components/ui/dashboard-tabs";
 const TABS = [
   "dashboard",
+  "create-paper",
   "users",
   "exams",
   "analytics",
@@ -26,6 +28,7 @@ type Tab = (typeof TABS)[number];
 // Map tab keys to display names
 const tabLabels: Record<Tab, string> = {
   dashboard: "Dashboard",
+  "create-paper": "Create Paper",
   users: "Users",
   exams: "Exams",
   analytics: "Analytics",
@@ -179,12 +182,14 @@ export default function AdminDashboardPage() {
 
   // Ensure a default tab param exists for consistency with navbar
   useEffect(() => {
-    if (!search.get("tab")) {
+    // Guard against search possibly being null (it can be null briefly)
+    const tabValue = search?.get("tab");
+    if (!tabValue) {
       router.replace("/dashboard/admin?tab=dashboard");
       return;
     }
 
-    const tabParam = search.get("tab") as Tab;
+    const tabParam = tabValue as Tab;
     if (TABS.includes(tabParam)) {
       setCurrentTab(tabParam);
     } else {
@@ -207,6 +212,9 @@ export default function AdminDashboardPage() {
   switch (currentTab) {
     case "dashboard":
       content = <AdminDashboardHome />;
+      break;
+    case "create-paper":
+      content = <CreatePaperFlow />;
       break;
     case "users":
       content = <AdminUsers />;

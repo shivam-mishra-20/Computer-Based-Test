@@ -1,6 +1,7 @@
 "use client";
 import React, { useMemo } from "react";
 import katex from "katex";
+import "katex/dist/katex.min.css"; // ensure proper spacing/metrics for equations
 
 export function MathText({
   text,

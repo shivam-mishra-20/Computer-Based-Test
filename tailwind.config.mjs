@@ -18,6 +18,13 @@ const config = {
       },
     },
   },
+  // Force RGB color space to avoid lab() parsing errors in html2canvas
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
+  corePlugins: {
+    // Ensure compatibility with html2canvas
+  },
   plugins: [],
 };
 

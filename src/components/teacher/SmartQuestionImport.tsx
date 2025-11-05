@@ -154,7 +154,14 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
     [handleFileSelect]
   );
 
-  // Upload and process file
+  // Form fields for metadata (for new validation endpoint)
+  const [className, setClassName] = useState("");
+  const [board, setBoard] = useState("");
+  const [chapter, setChapter] = useState("");
+  const [section, setSection] = useState("");
+  const [marks, setMarks] = useState("");
+
+  // Upload and process file with new validation endpoint
   const handleUpload = async () => {
     if (!selectedFile) {
       setError("Please select a file first");
@@ -177,6 +184,13 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
       formData.append("subject", subject.trim());
       formData.append("topic", topic.trim());
       formData.append("ocrProvider", ocrProvider);
+
+      // Add new metadata fields for validation
+      if (className.trim()) formData.append("class", className.trim());
+      if (board.trim()) formData.append("board", board.trim());
+      if (chapter.trim()) formData.append("chapter", chapter.trim());
+      if (section.trim()) formData.append("section", section.trim());
+      if (marks.trim()) formData.append("marks", marks.trim());
 
       const base =
         process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
@@ -201,7 +215,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
       };
 
       setSuccess(
-        `Successfully processed ${result.processedQuestions} questions from ${result.totalQuestions} found`
+        `Successfully processed ${result.processedQuestions} questions from ${result.totalQuestions} found. Questions saved with validation, sanitization, and LaTeX conversion.`
       );
 
       // Fetch the batch details and questions
@@ -421,26 +435,27 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6"
+          className="bg-white rounded-2xl border-2 border-emerald-200 shadow-lg p-6"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white">
+              <div className="p-2 bg-gradient-to-r from-emerald-500 to-green-600 rounded-lg text-white">
                 <DocumentArrowUpIcon className="w-6 h-6" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+                <h1 className="text-2xl font-bold text-emerald-900">
                   Smart Question Import
                 </h1>
-                <p className="text-gray-600">
-                  Upload PDF or images to automatically extract questions
+                <p className="text-sm text-gray-600">
+                  Upload PDF or images to automatically extract questions with
+                  validation
                 </p>
               </div>
             </div>
             {onClose && (
               <button
                 onClick={onClose}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
@@ -492,64 +507,137 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6 space-y-6"
+            className="bg-white rounded-2xl border-2 border-emerald-200 shadow-lg p-6 space-y-6"
           >
             {/* Configuration Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  Subject *
-                </label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  placeholder="e.g., Mathematics"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                />
+            <div>
+              <h3 className="text-base font-semibold text-emerald-900 mb-4">
+                Question Details
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">
+                    Subject *
+                  </label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    placeholder="e.g., Mathematics"
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">
+                    Topic
+                  </label>
+                  <input
+                    type="text"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="e.g., Calculus"
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">
+                    Class
+                  </label>
+                  <input
+                    type="text"
+                    value={className}
+                    onChange={(e) => setClassName(e.target.value)}
+                    placeholder="e.g., 10"
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  Topic (optional)
-                </label>
-                <input
-                  type="text"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  placeholder="e.g., Calculus"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                />
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">
+                    Board
+                  </label>
+                  <input
+                    type="text"
+                    value={board}
+                    onChange={(e) => setBoard(e.target.value)}
+                    placeholder="e.g., CBSE"
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  OCR Provider
-                </label>
-                <select
-                  value={ocrProvider}
-                  onChange={(e) =>
-                    setOcrProvider(
-                      e.target.value as "groq" | "gemini" | "tesseract"
-                    )
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                >
-                  <option value="tesseract">Tesseract (On-device OCR)</option>
-                  <option value="groq">Groq (Fast)</option>
-                  <option value="gemini">Gemini (Accurate)</option>
-                </select>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">
+                    Chapter
+                  </label>
+                  <input
+                    type="text"
+                    value={chapter}
+                    onChange={(e) => setChapter(e.target.value)}
+                    placeholder="e.g., Algebra"
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">
+                    Section
+                  </label>
+                  <input
+                    type="text"
+                    value={section}
+                    onChange={(e) => setSection(e.target.value)}
+                    placeholder="e.g., Objective"
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">
+                    Marks
+                  </label>
+                  <input
+                    type="number"
+                    value={marks}
+                    onChange={(e) => setMarks(e.target.value)}
+                    placeholder="e.g., 1"
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  />
+                </div>
               </div>
+            </div>
+
+            {/* OCR Provider */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">
+                OCR Provider
+              </label>
+              <select
+                value={ocrProvider}
+                onChange={(e) =>
+                  setOcrProvider(
+                    e.target.value as "groq" | "gemini" | "tesseract"
+                  )
+                }
+                className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+              >
+                <option value="tesseract">Tesseract (On-device OCR)</option>
+                <option value="groq">Groq (Fast)</option>
+                <option value="gemini">Gemini (Accurate)</option>
+              </select>
             </div>
 
             {/* File Upload Area */}
             <div
               className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-300 ${
                 dragActive
-                  ? "border-blue-500 bg-blue-50"
+                  ? "border-emerald-500 bg-emerald-50"
                   : selectedFile
                   ? "border-green-500 bg-green-50"
-                  : "border-gray-300 hover:border-gray-400"
+                  : "border-emerald-200 hover:border-emerald-300"
               }`}
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
@@ -570,18 +658,18 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   animate={{ opacity: 1, scale: 1 }}
                   className="space-y-4"
                 >
-                  <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
+                  <div className="w-16 h-16 mx-auto bg-emerald-100 rounded-full flex items-center justify-center">
                     {selectedFile.type === "application/pdf" ? (
-                      <DocumentTextIcon className="w-8 h-8 text-green-600" />
+                      <DocumentTextIcon className="w-8 h-8 text-emerald-600" />
                     ) : (
-                      <PhotoIcon className="w-8 h-8 text-green-600" />
+                      <PhotoIcon className="w-8 h-8 text-emerald-600" />
                     )}
                   </div>
                   <div>
-                    <p className="text-lg font-medium text-green-700">
+                    <p className="text-lg font-medium text-emerald-700">
                       {selectedFile.name}
                     </p>
-                    <p className="text-sm text-green-600">
+                    <p className="text-sm text-emerald-600">
                       {(selectedFile.size / 1024 / 1024).toFixed(2)} MB •{" "}
                       {selectedFile.type}
                     </p>
@@ -589,13 +677,13 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   <div className="flex items-center justify-center gap-3">
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-4 py-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      className="px-4 py-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium rounded-lg hover:bg-emerald-50"
                     >
                       Change File
                     </button>
                     <button
                       onClick={() => setSelectedFile(null)}
-                      className="px-4 py-2 text-sm text-red-600 hover:text-red-700 font-medium"
+                      className="px-4 py-2 text-sm text-red-600 hover:text-red-700 font-medium rounded-lg hover:bg-red-50"
                     >
                       Remove
                     </button>
@@ -603,24 +691,24 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                 </motion.div>
               ) : (
                 <div className="space-y-4">
-                  <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
-                    <DocumentArrowUpIcon className="w-8 h-8 text-gray-400" />
+                  <div className="w-16 h-16 mx-auto bg-emerald-100 rounded-full flex items-center justify-center">
+                    <DocumentArrowUpIcon className="w-8 h-8 text-emerald-600" />
                   </div>
                   <div>
-                    <p className="text-lg font-medium text-gray-700">
+                    <p className="text-lg font-medium text-emerald-900">
                       Drop your question paper here
                     </p>
                     <p className="text-sm text-gray-500 mt-2">
                       or{" "}
                       <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="text-blue-600 hover:text-blue-700 font-medium"
+                        className="text-emerald-600 hover:text-emerald-700 font-semibold"
                       >
                         browse files
                       </button>
                     </p>
                   </div>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-500">
                     Supports PDF, JPG, PNG, GIF, BMP • Max 50MB
                   </p>
                 </div>
@@ -632,10 +720,10 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
               <motion.button
                 onClick={handleUpload}
                 disabled={!selectedFile || uploading || !subject.trim()}
-                className={`px-8 py-3 rounded-xl font-medium transition-all duration-300 flex items-center gap-2 ${
+                className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center gap-2 ${
                   !selectedFile || uploading || !subject.trim()
                     ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                    : "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 shadow-lg hover:shadow-xl"
+                    : "bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 shadow-lg hover:shadow-xl"
                 }`}
                 whileHover={
                   !selectedFile || uploading || !subject.trim()
@@ -1103,9 +1191,70 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                 </button>
 
                 <motion.button
-                  onClick={() => {
-                    // Handle saving to question bank
-                    alert("Questions saved to question bank!");
+                  onClick={async () => {
+                    try {
+                      const approved = questions.filter(
+                        (q) => q.status === "approved"
+                      );
+                      if (approved.length === 0) {
+                        setError("Please approve some questions first");
+                        return;
+                      }
+                      if (!className.trim()) {
+                        setError(
+                          "Class is required to save questions (per-class storage)"
+                        );
+                        return;
+                      }
+
+                      const payload = approved.map((q) => ({
+                        text: q.text,
+                        type: q.type || "mcq",
+                        subject: subject.trim(),
+                        topic: topic.trim() || undefined,
+                        // per-class metadata
+                        class: className.trim(),
+                        board: board.trim() || undefined,
+                        chapter: chapter.trim() || undefined,
+                        section: section.trim() || undefined,
+                        marks: marks.trim() ? Number(marks) : undefined,
+                        source: "Import",
+                        options: q.options,
+                        correctAnswerText: q.correctAnswerText,
+                        explanation: q.explanation,
+                        diagramUrl: q.diagramUrl,
+                      }));
+
+                      const result = (await apiFetch("/api/ai/save-questions", {
+                        method: "POST",
+                        body: JSON.stringify({ questions: payload }),
+                      })) as {
+                        success: boolean;
+                        data: {
+                          saved: number;
+                          skipped: number;
+                          questions: unknown[];
+                        };
+                      };
+
+                      setSuccess(
+                        `Saved ${result.data.saved}/${
+                          approved.length
+                        } questions. ${
+                          result.data.skipped > 0
+                            ? `Skipped ${result.data.skipped} duplicates.`
+                            : ""
+                        }`
+                      );
+                      setError(null);
+                    } catch (e) {
+                      console.error(e);
+                      setError(
+                        e instanceof Error
+                          ? e.message
+                          : "Failed to save questions"
+                      );
+                    }
                   }}
                   className="px-6 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white font-medium rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                   whileHover={{ scale: 1.02 }}
