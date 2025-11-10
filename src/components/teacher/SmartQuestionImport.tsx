@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DocumentArrowUpIcon,
@@ -7,12 +7,52 @@ import {
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  EyeIcon,
   DocumentTextIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { apiFetch } from "../../lib/api";
-import MathText from "../ui/MathText";
+// Removed inline preview dependencies (MathText/Image) for modal-only flow
+import Router from "next/router";
+import SmartImportPreviewModal from "./SmartImportPreviewModal";
+
+// Static option sets
+const SUBJECT_OPTIONS = [
+  "Mathematics",
+  "Physics",
+  "Chemistry",
+  "Biology",
+  "Science",
+  "Social Science",
+  "English",
+  "Hindi",
+  "Computer Science",
+  "Economics",
+  "Accountancy",
+  "Business Studies",
+  "History",
+  "Geography",
+  "Civics",
+];
+
+const CLASS_OPTIONS = ["6", "7", "8", "9", "10", "11", "12"];
+
+const BOARD_OPTIONS = [
+  "CBSE",
+  "ICSE",
+  "GSEB",
+  "JEE",
+  "NEET",
+  "Olympiad",
+  "Custom",
+];
+
+const SECTION_OPTIONS = [
+  "Objective",
+  "Very Short",
+  "Short",
+  "Long",
+  "Case Study",
+];
 
 interface ImportedQuestion {
   _id: string;
@@ -55,11 +95,7 @@ interface ImportBatch {
   error?: string;
 }
 
-interface BlueprintItem {
-  _id: string;
-  name: string;
-  examTitle: string;
-}
+// BlueprintItem interface removed (blueprint feature deferred)
 
 interface SmartImportProps {
   onClose?: () => void;
@@ -76,22 +112,17 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(
     new Set()
   );
-  const [previewMode, setPreviewMode] = useState<"grid" | "list">("list");
-  const [filterStatus, setFilterStatus] = useState<
-    "all" | "pending" | "approved" | "rejected"
-  >("all");
+  // Removed inline preview state (grid/list, filters)
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [blueprints, setBlueprints] = useState<BlueprintItem[]>([]);
-  const [selectedBlueprintId, setSelectedBlueprintId] = useState<string>("");
-  const [creatingPaper, setCreatingPaper] = useState(false);
+  // Removed blueprint selection state for simplified flow
+
+  // Inline edit state removed (handled in modal)
 
   // Form fields
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
-  const [ocrProvider, setOcrProvider] = useState<
-    "groq" | "gemini" | "tesseract"
-  >("tesseract");
+  const [ocrProvider] = useState<"tesseract">("tesseract");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -161,6 +192,39 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   const [section, setSection] = useState("");
   const [marks, setMarks] = useState("");
 
+  // Unsaved changes detection now limited to modal actions; inline edit tracker removed
+  const hasUnsavedEdits = false;
+
+  // Warn on browser/tab close
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!hasUnsavedEdits) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsavedEdits]);
+
+  // Intercept internal route changes (Next.js pages router)
+  useEffect(() => {
+    const routeChangeStart = () => {
+      if (!hasUnsavedEdits) return;
+      const ok = window.confirm(
+        "You have unsaved changes to a question. Are you sure you want to leave this page?"
+      );
+      if (!ok) {
+        Router.events.emit("routeChangeError");
+        // Abort the route change by throwing; Next.js will catch this
+        throw new Error("Route change aborted.");
+      }
+    };
+    Router.events.on("routeChangeStart", routeChangeStart);
+    return () => {
+      Router.events.off("routeChangeStart", routeChangeStart);
+    };
+  }, [hasUnsavedEdits]);
+
   // Upload and process file with new validation endpoint
   const handleUpload = async () => {
     if (!selectedFile) {
@@ -214,12 +278,9 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
         processingTime: number;
       };
 
-      setSuccess(
-        `Successfully processed ${result.processedQuestions} questions from ${result.totalQuestions} found. Questions saved with validation, sanitization, and LaTeX conversion.`
-      );
-
-      // Fetch the batch details and questions
+      // Instead of showing a banner, immediately fetch details and open the preview modal
       await fetchBatchDetails(result.batchId);
+      setIsPreviewOpen(true);
 
       setUploading(false);
       setProcessing(false);
@@ -298,133 +359,106 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
     }
   };
 
-  const updateQuestionStatus = async (
-    questionId: string,
-    action: "approve" | "reject"
-  ) => {
-    try {
-      await apiFetch(`/api/import-paper/question/${questionId}`, {
-        method: "PUT",
-        body: JSON.stringify({ action }),
-      });
-
-      // Update local state
-      setQuestions((prev) =>
-        prev.map((q) =>
-          q._id === questionId
-            ? { ...q, status: action === "approve" ? "approved" : "rejected" }
-            : q
-        )
-      );
-
-      setSuccess(`Question ${action}d successfully`);
-    } catch {
-      setError(`Failed to ${action} question`);
-    }
-  };
+  // updateQuestionStatus removed (status changes via modal bulk actions)
 
   // Filter questions
-  const getFilteredQuestions = () => {
-    return questions.filter((q) => {
-      if (filterStatus === "all") return true;
-      return q.status === filterStatus;
-    });
-  };
+  const getFilteredQuestions = () => questions;
 
-  const resetForm = () => {
-    setSelectedFile(null);
-    setCurrentBatch(null);
-    setQuestions([]);
-    setSelectedQuestions(new Set());
-    setSubject("");
-    setTopic("");
-    setError(null);
-    setSuccess(null);
-    setUploading(false);
-    setProcessing(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
+  // resetForm removed (not needed in simplified flow)
 
-  const filteredQuestions = getFilteredQuestions();
+  // filteredQuestions removed
 
   // Load blueprints (on demand)
-  const loadBlueprints = async () => {
-    try {
-      const data = (await apiFetch("/api/blueprints")) as {
-        items: BlueprintItem[];
-      };
-      setBlueprints(data.items || []);
-    } catch {
-      setError("Failed to load blueprints");
-    }
-  };
+  // Blueprint loading removed
 
-  const attachDiagram = async (questionId: string, file: File) => {
-    try {
-      const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-      const form = new FormData();
-      form.append("image", file);
-      const resp = await fetch(
-        `${base}/api/import-paper/question/${questionId}/diagram`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${
-              localStorage.getItem("accessToken") || ""
-            }`,
-          },
-          body: form,
-        }
-      );
-      if (!resp.ok) throw new Error("Upload failed");
-      const json = await resp.json();
-      setQuestions((prev) =>
-        prev.map((q) =>
-          q._id === questionId
-            ? {
-                ...q,
-                diagramUrl:
-                  json.data?.question?.diagramUrl || json.question?.diagramUrl,
-              }
-            : q
-        )
-      );
-      setSuccess("Diagram uploaded");
-    } catch {
-      setError("Failed to upload diagram");
-    }
-  };
+  // attachDiagram removed (handled in modal)
 
-  const createPaperFromBlueprint = async () => {
-    if (!selectedBlueprintId) {
-      setError("Please select a blueprint");
+  // removeDiagram removed (handled in modal)
+
+  // Editing helpers
+  // beginEdit removed (editing moved to modal)
+
+  // cancelEdit removed
+
+  // updateEditField removed
+
+  // saveEdit removed
+
+  // Blueprint paper creation removed
+
+  // Open preview modal when questions are available
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Ensure preview opens after fetch completes
+  useEffect(() => {
+    if (questions.length > 0) {
+      setIsPreviewOpen(true);
+    }
+  }, [questions.length]);
+
+  // Save selected questions to DB
+  // Optionally accepts per-question overrides (from preview modal edits)
+  const saveSelectedToBank = async (
+    overrides?: Record<
+      string,
+      Partial<
+        Pick<
+          ImportedQuestion,
+          "text" | "type" | "options" | "correctAnswerText" | "diagramUrl"
+        >
+      >
+    >
+  ) => {
+    if (!className.trim()) {
+      setError("Class is required to save questions (per-class storage)");
       return;
     }
-    const picked = Array.from(selectedQuestions);
-    if (picked.length === 0) {
-      setError("Please select at least one question");
+    const selected = questions.filter((q) => selectedQuestions.has(q._id));
+    if (selected.length === 0) {
+      setError("Please select at least one question to save");
       return;
     }
+
     try {
-      setCreatingPaper(true);
-      await apiFetch("/api/import-paper/create-paper", {
+      const payload = selected.map((q) => ({
+        text: overrides?.[q._id]?.text ?? q.text,
+        type: (overrides?.[q._id]?.type as ImportedQuestion["type"]) ?? q.type,
+        subject: subject.trim(),
+        topic: topic.trim() || undefined,
+        class: className.trim(),
+        board: board.trim() || undefined,
+        chapter: chapter.trim() || undefined,
+        section: section.trim() || undefined,
+        marks: marks.trim() ? Number(marks) : undefined,
+        source: "Import",
+        options:
+          (overrides?.[q._id]?.options as
+            | { text: string; isCorrect: boolean }[]
+            | undefined) ?? q.options,
+        correctAnswerText:
+          (overrides?.[q._id]?.correctAnswerText as string | undefined) ??
+          q.correctAnswerText,
+        explanation: q.explanation,
+        diagramUrl:
+          (overrides?.[q._id]?.diagramUrl as string | undefined) ??
+          (q as unknown as { diagramUrl?: string }).diagramUrl,
+      }));
+
+      const result = (await apiFetch("/api/ai/save-questions", {
         method: "POST",
-        body: JSON.stringify({
-          blueprintId: selectedBlueprintId,
-          questionIds: picked,
-        }),
-      });
+        body: JSON.stringify({ questions: payload }),
+      })) as { success: boolean; data?: { saved: number; skipped: number } };
+      const saved = result?.data?.saved ?? payload.length;
+      const skipped = result?.data?.skipped ?? 0;
       setSuccess(
-        "Paper created from blueprint. You can export it from Papers."
+        `Saved ${saved}/${payload.length} questions.${
+          skipped ? ` Skipped ${skipped} duplicates.` : ""
+        }`
       );
+      setIsPreviewOpen(false);
       setSelectedQuestions(new Set());
-    } catch {
-      setError("Failed to create paper from blueprint");
-    } finally {
-      setCreatingPaper(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save questions");
     }
   };
 
@@ -454,7 +488,15 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
             </div>
             {onClose && (
               <button
-                onClick={onClose}
+                onClick={() => {
+                  if (hasUnsavedEdits) {
+                    const ok = window.confirm(
+                      "You have unsaved changes to a question. Discard and close?"
+                    );
+                    if (!ok) return;
+                  }
+                  onClose();
+                }}
                 className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
               >
                 <XMarkIcon className="w-5 h-5" />
@@ -491,13 +533,21 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
               className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3"
             >
               <CheckCircleIcon className="w-5 h-5 text-green-500 flex-shrink-0" />
-              <p className="text-green-700">{success}</p>
-              <button
-                onClick={() => setSuccess(null)}
-                className="ml-auto p-1 text-green-400 hover:text-green-600"
-              >
-                <XMarkIcon className="w-4 h-4" />
-              </button>
+              <p className="text-green-700 flex-1">{success}</p>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => setIsPreviewOpen(true)}
+                  className="px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-100 rounded-lg hover:bg-emerald-200"
+                >
+                  Review now
+                </button>
+                <button
+                  onClick={() => setSuccess(null)}
+                  className="p-1 text-green-400 hover:text-green-600"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -519,13 +569,18 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   <label className="text-sm font-medium text-gray-700">
                     Subject *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    placeholder="e.g., Mathematics"
-                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
-                  />
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                  >
+                    <option value="">Select subject</option>
+                    {SUBJECT_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
@@ -545,13 +600,18 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   <label className="text-sm font-medium text-gray-700">
                     Class
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={className}
                     onChange={(e) => setClassName(e.target.value)}
-                    placeholder="e.g., 10"
-                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
-                  />
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                  >
+                    <option value="">Select class</option>
+                    {CLASS_OPTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -560,13 +620,18 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   <label className="text-sm font-medium text-gray-700">
                     Board
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={board}
                     onChange={(e) => setBoard(e.target.value)}
-                    placeholder="e.g., CBSE"
-                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
-                  />
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                  >
+                    <option value="">Select board</option>
+                    {BOARD_OPTIONS.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
@@ -586,13 +651,18 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   <label className="text-sm font-medium text-gray-700">
                     Section
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={section}
                     onChange={(e) => setSection(e.target.value)}
-                    placeholder="e.g., Objective"
-                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
-                  />
+                    className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                  >
+                    <option value="">Select section</option>
+                    {SECTION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
@@ -610,48 +680,27 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
               </div>
             </div>
 
-            {/* OCR Provider */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700">
-                OCR Provider
-              </label>
-              <select
-                value={ocrProvider}
-                onChange={(e) =>
-                  setOcrProvider(
-                    e.target.value as "groq" | "gemini" | "tesseract"
-                  )
-                }
-                className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
-              >
-                <option value="tesseract">Tesseract (On-device OCR)</option>
-                <option value="groq">Groq (Fast)</option>
-                <option value="gemini">Gemini (Accurate)</option>
-              </select>
-            </div>
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={handleFileInput}
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp"
+              className="sr-only"
+            />
 
-            {/* File Upload Area */}
+            {/* File selection / drag target (inline preview launcher removed) */}
             <div
-              className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-300 ${
+              className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
                 dragActive
                   ? "border-emerald-500 bg-emerald-50"
-                  : selectedFile
-                  ? "border-green-500 bg-green-50"
-                  : "border-emerald-200 hover:border-emerald-300"
+                  : "border-emerald-300"
               }`}
               onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
               onDragOver={handleDrag}
+              onDragLeave={handleDrag}
               onDrop={handleDrop}
             >
-              <input
-                ref={fileInputRef}
-                type="file"
-                onChange={handleFileInput}
-                accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp"
-                className="sr-only"
-              />
-
               {selectedFile ? (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}
@@ -801,471 +850,22 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           </motion.div>
         )}
 
-        {/* Questions Preview */}
-        {questions.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg overflow-hidden"
-          >
-            {/* Header */}
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <EyeIcon className="w-6 h-6 text-blue-500" />
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    Extracted Questions ({filteredQuestions.length})
-                  </h3>
-                </div>
+        {/* Inline preview removed. All review happens in modal. */}
 
-                <div className="flex items-center gap-3">
-                  {/* Filter */}
-                  <select
-                    value={filterStatus}
-                    onChange={(e) =>
-                      setFilterStatus(
-                        e.target.value as
-                          | "all"
-                          | "pending"
-                          | "approved"
-                          | "rejected"
-                      )
-                    }
-                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="all">All Questions</option>
-                    <option value="pending">Pending Review</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
+        {/* Bottom actions removed in modal-only flow */}
 
-                  <button
-                    onClick={() =>
-                      setPreviewMode(previewMode === "list" ? "grid" : "list")
-                    }
-                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    {previewMode === "list" ? "Grid View" : "List View"}
-                  </button>
-                </div>
-              </div>
-
-              {/* Bulk Actions */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={selectAllQuestions}
-                    className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    Select All
-                  </button>
-                  <button
-                    onClick={deselectAllQuestions}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-700 font-medium"
-                  >
-                    Deselect All
-                  </button>
-                  {selectedQuestions.size > 0 && (
-                    <span className="text-sm text-gray-500">
-                      {selectedQuestions.size} selected
-                    </span>
-                  )}
-                </div>
-
-                {selectedQuestions.size > 0 && (
-                  <div className="flex items-center gap-2">
-                    <motion.button
-                      onClick={bulkApproveQuestions}
-                      className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <CheckCircleIcon className="w-4 h-4 inline mr-1" />
-                      Approve Selected
-                    </motion.button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Questions List */}
-            <div className="max-h-[600px] overflow-y-auto">
-              {filteredQuestions.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  <DocumentTextIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No questions match the selected filter</p>
-                </div>
-              ) : (
-                <div
-                  className={
-                    previewMode === "grid"
-                      ? "grid grid-cols-1 md:grid-cols-2 gap-4 p-4"
-                      : "divide-y divide-gray-200"
-                  }
-                >
-                  {filteredQuestions.map((question, index) => (
-                    <motion.div
-                      key={question._id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className={`${
-                        previewMode === "grid"
-                          ? "border border-gray-200 rounded-xl p-4 bg-white"
-                          : "p-4 hover:bg-gray-50"
-                      } transition-colors`}
-                    >
-                      <div className="flex items-start gap-3">
-                        {/* Checkbox */}
-                        <input
-                          type="checkbox"
-                          checked={selectedQuestions.has(question._id)}
-                          onChange={() => toggleQuestionSelection(question._id)}
-                          className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-                        />
-
-                        {/* Question Content */}
-                        <div className="flex-1 min-w-0">
-                          {/* Header */}
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                Q{question.questionNumber}
-                              </span>
-                              <span
-                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                  question.type === "mcq"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : question.type === "truefalse"
-                                    ? "bg-green-100 text-green-800"
-                                    : question.type === "fill"
-                                    ? "bg-purple-100 text-purple-800"
-                                    : question.type === "short"
-                                    ? "bg-orange-100 text-orange-800"
-                                    : question.type === "long"
-                                    ? "bg-red-100 text-red-800"
-                                    : question.type === "assertionreason"
-                                    ? "bg-indigo-100 text-indigo-800"
-                                    : "bg-teal-100 text-teal-800"
-                                }`}
-                              >
-                                {question.type.toUpperCase()}
-                              </span>
-                              <span
-                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                  question.status === "approved"
-                                    ? "bg-green-100 text-green-800"
-                                    : question.status === "rejected"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-yellow-100 text-yellow-800"
-                                }`}
-                              >
-                                {question.status.charAt(0).toUpperCase() +
-                                  question.status.slice(1)}
-                              </span>
-                              {(question.confidence > 1
-                                ? question.confidence
-                                : question.confidence * 100) < 80 && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                                  Low Confidence
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              {question.status === "pending" && (
-                                <>
-                                  <button
-                                    onClick={() =>
-                                      updateQuestionStatus(
-                                        question._id,
-                                        "approve"
-                                      )
-                                    }
-                                    className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                    title="Approve"
-                                  >
-                                    <CheckCircleIcon className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      updateQuestionStatus(
-                                        question._id,
-                                        "reject"
-                                      )
-                                    }
-                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Reject"
-                                  >
-                                    <XMarkIcon className="w-4 h-4" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Question Text */}
-                          <div className="mb-3">
-                            <p className="text-gray-900 leading-relaxed whitespace-pre-wrap">
-                              <MathText text={question.text} />
-                            </p>
-                          </div>
-
-                          {/* Options for MCQ */}
-                          {question.type === "mcq" && question.options && (
-                            <div className="mb-3 space-y-1">
-                              {question.options.map((option, idx) => (
-                                <div
-                                  key={idx}
-                                  className={`flex items-start gap-2 text-sm p-2 rounded-lg ${
-                                    option.isCorrect
-                                      ? "bg-green-50 text-green-800"
-                                      : "text-gray-600"
-                                  }`}
-                                >
-                                  <span className="font-medium">
-                                    {String.fromCharCode(65 + idx)}.
-                                  </span>
-                                  <span className="flex-1">
-                                    <MathText text={option.text} inline />
-                                  </span>
-                                  {option.isCorrect && (
-                                    <CheckCircleIcon className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Correct Answer for non-MCQ */}
-                          {question.type !== "mcq" &&
-                            (question.correctAnswer ??
-                            question.correctAnswerText
-                              ? true
-                              : false) && (
-                              <div className="mb-3 p-2 bg-green-50 rounded-lg">
-                                <p className="text-sm">
-                                  <span className="font-medium text-green-800">
-                                    Answer:
-                                  </span>{" "}
-                                  <span className="text-green-700">
-                                    <MathText
-                                      text={
-                                        (question.correctAnswer ??
-                                          question.correctAnswerText) as string
-                                      }
-                                      inline
-                                    />
-                                  </span>
-                                </p>
-                              </div>
-                            )}
-
-                          {/* Explanation */}
-                          {question.explanation && (
-                            <div className="mb-3 p-2 bg-blue-50 rounded-lg">
-                              <p className="text-sm">
-                                <span className="font-medium text-blue-800">
-                                  Explanation:
-                                </span>{" "}
-                                <span className="text-blue-700">
-                                  <MathText text={question.explanation} />
-                                </span>
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Metadata */}
-                          <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <span>
-                              Confidence:{" "}
-                              {Math.round(
-                                question.confidence > 1
-                                  ? question.confidence
-                                  : question.confidence * 100
-                              )}
-                              %
-                            </span>
-                            {question.extractedText && (
-                              <span>
-                                Original Position: {question.originalPosition}
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <label className="text-xs text-gray-500">
-                              Attach diagram:
-                            </label>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) attachDiagram(question._id, file);
-                              }}
-                              className="text-xs"
-                            />
-                            {question.diagramUrl && (
-                              <a
-                                href={question.diagramUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs text-blue-600 underline"
-                              >
-                                View
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Bottom Actions */}
-        {questions.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6"
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                {questions.filter((q) => q.status === "approved").length} of{" "}
-                {questions.length} questions approved
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={loadBlueprints}
-                    className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    Load Blueprints
-                  </button>
-                  {blueprints.length > 0 && (
-                    <select
-                      value={selectedBlueprintId}
-                      onChange={(e) => setSelectedBlueprintId(e.target.value)}
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg"
-                    >
-                      <option value="">Select Blueprint</option>
-                      {blueprints.map((bp) => (
-                        <option key={bp._id} value={bp._id}>
-                          {bp.examTitle || bp.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <motion.button
-                    onClick={createPaperFromBlueprint}
-                    disabled={!selectedBlueprintId || creatingPaper}
-                    className={`px-4 py-2 ${
-                      !selectedBlueprintId || creatingPaper
-                        ? "bg-gray-100 text-gray-400"
-                        : "bg-blue-600 text-white hover:bg-blue-700"
-                    } rounded-lg text-sm`}
-                    whileHover={
-                      !selectedBlueprintId || creatingPaper
-                        ? {}
-                        : { scale: 1.02 }
-                    }
-                    whileTap={
-                      !selectedBlueprintId || creatingPaper
-                        ? {}
-                        : { scale: 0.98 }
-                    }
-                  >
-                    {creatingPaper ? "Creating…" : "Add to Blueprint → Paper"}
-                  </motion.button>
-                </div>
-                <button
-                  onClick={resetForm}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors"
-                >
-                  Import Another Paper
-                </button>
-
-                <motion.button
-                  onClick={async () => {
-                    try {
-                      const approved = questions.filter(
-                        (q) => q.status === "approved"
-                      );
-                      if (approved.length === 0) {
-                        setError("Please approve some questions first");
-                        return;
-                      }
-                      if (!className.trim()) {
-                        setError(
-                          "Class is required to save questions (per-class storage)"
-                        );
-                        return;
-                      }
-
-                      const payload = approved.map((q) => ({
-                        text: q.text,
-                        type: q.type || "mcq",
-                        subject: subject.trim(),
-                        topic: topic.trim() || undefined,
-                        // per-class metadata
-                        class: className.trim(),
-                        board: board.trim() || undefined,
-                        chapter: chapter.trim() || undefined,
-                        section: section.trim() || undefined,
-                        marks: marks.trim() ? Number(marks) : undefined,
-                        source: "Import",
-                        options: q.options,
-                        correctAnswerText: q.correctAnswerText,
-                        explanation: q.explanation,
-                        diagramUrl: q.diagramUrl,
-                      }));
-
-                      const result = (await apiFetch("/api/ai/save-questions", {
-                        method: "POST",
-                        body: JSON.stringify({ questions: payload }),
-                      })) as {
-                        success: boolean;
-                        data: {
-                          saved: number;
-                          skipped: number;
-                          questions: unknown[];
-                        };
-                      };
-
-                      setSuccess(
-                        `Saved ${result.data.saved}/${
-                          approved.length
-                        } questions. ${
-                          result.data.skipped > 0
-                            ? `Skipped ${result.data.skipped} duplicates.`
-                            : ""
-                        }`
-                      );
-                      setError(null);
-                    } catch (e) {
-                      console.error(e);
-                      setError(
-                        e instanceof Error
-                          ? e.message
-                          : "Failed to save questions"
-                      );
-                    }
-                  }}
-                  className="px-6 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white font-medium rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-300 shadow-lg hover:shadow-xl"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  Save to Question Bank
-                </motion.button>
-              </div>
-            </div>
-          </motion.div>
-        )}
+        {/* Preview & Save Modal */}
+        <SmartImportPreviewModal
+          isOpen={isPreviewOpen}
+          onClose={() => setIsPreviewOpen(false)}
+          questions={questions}
+          selectedIds={selectedQuestions}
+          onToggleSelect={toggleQuestionSelection}
+          onSelectAll={selectAllQuestions}
+          onDeselectAll={deselectAllQuestions}
+          onApproveSelected={bulkApproveQuestions}
+          onSaveSelected={saveSelectedToBank}
+        />
       </div>
     </div>
   );

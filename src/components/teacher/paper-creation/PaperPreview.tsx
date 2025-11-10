@@ -92,13 +92,14 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
     setSaving(true);
     try {
       const paperData = {
-        title: formData.examTitle,
+        examTitle: formData.examTitle,
         className: formData.className,
         subject: formData.subject,
         board: formData.board,
         date: formData.date,
         duration: formData.duration,
         instituteName: formData.instituteName,
+        totalMarks: calculateTotalMarks(),
         sections: formData.sections.map((section) => ({
           title: section.title,
           marksPerQuestion: section.marksPerQuestion,
@@ -532,7 +533,7 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
     .instructions-box li {
       margin-bottom: 8pt;
       line-height: 1.5;
-      page-break-inside: avoid;
+    
     }
     .section {
       margin: 20pt 0;
@@ -722,17 +723,35 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
   };
 
   // Print only the preview area using the same styles as the page
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const el = document.getElementById("paper-preview");
     if (!el) return notify.error("Preview element not found");
+
+    // Ensure all content is rendered before printing
+    try {
+      // Wait for MathJax if present
+      const win = window as unknown as {
+        MathJax?: { typesetPromise?: () => Promise<void> };
+      };
+      if (win?.MathJax?.typesetPromise) {
+        await win.MathJax.typesetPromise();
+      }
+    } catch {
+      console.log("MathJax not ready, continuing with print");
+    }
+
+    // Add print class and trigger print
     document.body.classList.add("print-only-preview");
+
+    // Small delay to ensure styles are applied
     setTimeout(() => {
       window.print();
-      setTimeout(
-        () => document.body.classList.remove("print-only-preview"),
-        100
-      );
-    }, 50);
+
+      // Remove print class after print dialog closes
+      setTimeout(() => {
+        document.body.classList.remove("print-only-preview");
+      }, 100);
+    }, 100);
   };
 
   return (
@@ -781,24 +800,83 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
           border-top-width: 2px !important;
         }
         @media print {
+          /* Hide everything except the paper preview */
           .no-print {
             display: none !important;
           }
           body.print-only-preview * {
             visibility: hidden !important;
           }
+          /* Make preview and its children visible */
           body.print-only-preview #paper-preview,
           body.print-only-preview #paper-preview * {
             visibility: visible !important;
           }
-          body.print-only-preview #paper-preview {
-            position: absolute;
-            inset: 0;
-            margin: 0 auto;
-            width: 210mm;
-            background: #fff;
+          /* Override hidden class on parent containers */
+          body.print-only-preview .hidden {
+            display: block !important;
           }
-          /* Ensure crisp rules in printed output as well */
+          /* Position and style the preview for printing */
+          body.print-only-preview #paper-preview {
+            position: static !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            background: #fff !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+          }
+          /* Remove ALL padding and spacing from paper-preview and parent containers */
+          body.print-only-preview #paper-preview {
+            padding: 0 !important;
+          }
+          body.print-only-preview #paper-preview > * {
+            padding-top: 0 !important;
+          }
+          body.print-only-preview #paper-preview > *:first-child {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+          }
+          /* Also remove padding from parent wrapper divs */
+          body.print-only-preview .max-w-\[210mm\] {
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+          }
+          /* Minimal spacing between main sections - tight layout */
+          body.print-only-preview #paper-preview > * {
+            margin-top: 0.5rem !important;
+            margin-bottom: 0.5rem !important;
+          }
+          body.print-only-preview #paper-preview > *:first-child {
+            margin-top: 0 !important;
+          }
+          /* Instructions - minimal bottom margin (one line gap) */
+          body.print-only-preview #paper-preview .border-2.border-gray-300 {
+            margin-bottom: 0.5rem !important;
+            page-break-inside: avoid !important;
+            page-break-after: avoid !important; /* DO NOT break after instructions */
+          }
+          /* Page break controls - prevent breaks inside elements */
+          body.print-only-preview #paper-preview h1,
+          body.print-only-preview #paper-preview h2,
+          body.print-only-preview #paper-preview h3,
+          body.print-only-preview #paper-preview h4,
+          body.print-only-preview #paper-preview .border-4 {
+            page-break-after: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          /* Section headers - avoid orphaning */
+          body.print-only-preview #paper-preview .border-b-2 {
+            page-break-after: avoid !important;
+          }
+          /* Individual question - try to keep together */
+          body.print-only-preview #paper-preview .space-y-4 > div {
+            page-break-inside: avoid !important;
+          }
+          /* Ensure crisp rules in printed output */
           body.print-only-preview #paper-preview .katex .frac-line,
           body.print-only-preview #paper-preview .katex .mfrac .frac-line {
             border-bottom-width: 2px !important;
@@ -806,9 +884,23 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
           body.print-only-preview #paper-preview .katex .sqrt .vinculum {
             border-top-width: 2px !important;
           }
+          /* A4 page setup with NO headers/footers */
           @page {
             size: A4;
-            margin: 0;
+            margin: 15mm 12mm;
+          }
+          /* Remove browser default headers and footers */
+          @page {
+            margin-top: 15mm;
+            margin-bottom: 15mm;
+            margin-left: 12mm;
+            margin-right: 12mm;
+          }
+          /* Remove extra padding from the container */
+          html,
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
           }
         }
       `}</style>

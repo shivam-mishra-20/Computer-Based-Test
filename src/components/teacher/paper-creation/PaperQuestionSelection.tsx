@@ -8,6 +8,7 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  X,
 } from "lucide-react";
 import { PaperFormData } from "../CreatePaperFlow";
 import { Card } from "../../ui/card";
@@ -23,6 +24,10 @@ interface Question {
   _id: string;
   text: string;
   type: string;
+  subject?: string;
+  chapter?: string;
+  topic?: string;
+  difficulty?: string;
   tags?: {
     subject?: string;
     topic?: string;
@@ -30,6 +35,14 @@ interface Question {
   };
   options?: Array<{ text: string; isCorrect?: boolean }>;
   explanation?: string;
+}
+
+interface Topic {
+  subject: string;
+  topic: string;
+  chapter?: string;
+  board?: string;
+  count: number;
 }
 
 interface Section {
@@ -90,6 +103,9 @@ export default function PaperQuestionSelection({
   const [expandedSections, setExpandedSections] = useState<Set<number>>(
     new Set([0])
   );
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [selectedTopic, setSelectedTopic] = useState<string>("");
+  const [loadingTopics, setLoadingTopics] = useState(false);
 
   // Initialize sections using blueprint if not already done
   useEffect(() => {
@@ -164,6 +180,67 @@ export default function PaperQuestionSelection({
     }
   }
 
+  // Load available topics based on selected chapters
+  const loadTopics = useCallback(async () => {
+    if (!formData.className || formData.selectedChapters.length === 0) {
+      setTopics([]);
+      setSelectedTopic(""); // Clear selected topic when no chapters
+      return;
+    }
+
+    setLoadingTopics(true);
+    try {
+      // Fetch topics for all selected chapters
+      const allTopics: Topic[] = [];
+
+      for (const chapter of formData.selectedChapters) {
+        const params = new URLSearchParams({
+          subject: formData.subject,
+          class: formData.className,
+        });
+
+        if (formData.board) {
+          params.append("board", formData.board);
+        }
+
+        const response = (await apiFetch(
+          `/api/exams/questions/topics?${params.toString()}`
+        )) as Topic[];
+
+        // Filter to only topics from this specific chapter
+        const chapterTopics = response.filter((t) => t.chapter === chapter);
+        allTopics.push(...chapterTopics);
+      }
+
+      // Remove duplicate topics (in case a topic appears in multiple chapters)
+      const uniqueTopics = Array.from(
+        new Map(allTopics.map((t) => [t.topic, t])).values()
+      );
+
+      setTopics(uniqueTopics);
+
+      // Clear selected topic if it's not in the new topics list
+      if (
+        selectedTopic &&
+        !uniqueTopics.find((t) => t.topic === selectedTopic)
+      ) {
+        setSelectedTopic("");
+      }
+    } catch (error) {
+      console.error("Error loading topics:", error);
+      setTopics([]);
+      setSelectedTopic("");
+    } finally {
+      setLoadingTopics(false);
+    }
+  }, [
+    formData.subject,
+    formData.className,
+    formData.board,
+    formData.selectedChapters,
+    selectedTopic,
+  ]);
+
   const loadQuestions = useCallback(async () => {
     setLoading(true);
     try {
@@ -187,7 +264,7 @@ export default function PaperQuestionSelection({
         const params = new URLSearchParams({
           subject: formData.subject,
           chapter: chapter,
-          limit: "50", // Limit per chapter
+          limit: "100", // Increased limit per chapter
           page: "1",
         });
 
@@ -230,6 +307,10 @@ export default function PaperQuestionSelection({
   ]);
 
   useEffect(() => {
+    loadTopics();
+  }, [loadTopics]);
+
+  useEffect(() => {
     loadQuestions();
   }, [loadQuestions]);
 
@@ -246,24 +327,23 @@ export default function PaperQuestionSelection({
   // Global filter for the master list
   const getGlobalFilteredQuestions = () => {
     return questions.filter((q) => {
+      // Get topic from either top-level or tags (for backward compatibility)
+      const questionTopic = q.topic || q.tags?.topic;
+      const questionChapter = q.chapter;
+
       const searchMatch =
         searchQuery === "" ||
         q.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.tags?.topic?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (typeof (q as unknown as { chapter?: unknown }).chapter === "string" &&
-          (q as unknown as { chapter?: string })
-            .chapter!.toLowerCase()
-            .includes(searchQuery.toLowerCase()));
+        (questionTopic &&
+          questionTopic.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (questionChapter &&
+          questionChapter.toLowerCase().includes(searchQuery.toLowerCase()));
 
-      const chapterMatch =
-        formData.selectedChapters.length === 0 ||
-        (q.tags?.topic && formData.selectedChapters.includes(q.tags.topic)) ||
-        (typeof (q as unknown as { chapter?: unknown }).chapter === "string" &&
-          formData.selectedChapters.includes(
-            (q as unknown as { chapter: string }).chapter
-          ));
+      // Apply topic filter if a specific topic is selected
+      const topicMatch =
+        selectedTopic === "" || questionTopic === selectedTopic;
 
-      return searchMatch && chapterMatch;
+      return searchMatch && topicMatch;
     });
   };
 
@@ -312,24 +392,23 @@ export default function PaperQuestionSelection({
           (section.types?.length ?? 0) === 0 ||
           section.types?.includes(q.type);
 
+      // Get topic from either top-level or tags (for backward compatibility)
+      const questionTopic = q.topic || q.tags?.topic;
+      const questionChapter = q.chapter;
+
       const searchMatch =
         searchQuery === "" ||
         q.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.tags?.topic?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (typeof (q as unknown as { chapter?: unknown }).chapter === "string" &&
-          (q as unknown as { chapter?: string })
-            .chapter!.toLowerCase()
-            .includes(searchQuery.toLowerCase()));
+        (questionTopic &&
+          questionTopic.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (questionChapter &&
+          questionChapter.toLowerCase().includes(searchQuery.toLowerCase()));
 
-      const chapterMatch =
-        formData.selectedChapters.length === 0 ||
-        (q.tags?.topic && formData.selectedChapters.includes(q.tags.topic)) ||
-        (typeof (q as unknown as { chapter?: unknown }).chapter === "string" &&
-          formData.selectedChapters.includes(
-            (q as unknown as { chapter: string }).chapter
-          ));
+      // Apply topic filter if a specific topic is selected
+      const topicMatch =
+        selectedTopic === "" || questionTopic === selectedTopic;
 
-      return inSection && searchMatch && chapterMatch;
+      return inSection && searchMatch && topicMatch;
     });
   };
 
@@ -384,55 +463,85 @@ export default function PaperQuestionSelection({
       </motion.div>
 
       {/* Summary Bar */}
-      <Card className="p-4 bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-6">
+      <Card className="p-3 md:p-4 bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-4 md:gap-6">
             <div>
-              <p className="text-xs text-gray-600">Total Questions</p>
-              <p className="text-2xl font-bold text-emerald-600">
+              <p className="text-xs text-gray-600">Questions</p>
+              <p className="text-xl md:text-2xl font-bold text-emerald-600">
                 {formData.sections.reduce(
                   (sum, s) => sum + s.selectedQuestions.length,
                   0
                 )}
               </p>
             </div>
-            <div className="h-10 w-px bg-emerald-300" />
+            <div className="h-8 md:h-10 w-px bg-emerald-300" />
             <div>
               <p className="text-xs text-gray-600">Total Marks</p>
-              <p className="text-2xl font-bold text-green-600">
+              <p className="text-xl md:text-2xl font-bold text-green-600">
                 {calculateTotalMarks()}
               </p>
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-left sm:text-right">
             <p className="text-xs text-gray-500">
-              Questions selected across all sections
+              Selected across all sections
             </p>
           </div>
         </div>
       </Card>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-emerald-400 w-5 h-5" />
-        <input
-          type="text"
-          placeholder="Search questions..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-gray-800 placeholder:text-gray-400 transition-all"
-        />
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
+        {/* Search Bar */}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-emerald-400 w-4 h-4 md:w-5 md:h-5" />
+          <input
+            type="text"
+            placeholder="Search questions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 md:pl-10 pr-3 md:pr-4 py-2 md:py-2.5 text-sm border-2 border-emerald-200 rounded-lg md:rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-gray-800 placeholder:text-gray-400 transition-all"
+          />
+        </div>
+
+        {/* Topic Filter */}
+        <div className="relative sm:w-48 md:w-56">
+          <select
+            value={selectedTopic}
+            onChange={(e) => setSelectedTopic(e.target.value)}
+            disabled={loadingTopics || topics.length === 0}
+            className="w-full px-3 md:px-4 py-2 md:py-2.5 text-sm border-2 border-emerald-200 rounded-lg md:rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed appearance-none pr-8"
+          >
+            <option value="">All Topics</option>
+            {topics.map((t) => (
+              <option key={`${t.subject}-${t.topic}`} value={t.topic}>
+                {t.topic} ({t.count})
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+          {selectedTopic && (
+            <button
+              onClick={() => setSelectedTopic("")}
+              className="absolute right-8 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              title="Clear filter"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Master list - auto placement */}
       <Card className="overflow-hidden border-2 border-emerald-300 shadow-md">
-        <div className="bg-gradient-to-r from-emerald-600 to-green-600 p-4 text-white">
-          <h3 className="text-lg font-bold">All Questions</h3>
+        <div className="bg-gradient-to-r from-emerald-600 to-green-600 p-2.5 md:p-4 text-white">
+          <h3 className="text-base md:text-lg font-bold">All Questions</h3>
           <p className="text-xs text-emerald-50 mt-1">
             Tap to add — questions auto-place into the correct section
           </p>
         </div>
-        <div className="p-3 space-y-3 max-h-[60vh] overflow-y-auto bg-gray-50">
+        <div className="p-2 md:p-3 space-y-2 md:space-y-3 max-h-[60vh] overflow-y-auto bg-gray-50">
           {getGlobalFilteredQuestions().map((q) => {
             const selected = isSelectedAnywhere(q._id);
             const dest = sectionLabelForQuestion(q);
@@ -441,42 +550,70 @@ export default function PaperQuestionSelection({
                 key={q._id}
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`bg-white rounded-xl border-2 shadow-sm overflow-hidden transition-all ${
+                className={`bg-white rounded-lg md:rounded-xl border-2 shadow-sm overflow-hidden transition-all cursor-pointer hover:shadow-md ${
                   selected ? "border-emerald-500" : "border-gray-200"
                 }`}
                 onClick={() => toggleQuestionAuto(q)}
               >
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 mt-1">
+                <div className="p-2.5 md:p-3">
+                  <div className="flex items-start gap-2 md:gap-3">
+                    <div className="flex-shrink-0 mt-0.5 md:mt-1">
                       {selected ? (
-                        <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                        <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6 text-emerald-600" />
                       ) : (
-                        <Circle className="w-6 h-6 text-gray-300" />
+                        <Circle className="w-5 h-5 md:w-6 md:h-6 text-gray-300" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-base leading-relaxed text-gray-800">
+                      <div className="text-sm md:text-base leading-relaxed text-gray-800">
                         <MathText text={q.text} />
                       </div>
-                      <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        <span className="text-xs px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full font-medium">
+
+                      {/* Show options for objective questions */}
+                      {q.options && q.options.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {q.options.map((opt, idx) => (
+                            <div
+                              key={idx}
+                              className={`text-xs md:text-sm px-2 py-1 rounded ${
+                                opt.isCorrect
+                                  ? "bg-green-50 text-green-700 font-medium"
+                                  : "bg-gray-50 text-gray-600"
+                              }`}
+                            >
+                              <span className="font-semibold mr-1">
+                                {String.fromCharCode(65 + idx)}.
+                              </span>
+                              <MathText text={opt.text} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 md:gap-2 mt-2 md:mt-3 flex-wrap">
+                        <span className="text-xs px-2 py-0.5 md:px-2.5 md:py-1 bg-emerald-100 text-emerald-700 rounded-full font-medium">
                           → {dest}
                         </span>
-                        <span className="text-xs px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">
+                        <span className="text-xs px-2 py-0.5 md:px-2.5 md:py-1 bg-blue-50 text-blue-700 rounded-full">
                           {getTypeLabel(q.type)}
                         </span>
-                        {q.tags?.difficulty && (
+                        {(q.topic || q.tags?.topic) && (
+                          <span className="text-xs px-2 py-0.5 md:px-2.5 md:py-1 bg-gray-100 text-gray-600 rounded-full">
+                            {q.topic || q.tags?.topic}
+                          </span>
+                        )}
+                        {(q.difficulty || q.tags?.difficulty) && (
                           <span
-                            className={`text-xs px-2.5 py-1 rounded-full ${
-                              q.tags.difficulty === "easy"
+                            className={`text-xs px-2 py-0.5 md:px-2.5 md:py-1 rounded-full ${
+                              (q.difficulty || q.tags?.difficulty) === "easy"
                                 ? "bg-green-50 text-green-700"
-                                : q.tags.difficulty === "medium"
+                                : (q.difficulty || q.tags?.difficulty) ===
+                                  "medium"
                                 ? "bg-yellow-50 text-yellow-700"
                                 : "bg-red-50 text-red-700"
                             }`}
                           >
-                            {q.tags.difficulty}
+                            {q.difficulty || q.tags?.difficulty}
                           </span>
                         )}
                       </div>
@@ -495,7 +632,7 @@ export default function PaperQuestionSelection({
       </Card>
 
       {/* Sections */}
-      <div className="space-y-3">
+      <div className="space-y-2 md:space-y-3">
         {formData.sections.map((section, sectionIndex) => {
           const filteredQuestions = getFilteredQuestions(sectionIndex);
           const isExpanded = expandedSections.has(sectionIndex);
@@ -508,31 +645,33 @@ export default function PaperQuestionSelection({
               {/* Section Header */}
               <div
                 onClick={() => toggleSection(sectionIndex)}
-                className="p-4 bg-gradient-to-r from-emerald-600 to-green-600 cursor-pointer hover:from-emerald-700 hover:to-green-700 transition-colors text-white"
+                className="p-2.5 md:p-4 bg-gradient-to-r from-emerald-600 to-green-600 cursor-pointer hover:from-emerald-700 hover:to-green-700 transition-colors text-white"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold">{section.title}</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base md:text-lg font-bold">
+                      {section.title}
+                    </h3>
                     <p className="text-xs text-emerald-50 mt-1 line-clamp-2">
                       {section.instructions}
                     </p>
-                    <div className="flex items-center gap-3 mt-3 flex-wrap">
-                      <span className="text-xs px-2.5 py-1 bg-white/20 backdrop-blur-sm rounded-full font-semibold">
-                        ✓ {section.selectedQuestions.length} selected
+                    <div className="flex items-center gap-1.5 md:gap-3 mt-2 md:mt-3 flex-wrap">
+                      <span className="text-xs px-2 py-0.5 md:px-2.5 md:py-1 bg-white/20 backdrop-blur-sm rounded-full font-semibold">
+                        ✓ {section.selectedQuestions.length}
                       </span>
-                      <span className="text-xs px-2.5 py-1 bg-white/20 backdrop-blur-sm rounded-full">
+                      <span className="text-xs px-2 py-0.5 md:px-2.5 md:py-1 bg-white/20 backdrop-blur-sm rounded-full">
                         {filteredQuestions.length} available
                       </span>
-                      <span className="text-xs px-2.5 py-1 bg-white/20 backdrop-blur-sm rounded-full font-semibold">
-                        {section.marksPerQuestion} marks
+                      <span className="text-xs px-2 py-0.5 md:px-2.5 md:py-1 bg-white/20 backdrop-blur-sm rounded-full font-semibold">
+                        {section.marksPerQuestion}m
                       </span>
                     </div>
                   </div>
-                  <div className="ml-2 flex-shrink-0">
+                  <div className="flex-shrink-0">
                     {isExpanded ? (
-                      <ChevronUp className="w-6 h-6" />
+                      <ChevronUp className="w-5 h-5 md:w-6 md:h-6" />
                     ) : (
-                      <ChevronDown className="w-6 h-6" />
+                      <ChevronDown className="w-5 h-5 md:w-6 md:h-6" />
                     )}
                   </div>
                 </div>
@@ -548,10 +687,10 @@ export default function PaperQuestionSelection({
                     transition={{ duration: 0.3 }}
                     className="overflow-hidden"
                   >
-                    <div className="p-3 space-y-3 max-h-[60vh] overflow-y-auto bg-gray-50">
+                    <div className="p-2 md:p-3 space-y-2 md:space-y-3 max-h-[60vh] overflow-y-auto bg-gray-50">
                       {filteredQuestions.length === 0 ? (
-                        <div className="text-center py-12">
-                          <p className="text-gray-500">
+                        <div className="text-center py-8 md:py-12">
+                          <p className="text-sm text-gray-500">
                             No questions available for this section
                           </p>
                         </div>
@@ -567,7 +706,7 @@ export default function PaperQuestionSelection({
                               key={question._id}
                               initial={{ opacity: 0, y: 5 }}
                               animate={{ opacity: 1, y: 0 }}
-                              className={`bg-white rounded-xl border-2 shadow-sm overflow-hidden transition-all ${
+                              className={`bg-white rounded-lg md:rounded-xl border-2 shadow-sm overflow-hidden transition-all cursor-pointer hover:shadow-md ${
                                 isSelected
                                   ? "border-emerald-500"
                                   : "border-gray-200"
@@ -576,40 +715,70 @@ export default function PaperQuestionSelection({
                                 toggleQuestionSelection(question, sectionIndex)
                               }
                             >
-                              <div className="p-4">
-                                <div className="flex items-start space-x-3">
-                                  <div className="flex-shrink-0 mt-1">
+                              <div className="p-2.5 md:p-3">
+                                <div className="flex items-start gap-2 md:gap-3">
+                                  <div className="flex-shrink-0 mt-0.5 md:mt-1">
                                     {isSelected ? (
-                                      <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                                      <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6 text-emerald-600" />
                                     ) : (
-                                      <Circle className="w-6 h-6 text-gray-300" />
+                                      <Circle className="w-5 h-5 md:w-6 md:h-6 text-gray-300" />
                                     )}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="text-base leading-relaxed text-gray-800">
+                                    <div className="text-sm md:text-base leading-relaxed text-gray-800">
                                       <MathText text={question.text} />
                                     </div>
-                                    <div className="flex items-center space-x-2 mt-3 flex-wrap">
-                                      <span className="text-xs px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">
+
+                                    {/* Show options for objective questions */}
+                                    {question.options &&
+                                      question.options.length > 0 && (
+                                        <div className="mt-2 space-y-1">
+                                          {question.options.map((opt, idx) => (
+                                            <div
+                                              key={idx}
+                                              className={`text-xs md:text-sm px-2 py-1 rounded ${
+                                                opt.isCorrect
+                                                  ? "bg-green-50 text-green-700 font-medium"
+                                                  : "bg-gray-50 text-gray-600"
+                                              }`}
+                                            >
+                                              <span className="font-semibold mr-1">
+                                                {String.fromCharCode(65 + idx)}.
+                                              </span>
+                                              <MathText text={opt.text} />
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                    <div className="flex items-center gap-1.5 md:gap-2 mt-2 md:mt-3 flex-wrap">
+                                      <span className="text-xs px-2 py-0.5 md:px-2.5 md:py-1 bg-blue-50 text-blue-700 rounded-full">
                                         {getTypeLabel(question.type)}
                                       </span>
-                                      {question.tags?.topic && (
-                                        <span className="text-xs px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full">
-                                          {question.tags.topic}
+                                      {(question.topic ||
+                                        question.tags?.topic) && (
+                                        <span className="text-xs px-2 py-0.5 md:px-2.5 md:py-1 bg-gray-100 text-gray-600 rounded-full">
+                                          {question.topic ||
+                                            question.tags?.topic}
                                         </span>
                                       )}
-                                      {question.tags?.difficulty && (
+                                      {(question.difficulty ||
+                                        question.tags?.difficulty) && (
                                         <span
-                                          className={`text-xs px-2.5 py-1 rounded-full ${
-                                            question.tags.difficulty === "easy"
+                                          className={`text-xs px-2 py-0.5 md:px-2.5 md:py-1 rounded-full ${
+                                            (question.difficulty ||
+                                              question.tags?.difficulty) ===
+                                            "easy"
                                               ? "bg-green-50 text-green-700"
-                                              : question.tags.difficulty ===
+                                              : (question.difficulty ||
+                                                  question.tags?.difficulty) ===
                                                 "medium"
                                               ? "bg-yellow-50 text-yellow-700"
                                               : "bg-red-50 text-red-700"
                                           }`}
                                         >
-                                          {question.tags.difficulty}
+                                          {question.difficulty ||
+                                            question.tags?.difficulty}
                                         </span>
                                       )}
                                     </div>
@@ -633,12 +802,12 @@ export default function PaperQuestionSelection({
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="p-3.5 bg-emerald-50 border-2 border-emerald-200 rounded-xl"
+        className="p-2.5 md:p-3.5 bg-emerald-50 border-2 border-emerald-200 rounded-lg md:rounded-xl"
       >
         <p className="text-xs text-emerald-800">
-          <strong className="font-semibold">Tip:</strong> Click on each section
-          to expand and select questions. The paper preview in the next step
-          will show proper formatting with numbering and marks.
+          <strong className="font-semibold">Tip:</strong> Use filters to narrow
+          down questions by topic. Click sections to expand and select
+          questions. Options are shown for objective questions.
         </p>
       </motion.div>
     </div>
