@@ -54,6 +54,24 @@ const SECTION_OPTIONS = [
   "Case Study",
 ];
 
+const MODEL_OPTIONS = [
+  {
+    value: "gemini-2.0-flash-exp",
+    label: "Gemini 2.0 Flash (Recommended - Fast & Efficient)",
+    description: "Best balance of speed and accuracy",
+  },
+  {
+    value: "gemini-2.0-flash-thinking-exp",
+    label: "Gemini 2.0 Flash Thinking",
+    description: "Enhanced reasoning for complex questions",
+  },
+  {
+    value: "gemini-exp-1206",
+    label: "Gemini Experimental 1206",
+    description: "Latest experimental features",
+  },
+];
+
 interface ImportedQuestion {
   _id: string;
   text: string;
@@ -91,7 +109,7 @@ interface ImportBatch {
   processingProgress: number;
   totalProcessingTime: number;
   createdAt: string;
-  ocrProvider: "groq" | "gemini" | "tesseract";
+  ocrProvider: "google-vision" | "groq" | "gemini" | "tesseract";
   error?: string;
 }
 
@@ -122,7 +140,10 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   // Form fields
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
-  const [ocrProvider] = useState<"tesseract">("tesseract");
+  const [ocrProvider] = useState<"google-vision">("google-vision");
+  const [selectedModel, setSelectedModel] = useState<string>(
+    "gemini-2.0-flash-exp"
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -248,6 +269,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
       formData.append("subject", subject.trim());
       formData.append("topic", topic.trim());
       formData.append("ocrProvider", ocrProvider);
+      formData.append("model", selectedModel);
 
       // Add new metadata fields for validation
       if (className.trim()) formData.append("class", className.trim());
@@ -481,8 +503,8 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   Smart Question Import
                 </h1>
                 <p className="text-sm text-gray-600">
-                  Upload PDF or images to automatically extract questions with
-                  validation
+                  Powered by Google Cloud Vision API & Gemini AI for accurate
+                  question extraction
                 </p>
               </div>
             </div>
@@ -613,6 +635,60 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Processing Pipeline Info */}
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <svg
+                    className="w-5 h-5 text-blue-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  <p className="text-sm font-medium text-blue-900">
+                    Processing Pipeline:{" "}
+                    <span className="font-semibold">
+                      Google Cloud Vision API
+                    </span>{" "}
+                    → <span className="font-semibold">Gemini AI</span>
+                  </p>
+                </div>
+                <p className="text-xs text-blue-700 mt-1 ml-7">
+                  Industry-leading OCR for maximum accuracy in text extraction
+                  and mathematical notation
+                </p>
+              </div>
+
+              {/* AI Model Selection */}
+              <div className="mt-4">
+                <label className="text-sm font-medium text-gray-700 mb-1.5 block">
+                  AI Model *
+                </label>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
+                >
+                  {MODEL_OPTIONS.map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {
+                    MODEL_OPTIONS.find((m) => m.value === selectedModel)
+                      ?.description
+                  }
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
