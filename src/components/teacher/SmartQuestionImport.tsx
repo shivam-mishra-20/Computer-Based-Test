@@ -56,19 +56,14 @@ const SECTION_OPTIONS = [
 
 const MODEL_OPTIONS = [
   {
-    value: "gemini-2.0-flash-exp",
-    label: "Gemini 2.0 Flash (Recommended - Fast & Efficient)",
-    description: "Best balance of speed and accuracy",
+    value: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash (Recommended - Fast & Accurate)",
+    description: "Best balance of reasoning and speed",
   },
   {
-    value: "gemini-2.0-flash-thinking-exp",
-    label: "Gemini 2.0 Flash Thinking",
-    description: "Enhanced reasoning for complex questions",
-  },
-  {
-    value: "gemini-exp-1206",
-    label: "Gemini Experimental 1206",
-    description: "Latest experimental features",
+    value: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro (Highest Quality)",
+    description: "Strongest performance for math, science, and code",
   },
 ];
 
@@ -142,7 +137,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   const [topic, setTopic] = useState("");
   const [ocrProvider] = useState<"google-vision">("google-vision");
   const [selectedModel, setSelectedModel] = useState<string>(
-    "gemini-2.0-flash-exp"
+    "publishers/google/models/gemini-2.5-flash"
   );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -452,7 +447,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
         chapter: chapter.trim() || undefined,
         section: section.trim() || undefined,
         marks: marks.trim() ? Number(marks) : undefined,
-        source: "Import",
+        source: "Smart Import",
         options:
           (overrides?.[q._id]?.options as
             | { text: string; isCorrect: boolean }[]
@@ -658,12 +653,12 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                     <span className="font-semibold">
                       Google Cloud Vision API
                     </span>{" "}
-                    → <span className="font-semibold">Gemini AI</span>
+                    → <span className="font-semibold">Vertex AI</span>
                   </p>
                 </div>
                 <p className="text-xs text-blue-700 mt-1 ml-7">
-                  Industry-leading OCR for maximum accuracy in text extraction
-                  and mathematical notation
+                  Enterprise-grade OCR and AI for maximum accuracy in text
+                  extraction and mathematical notation
                 </p>
               </div>
 

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
 import Protected from "../Protected";
 import ElegantLoader, { InlineLoader } from "../ElegantLoader";
+import { MathText } from "../ui/MathText";
 
 type PrimitiveResponse = string | number | string[] | undefined;
 
@@ -361,7 +362,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                   className="mt-1 w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500"
                 />
                 <span className="text-slate-700 leading-relaxed">
-                  {opt.text}
+                  <MathText text={opt.text} inline />
                 </span>
               </motion.label>
             ))}
@@ -407,7 +408,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                   className="mt-1 w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
                 />
                 <span className="text-slate-700 leading-relaxed">
-                  {opt.text}
+                  <MathText text={opt.text} inline />
                 </span>
               </motion.label>
             ))}
@@ -424,13 +425,17 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                   <span className="font-semibold text-slate-900">
                     Assertion (A):
                   </span>
-                  <p className="text-slate-700 mt-1">{q.assertion || "—"}</p>
+                  <p className="text-slate-700 mt-1">
+                    <MathText text={q.assertion || "—"} />
+                  </p>
                 </div>
                 <div>
                   <span className="font-semibold text-slate-900">
                     Reason (R):
                   </span>
-                  <p className="text-slate-700 mt-1">{q.reason || "—"}</p>
+                  <p className="text-slate-700 mt-1">
+                    <MathText text={q.reason || "—"} />
+                  </p>
                 </div>
               </div>
             </div>
@@ -736,7 +741,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                             Question {index + 1}
                           </div>
                           <div className="text-lg text-slate-900 leading-relaxed whitespace-pre-wrap">
-                            {currentQuestion?.text}
+                            <MathText text={currentQuestion?.text || ""} />
                           </div>
                         </div>
                         <motion.button

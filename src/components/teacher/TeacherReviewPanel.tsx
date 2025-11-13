@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { easeInOut } from "framer-motion";
 import { apiFetch } from "../../lib/api";
 import Protected from "../Protected";
+import { MathText } from "../ui/MathText";
 
 // Animation variants
 const containerVariants = {
@@ -41,11 +42,25 @@ const cardVariants = {
   },
 };
 
-// Interfaces (same as original)
+// Interfaces
+interface UserInfo {
+  _id: string;
+  name?: string;
+  email?: string;
+  classLevel?: string;
+  batch?: string;
+  firebaseUid?: string;
+}
+
+interface ExamInfo {
+  _id: string;
+  title: string;
+}
+
 interface PendingAttemptSummary {
   _id: string;
-  examId: string;
-  userId: string;
+  examId: string | ExamInfo;
+  userId: string | UserInfo;
   submittedAt?: string;
   totalScore?: number;
   maxScore?: number;
@@ -77,6 +92,7 @@ interface ReviewAnswer {
 
 interface ReviewAttempt {
   _id: string;
+  userId: string | UserInfo;
   submittedAt?: string;
   totalScore?: number;
   maxScore?: number;
@@ -489,10 +505,19 @@ export default function TeacherReviewPanel() {
                           attempt.totalScore || 0,
                           attempt.maxScore || 1
                         );
+                        const user =
+                          typeof attempt.userId === "object"
+                            ? attempt.userId
+                            : null;
+                        const exam =
+                          typeof attempt.examId === "object"
+                            ? attempt.examId
+                            : null;
+
                         return (
                           <motion.div
                             key={attempt._id}
-                            className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-indigo-200 transition-all"
+                            className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-indigo-200 transition-all shadow-sm"
                             variants={cardVariants}
                             whileHover="hover"
                             initial={{ opacity: 0, y: 20 }}
@@ -500,15 +525,20 @@ export default function TeacherReviewPanel() {
                             transition={{ delay: index * 0.1 }}
                           >
                             <div className="space-y-4">
-                              {/* Header */}
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <h3 className="font-semibold text-gray-900 mb-1">
-                                    Attempt #{attempt._id.slice(-6)}
-                                  </h3>
-                                  <p className="text-sm text-gray-600">
-                                    User: {attempt.userId}
-                                  </p>
+                              {/* Header with Status */}
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
+                                    {user?.name?.charAt(0).toUpperCase() || "S"}
+                                  </div>
+                                  <div>
+                                    <h3 className="font-semibold text-gray-900">
+                                      {user?.name || "Student"}
+                                    </h3>
+                                    <p className="text-xs text-gray-500">
+                                      #{attempt._id.slice(-6)}
+                                    </p>
+                                  </div>
                                 </div>
                                 <div
                                   className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
@@ -517,8 +547,78 @@ export default function TeacherReviewPanel() {
                                 >
                                   {attempt.resultPublished
                                     ? "Published"
-                                    : attempt.status}
+                                    : "Pending"}
                                 </div>
+                              </div>
+
+                              {/* Student Details */}
+                              <div className="bg-gray-50 rounded-xl p-3 space-y-1.5">
+                                {exam?.title && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <svg
+                                      className="w-4 h-4 text-gray-400"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                      />
+                                    </svg>
+                                    <span className="text-gray-700 font-medium">
+                                      {exam.title}
+                                    </span>
+                                  </div>
+                                )}
+                                {user?.classLevel && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <svg
+                                      className="w-4 h-4 text-gray-400"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                                      />
+                                    </svg>
+                                    <span className="text-gray-600">
+                                      Class:
+                                    </span>
+                                    <span className="text-gray-900 font-medium">
+                                      {user.classLevel}
+                                    </span>
+                                  </div>
+                                )}
+                                {user?.batch && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <svg
+                                      className="w-4 h-4 text-gray-400"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                                      />
+                                    </svg>
+                                    <span className="text-gray-600">
+                                      Batch:
+                                    </span>
+                                    <span className="text-gray-900 font-medium">
+                                      {user.batch}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Score Visualization */}
@@ -589,19 +689,19 @@ export default function TeacherReviewPanel() {
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="text-left px-6 py-4 font-semibold text-gray-900">
-                              Attempt
+                              Student
                             </th>
                             <th className="text-left px-6 py-4 font-semibold text-gray-900">
-                              User
+                              Exam
+                            </th>
+                            <th className="text-center px-6 py-4 font-semibold text-gray-900">
+                              Class/Batch
                             </th>
                             <th className="text-center px-6 py-4 font-semibold text-gray-900">
                               Score
                             </th>
                             <th className="text-center px-6 py-4 font-semibold text-gray-900">
                               Status
-                            </th>
-                            <th className="text-center px-6 py-4 font-semibold text-gray-900">
-                              Submitted
                             </th>
                             <th className="text-right px-6 py-4 font-semibold text-gray-900">
                               Actions
@@ -614,19 +714,53 @@ export default function TeacherReviewPanel() {
                               attempt.totalScore || 0,
                               attempt.maxScore || 1
                             );
+                            const user =
+                              typeof attempt.userId === "object"
+                                ? attempt.userId
+                                : null;
+                            const exam =
+                              typeof attempt.examId === "object"
+                                ? attempt.examId
+                                : null;
+
                             return (
                               <tr
                                 key={attempt._id}
                                 className="hover:bg-gray-50 transition-colors"
                               >
                                 <td className="px-6 py-4">
-                                  <div className="font-medium text-gray-900">
-                                    #{attempt._id.slice(-6)}
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
+                                      {user?.name?.charAt(0).toUpperCase() ||
+                                        "S"}
+                                    </div>
+                                    <div>
+                                      <div className="font-medium text-gray-900">
+                                        {user?.name || "Student"}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        #{attempt._id.slice(-6)}
+                                      </div>
+                                    </div>
                                   </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                  <div className="text-gray-900">
-                                    {attempt.userId}
+                                  <div className="text-gray-900 font-medium">
+                                    {exam?.title || "Exam"}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <div className="text-sm">
+                                    {user?.classLevel && (
+                                      <div className="text-gray-900 font-medium">
+                                        {user.classLevel}
+                                      </div>
+                                    )}
+                                    {user?.batch && (
+                                      <div className="text-gray-600 text-xs">
+                                        {user.batch}
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-center">
@@ -739,24 +873,57 @@ export default function TeacherReviewPanel() {
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
               >
                 {/* Modal Header */}
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 text-white">
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-5 text-white">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-bold">
-                        Review: {active.exam.title}
-                      </h2>
-                      <p className="text-indigo-100 text-sm">
-                        Attempt #{active.attempt._id.slice(-6)}
-                      </p>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white font-bold text-lg border-2 border-white/30">
+                        {typeof active.attempt.userId === "object" &&
+                        active.attempt.userId.name
+                          ? active.attempt.userId.name.charAt(0).toUpperCase()
+                          : "S"}
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold">
+                          {active.exam.title}
+                        </h2>
+                        <div className="flex items-center gap-3 text-indigo-100 text-sm mt-1">
+                          {typeof active.attempt.userId === "object" &&
+                            active.attempt.userId.name && (
+                              <>
+                                <span className="font-medium">
+                                  {active.attempt.userId.name}
+                                </span>
+                                {active.attempt.userId.classLevel && (
+                                  <>
+                                    <span>•</span>
+                                    <span>
+                                      Class {active.attempt.userId.classLevel}
+                                    </span>
+                                  </>
+                                )}
+                                {active.attempt.userId.batch && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{active.attempt.userId.batch}</span>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          <span>•</span>
+                          <span>#{active.attempt._id.slice(-6)}</span>
+                        </div>
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-sm text-indigo-100">
-                          Current Score
+                      <div className="text-right bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/20">
+                        <div className="text-xs text-indigo-100 font-medium">
+                          Score
                         </div>
-                        <div className="text-xl font-bold">
-                          {active.attempt.totalScore} /{" "}
-                          {active.attempt.maxScore}
+                        <div className="text-2xl font-bold">
+                          {active.attempt.totalScore}{" "}
+                          <span className="text-lg opacity-75">
+                            / {active.attempt.maxScore}
+                          </span>
                         </div>
                       </div>
                       <motion.button
@@ -810,7 +977,7 @@ export default function TeacherReviewPanel() {
                               {/* Question Header */}
                               <div className="flex items-start justify-between mb-4">
                                 <div className="flex-1">
-                                  <div className="flex items-center gap-3 mb-2">
+                                  <div className="flex items-center gap-3 mb-3">
                                     <span className="flex items-center justify-center w-8 h-8 bg-indigo-600 text-white text-sm font-bold rounded-lg">
                                       {idx + 1}
                                     </span>
@@ -818,38 +985,45 @@ export default function TeacherReviewPanel() {
                                       Question {idx + 1}
                                     </h4>
                                   </div>
-                                  <p className="text-gray-800 leading-relaxed">
-                                    {question.text}
-                                  </p>
+                                  <div className="text-gray-800 leading-relaxed pl-11">
+                                    <MathText text={question.text} />
+                                  </div>
                                 </div>
                               </div>
 
                               {/* Multiple Choice Options */}
                               {question.options && (
                                 <div className="mb-4">
-                                  <p className="text-sm font-medium text-gray-700 mb-2">
+                                  <p className="text-sm font-medium text-gray-700 mb-2 pl-11">
                                     Options:
                                   </p>
-                                  <div className="grid gap-2">
+                                  <div className="grid gap-2 pl-11">
                                     {question.options.map((option, optIdx) => (
                                       <div
                                         key={option._id}
-                                        className={`p-3 rounded-lg border text-sm ${
+                                        className={`p-3 rounded-lg border text-sm transition-colors ${
                                           answer?.chosenOptionId === option._id
-                                            ? "bg-blue-50 border-blue-200 text-blue-800 font-medium"
-                                            : "bg-gray-50 border-gray-200 text-gray-700"
+                                            ? "bg-blue-50 border-blue-300 text-blue-900 shadow-sm"
+                                            : "bg-gray-50 border-gray-200 text-gray-700 hover:border-gray-300"
                                         }`}
                                       >
-                                        <span className="font-medium mr-2">
-                                          {String.fromCharCode(65 + optIdx)}.
-                                        </span>
-                                        {option.text}
-                                        {answer?.chosenOptionId ===
-                                          option._id && (
-                                          <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full">
-                                            Selected
+                                        <div className="flex items-start gap-2">
+                                          <span className="font-bold text-gray-700 min-w-[20px]">
+                                            {String.fromCharCode(65 + optIdx)}.
                                           </span>
-                                        )}
+                                          <div className="flex-1">
+                                            <MathText
+                                              text={option.text}
+                                              inline
+                                            />
+                                          </div>
+                                          {answer?.chosenOptionId ===
+                                            option._id && (
+                                            <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full font-medium whitespace-nowrap">
+                                              Selected
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
@@ -981,14 +1155,92 @@ export default function TeacherReviewPanel() {
                   {/* Sidebar with Summary and Actions */}
                   <div className="w-80 bg-gray-50 border-l border-gray-200 p-6 overflow-y-auto">
                     <div className="space-y-6">
+                      {/* Student Info Card */}
+                      {typeof active.attempt.userId === "object" &&
+                        active.attempt.userId.name && (
+                          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-4 border border-indigo-100">
+                            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                              <svg
+                                className="w-5 h-5 text-indigo-600"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                />
+                              </svg>
+                              Student Details
+                            </h3>
+                            <div className="space-y-2 text-sm">
+                              <div>
+                                <div className="text-gray-600 text-xs mb-1">
+                                  Name
+                                </div>
+                                <div className="font-semibold text-gray-900">
+                                  {active.attempt.userId.name}
+                                </div>
+                              </div>
+                              {active.attempt.userId.email && (
+                                <div>
+                                  <div className="text-gray-600 text-xs mb-1">
+                                    Email
+                                  </div>
+                                  <div className="text-gray-900 truncate">
+                                    {active.attempt.userId.email}
+                                  </div>
+                                </div>
+                              )}
+                              <div className="grid grid-cols-2 gap-2 pt-2">
+                                {active.attempt.userId.classLevel && (
+                                  <div className="bg-white rounded-lg p-2 border border-indigo-100">
+                                    <div className="text-gray-600 text-xs mb-1">
+                                      Class
+                                    </div>
+                                    <div className="font-semibold text-indigo-700">
+                                      {active.attempt.userId.classLevel}
+                                    </div>
+                                  </div>
+                                )}
+                                {active.attempt.userId.batch && (
+                                  <div className="bg-white rounded-lg p-2 border border-purple-100">
+                                    <div className="text-gray-600 text-xs mb-1">
+                                      Batch
+                                    </div>
+                                    <div className="font-semibold text-purple-700">
+                                      {active.attempt.userId.batch}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                       {/* Attempt Summary */}
                       <div className="bg-white rounded-2xl p-4 border border-gray-200">
-                        <h3 className="font-semibold text-gray-900 mb-3">
-                          Attempt Summary
+                        <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                          <svg
+                            className="w-5 h-5 text-gray-600"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                          Attempt Info
                         </h3>
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
-                            <span className="text-gray-600">Attempt ID:</span>
+                            <span className="text-gray-600">ID:</span>
                             <span className="font-mono text-gray-900">
                               #{active.attempt._id.slice(-6)}
                             </span>

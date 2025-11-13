@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Protected from "../Protected";
 import { apiFetch } from "../../lib/api";
+import { MathText } from "../ui/MathText";
 
 interface AttemptSummary {
   _id: string;
@@ -22,6 +23,7 @@ interface RawAnswer {
   aiFeedback?: string;
   rubricScore?: number;
   scoreAwarded?: number;
+  isCorrect?: boolean;
 }
 
 interface RawAttempt {
@@ -40,11 +42,21 @@ interface QuestionOption {
   text?: string;
   label?: string;
   value?: string;
+  isCorrect?: boolean;
 }
 
 interface QuestionEntry {
   _id: string;
+  text?: string;
+  type?: string;
   options?: QuestionOption[];
+  correctAnswer?: string;
+  explanation?: string;
+  assertionText?: string;
+  reasonText?: string;
+  assertionIsTrue?: boolean;
+  reasonIsTrue?: boolean;
+  reasonExplainsAssertion?: boolean;
 }
 
 interface AttemptViewResponse {
@@ -60,7 +72,9 @@ interface AttemptDetail extends AttemptSummary {
     aiFeedback?: string;
     rubricScore?: number;
     scoreAwarded?: number;
+    isCorrect?: boolean;
   }[];
+  questions?: Record<string, QuestionEntry>;
 }
 
 export default function StudentResults() {
@@ -148,6 +162,7 @@ export default function StudentResults() {
               aiFeedback: ans.aiFeedback,
               rubricScore: ans.rubricScore,
               scoreAwarded: ans.scoreAwarded,
+              isCorrect: ans.isCorrect,
             };
           })
         : [];
@@ -160,6 +175,7 @@ export default function StudentResults() {
         status: attempt.status,
         resultPublished: attempt.resultPublished,
         answers,
+        questions: questionsDict,
       };
       setViewing(detail);
     } catch (e) {
@@ -510,37 +526,58 @@ export default function StudentResults() {
                   className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
                 >
                   {/* Modal Header */}
-                  <div className="flex items-center justify-between p-6 border-b border-slate-200 bg-slate-50">
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-900">
-                        {viewing.examTitle}
-                      </h2>
-                      <p className="text-slate-600">
-                        Detailed Results & Feedback
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setViewing(null)}
-                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-                    >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                  <div className="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-5 text-white">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
+                          <svg
+                            className="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <h2 className="text-xl font-bold">
+                            {viewing.examTitle}
+                          </h2>
+                          <p className="text-emerald-100 text-sm">
+                            Detailed Results & Answer Key
+                          </p>
+                        </div>
+                      </div>
+                      <motion.button
+                        onClick={() => setViewing(null)}
+                        className="p-2 hover:bg-white/20 rounded-xl transition-colors"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
+                        <svg
+                          className="w-6 h-6"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </motion.button>
+                    </div>
                   </div>
 
                   {/* Modal Content */}
-                  <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                  <div className="overflow-y-auto max-h-[calc(90vh-120px)]">
                     {detailLoading ? (
                       <div className="flex items-center justify-center py-12">
                         <div className="animate-spin w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full mr-3"></div>
@@ -549,76 +586,342 @@ export default function StudentResults() {
                         </span>
                       </div>
                     ) : (
-                      <div className="space-y-4">
-                        {(viewing.answers || []).map((answer, index) => (
-                          <motion.div
-                            key={answer.questionId}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                            className="bg-slate-50 rounded-lg p-4 border border-slate-200"
-                          >
-                            <div className="flex items-start justify-between mb-3">
-                              <h4 className="font-medium text-slate-900">
-                                Question {index + 1}
-                              </h4>
-                              {typeof answer.scoreAwarded === "number" && (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-slate-700">
-                                    Score: {answer.scoreAwarded}
-                                  </span>
-                                  {typeof answer.rubricScore === "number" && (
-                                    <span className="text-xs text-slate-500">
-                                      (AI: {answer.rubricScore})
+                      <>
+                        {/* Score Summary Card */}
+                        {viewing.totalScore !== undefined &&
+                          viewing.maxScore !== undefined && (
+                            <div className="p-6 bg-gradient-to-r from-emerald-50 to-green-50 border-b border-emerald-100">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <h3 className="text-sm font-medium text-slate-700 mb-1">
+                                    Your Final Score
+                                  </h3>
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-3xl font-bold text-emerald-700">
+                                      {viewing.totalScore}
                                     </span>
-                                  )}
+                                    <span className="text-xl text-slate-500">
+                                      / {viewing.maxScore}
+                                    </span>
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-
-                            {typeof answer.response !== "undefined" && (
-                              <div className="mb-3">
-                                <span className="text-sm font-medium text-slate-700">
-                                  Your Answer:
-                                </span>
-                                <div className="mt-1 p-2 bg-white rounded border text-sm text-slate-900">
-                                  {Array.isArray(answer.response)
-                                    ? answer.response.join(", ")
-                                    : String(answer.response)}
-                                </div>
-                              </div>
-                            )}
-
-                            {answer.aiFeedback && (
-                              <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                                <div className="flex items-start gap-2">
-                                  <svg
-                                    className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                <div className="text-right">
+                                  <div className="text-sm font-medium text-slate-700 mb-1">
+                                    Percentage
+                                  </div>
+                                  <div
+                                    className={`text-3xl font-bold ${getScoreColor(
+                                      viewing.totalScore,
+                                      viewing.maxScore
+                                    )}`}
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                    />
-                                  </svg>
-                                  <div>
-                                    <span className="text-sm font-medium text-blue-900">
-                                      AI Feedback:
-                                    </span>
-                                    <p className="text-sm text-blue-800 mt-1">
-                                      {answer.aiFeedback}
-                                    </p>
+                                    {Math.round(
+                                      (viewing.totalScore / viewing.maxScore) *
+                                        100
+                                    )}
+                                    %
                                   </div>
                                 </div>
                               </div>
-                            )}
-                          </motion.div>
-                        ))}
-                      </div>
+                              {viewing.submittedAt && (
+                                <div className="mt-3 pt-3 border-t border-emerald-200 text-sm text-slate-600">
+                                  Submitted: {formatDate(viewing.submittedAt)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                        {/* Questions List */}
+                        <div className="p-6 space-y-6">
+                          {(viewing.answers || []).map((answer, index) => {
+                            const question =
+                              viewing.questions?.[answer.questionId];
+                            const isCorrect =
+                              answer.isCorrect ||
+                              (answer.scoreAwarded && answer.scoreAwarded > 0);
+
+                            return (
+                              <motion.div
+                                key={answer.questionId}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.05 }}
+                                className="bg-white rounded-xl border-2 border-slate-200 overflow-hidden"
+                              >
+                                {/* Question Header */}
+                                <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-5 py-4 border-b border-slate-200">
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white font-bold text-sm flex items-center justify-center">
+                                        {index + 1}
+                                      </div>
+                                      <div>
+                                        <h4 className="font-semibold text-slate-900">
+                                          Question {index + 1}
+                                        </h4>
+                                        {question?.type && (
+                                          <span className="text-xs text-slate-500 capitalize">
+                                            {question.type.replace(/_/g, " ")}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      {typeof answer.scoreAwarded ===
+                                        "number" && (
+                                        <div className="text-right">
+                                          <div className="text-xs text-slate-600">
+                                            Score
+                                          </div>
+                                          <div
+                                            className={`text-lg font-bold ${
+                                              isCorrect
+                                                ? "text-emerald-600"
+                                                : "text-red-500"
+                                            }`}
+                                          >
+                                            {answer.scoreAwarded}
+                                          </div>
+                                        </div>
+                                      )}
+                                      <div
+                                        className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                          isCorrect
+                                            ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                                            : "bg-red-100 text-red-700 border border-red-200"
+                                        }`}
+                                      >
+                                        {isCorrect
+                                          ? "✓ Correct"
+                                          : "✗ Incorrect"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Question Content */}
+                                <div className="p-5 space-y-4">
+                                  {/* Question Text */}
+                                  {question?.text && (
+                                    <div>
+                                      <div className="text-sm font-medium text-slate-700 mb-2">
+                                        Question:
+                                      </div>
+                                      <div className="text-slate-900 leading-relaxed">
+                                        <MathText text={question.text} />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Assertion-Reason Type */}
+                                  {question?.type === "assertion_reason" && (
+                                    <div className="space-y-3">
+                                      {question.assertionText && (
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                          <div className="text-sm font-medium text-blue-900 mb-1">
+                                            Assertion:
+                                          </div>
+                                          <div className="text-blue-800">
+                                            <MathText
+                                              text={question.assertionText}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                      {question.reasonText && (
+                                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                          <div className="text-sm font-medium text-purple-900 mb-1">
+                                            Reason:
+                                          </div>
+                                          <div className="text-purple-800">
+                                            <MathText
+                                              text={question.reasonText}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* MCQ Options */}
+                                  {question?.options &&
+                                    question.options.length > 0 && (
+                                      <div>
+                                        <div className="text-sm font-medium text-slate-700 mb-2">
+                                          Options:
+                                        </div>
+                                        <div className="grid gap-2">
+                                          {question.options.map(
+                                            (option, optIdx) => {
+                                              const isSelected =
+                                                typeof answer.response ===
+                                                "string"
+                                                  ? answer.response ===
+                                                      option.text ||
+                                                    answer.response ===
+                                                      option._id
+                                                  : false;
+                                              const isCorrectOption =
+                                                option.isCorrect;
+
+                                              return (
+                                                <div
+                                                  key={option._id}
+                                                  className={`p-3 rounded-lg border-2 transition-all ${
+                                                    isSelected && isCorrect
+                                                      ? "bg-emerald-50 border-emerald-300 shadow-sm"
+                                                      : isSelected && !isCorrect
+                                                      ? "bg-red-50 border-red-300 shadow-sm"
+                                                      : isCorrectOption
+                                                      ? "bg-green-50 border-green-300"
+                                                      : "bg-slate-50 border-slate-200"
+                                                  }`}
+                                                >
+                                                  <div className="flex items-start gap-3">
+                                                    <div
+                                                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+                                                        isSelected && isCorrect
+                                                          ? "bg-emerald-600 text-white border-emerald-600"
+                                                          : isSelected &&
+                                                            !isCorrect
+                                                          ? "bg-red-600 text-white border-red-600"
+                                                          : isCorrectOption
+                                                          ? "bg-green-600 text-white border-green-600"
+                                                          : "bg-white text-slate-700 border-slate-300"
+                                                      }`}
+                                                    >
+                                                      {String.fromCharCode(
+                                                        65 + optIdx
+                                                      )}
+                                                    </div>
+                                                    <div className="flex-1">
+                                                      <MathText
+                                                        text={
+                                                          option.text ||
+                                                          option.label ||
+                                                          option.value ||
+                                                          ""
+                                                        }
+                                                        inline
+                                                      />
+                                                    </div>
+                                                    {isSelected && (
+                                                      <span
+                                                        className={`text-xs font-medium px-2 py-1 rounded-full ${
+                                                          isCorrect
+                                                            ? "bg-emerald-600 text-white"
+                                                            : "bg-red-600 text-white"
+                                                        }`}
+                                                      >
+                                                        Your Answer
+                                                      </span>
+                                                    )}
+                                                    {isCorrectOption &&
+                                                      !isSelected && (
+                                                        <span className="text-xs font-medium px-2 py-1 rounded-full bg-green-600 text-white">
+                                                          Correct Answer
+                                                        </span>
+                                                      )}
+                                                  </div>
+                                                </div>
+                                              );
+                                            }
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                  {/* Text Answer (Subjective) */}
+                                  {typeof answer.response === "string" &&
+                                    !question?.options && (
+                                      <div>
+                                        <div className="text-sm font-medium text-slate-700 mb-2">
+                                          Your Answer:
+                                        </div>
+                                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                          <p className="text-slate-900 whitespace-pre-wrap">
+                                            {answer.response}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                  {/* AI Feedback */}
+                                  {answer.aiFeedback && (
+                                    <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
+                                      <div className="flex items-start gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center flex-shrink-0">
+                                          <svg
+                                            className="w-5 h-5 text-white"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                                            />
+                                          </svg>
+                                        </div>
+                                        <div className="flex-1">
+                                          <div className="text-sm font-semibold text-purple-900 mb-1">
+                                            AI Feedback
+                                          </div>
+                                          <p className="text-sm text-purple-800 leading-relaxed">
+                                            {answer.aiFeedback}
+                                          </p>
+                                          {typeof answer.rubricScore ===
+                                            "number" && (
+                                            <div className="mt-2 text-xs text-purple-700">
+                                              AI Rubric Score:{" "}
+                                              <span className="font-bold">
+                                                {answer.rubricScore}
+                                              </span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Explanation */}
+                                  {question?.explanation && (
+                                    <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4">
+                                      <div className="flex items-start gap-3">
+                                        <svg
+                                          className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                                          />
+                                        </svg>
+                                        <div className="flex-1">
+                                          <div className="text-sm font-semibold text-amber-900 mb-1">
+                                            Explanation
+                                          </div>
+                                          <div className="text-sm text-amber-800 leading-relaxed">
+                                            <MathText
+                                              text={question.explanation}
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      </>
                     )}
                   </div>
                 </motion.div>

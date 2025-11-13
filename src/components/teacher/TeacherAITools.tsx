@@ -2052,7 +2052,7 @@ export default function TeacherAITools() {
                                     />
                                   ) : (
                                     <h4 className="text-gray-900 font-medium leading-relaxed mb-3 break-words whitespace-pre-wrap">
-                                      {q.text}
+                                      <MathText text={q.text} />
                                     </h4>
                                   )}
 
@@ -2117,7 +2117,7 @@ export default function TeacherAITools() {
                                                   : ""
                                               }
                                             >
-                                              {o.text}
+                                              <MathText text={o.text} />
                                             </span>
                                           )}
                                         </li>

@@ -6,10 +6,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import TeacherDashboardHome from "@/components/teacher/TeacherDashboardHome";
 import TeacherQuestionBank from "@/components/teacher/TeacherQuestionBank";
 import TeacherExams from "@/components/teacher/TeacherExams";
-import TeacherAITools from "@/components/teacher/TeacherAITools";
+import AIQuestionGenerator from "@/components/teacher/AIQuestionGenerator";
 import SmartQuestionImport from "@/components/teacher/SmartQuestionImport";
 import TeacherAnalytics from "@/components/teacher/TeacherAnalytics";
 import CreatePaperFlow from "@/components/teacher/CreatePaperFlow";
+import CreateExamFlow from "@/components/teacher/CreateExamFlow";
 //import TeacherReports from "@/components/teacher/TeacherReports";
 import QuestionPapers from "@/components/teacher/QuestionPapers";
 import DashboardHeader from "@/components/ui/dashboard-header";
@@ -18,6 +19,7 @@ import DashboardHeader from "@/components/ui/dashboard-header";
 const TABS = [
   "dashboard",
   "create-paper",
+  "create-exam",
   "bank",
   "exams",
   "ai",
@@ -32,6 +34,7 @@ type Tab = (typeof TABS)[number];
 const tabLabels: Record<Tab, string> = {
   dashboard: "Dashboard",
   "create-paper": "Create Paper",
+  "create-exam": "Create Exam",
   bank: "Question Bank",
   exams: "Exams",
   ai: "AI Tools",
@@ -126,6 +129,57 @@ const getTabIcon = (tab: Tab) => {
             strokeLinejoin="round"
             strokeWidth={2}
             d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+          />
+        </svg>
+      );
+    case "create-paper":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25M9 12.75h3.375m-3.375 3.75h3.375m-3.375 3.75h3.375m6.75-9v7.5a2.25 2.25 0 0 1-2.25 2.25h-12A2.25 2.25 0 0 1 3 18.75v-15A2.25 2.25 0 0 1 5.25 1.5h7.5a2.25 2.25 0 0 1 2.25 2.25v.75"
+          />
+        </svg>
+      );
+    case "create-exam":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"
+          />
+        </svg>
+      );
+    case "papers":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
           />
         </svg>
       );
@@ -238,6 +292,9 @@ export default function TeacherDashboardPage() {
     case "create-paper":
       content = <CreatePaperFlow />;
       break;
+    case "create-exam":
+      content = <CreateExamFlow />;
+      break;
     case "bank":
       content = <TeacherQuestionBank />;
       break;
@@ -245,7 +302,7 @@ export default function TeacherDashboardPage() {
       content = <TeacherExams />;
       break;
     case "ai":
-      content = <TeacherAITools />;
+      content = <AIQuestionGenerator />;
       break;
     case "import":
       content = <SmartQuestionImport />;
