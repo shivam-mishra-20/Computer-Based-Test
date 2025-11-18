@@ -249,6 +249,10 @@ export default function SmartImportPreviewModal({
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <div className="text-xs text-gray-500 mr-2">
+                  💡 Click &quot;Edit&quot; to mark correct answers for
+                  auto-evaluation
+                </div>
                 {onApproveSelected && (
                   <button
                     onClick={onApproveSelected}
@@ -312,6 +316,17 @@ export default function SmartImportPreviewModal({
                             >
                               {q.status}
                             </span>
+                            {!hasCorrectAnswer({
+                              ...q,
+                              options: drafts[q._id]?.options ?? q.options,
+                              correctAnswerText:
+                                drafts[q._id]?.correctAnswerText ??
+                                q.correctAnswerText,
+                            }) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700 font-medium">
+                                ⚠️ No Answer
+                              </span>
+                            )}
                           </div>
                           {/* View/Edit area */}
                           {drafts[q._id]?.isEditing ? (
@@ -370,11 +385,14 @@ export default function SmartImportPreviewModal({
                               {(drafts[q._id]?.type || q.type) === "mcq" ? (
                                 <div className="space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xs text-gray-600">
-                                      Options
+                                    <span className="text-sm font-medium text-gray-700">
+                                      Options{" "}
+                                      <span className="text-xs text-gray-500">
+                                        (Check the correct answer)
+                                      </span>
                                     </span>
                                     <button
-                                      className="text-xs text-emerald-600 hover:underline"
+                                      className="text-xs text-emerald-600 hover:underline font-medium"
                                       onClick={() => {
                                         const opts = (
                                           drafts[q._id]?.options ||
@@ -398,11 +416,15 @@ export default function SmartImportPreviewModal({
                                   ).map((opt, idx) => (
                                     <div
                                       key={idx}
-                                      className="flex items-start gap-2 p-2 rounded-lg border"
+                                      className={`flex items-start gap-2 p-2 rounded-lg border-2 transition-colors ${
+                                        opt.isCorrect
+                                          ? "border-green-400 bg-green-50"
+                                          : "border-gray-200"
+                                      }`}
                                     >
                                       <input
                                         type="checkbox"
-                                        className="mt-2"
+                                        className="mt-2 w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
                                         checked={!!opt.isCorrect}
                                         onChange={(e) => {
                                           const opts = (
@@ -417,7 +439,7 @@ export default function SmartImportPreviewModal({
                                           };
                                           updateDraft(q._id, "options", opts);
                                         }}
-                                        title="Mark as correct"
+                                        title="Mark as correct answer"
                                       />
                                       <div className="flex-1">
                                         <input
@@ -460,14 +482,76 @@ export default function SmartImportPreviewModal({
                                     </div>
                                   ))}
                                 </div>
+                              ) : (drafts[q._id]?.type || q.type) ===
+                                "truefalse" ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium text-gray-700">
+                                      Correct Answer
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-4">
+                                    {[
+                                      { text: "True", value: true },
+                                      { text: "False", value: false },
+                                    ].map((opt, idx) => (
+                                      <label
+                                        key={idx}
+                                        className={`flex-1 flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                                          (drafts[q._id]?.options ||
+                                            q.options ||
+                                            [])[idx]?.isCorrect
+                                            ? "border-green-400 bg-green-50"
+                                            : "border-gray-200 hover:border-gray-300"
+                                        }`}
+                                      >
+                                        <input
+                                          type="radio"
+                                          name={`tf-${q._id}`}
+                                          className="w-4 h-4 text-green-600"
+                                          checked={
+                                            !!(drafts[q._id]?.options ||
+                                              q.options ||
+                                              [])[idx]?.isCorrect
+                                          }
+                                          onChange={() => {
+                                            const opts = [
+                                              {
+                                                text: "True",
+                                                isCorrect: idx === 0,
+                                              },
+                                              {
+                                                text: "False",
+                                                isCorrect: idx === 1,
+                                              },
+                                            ];
+                                            updateDraft(q._id, "options", opts);
+                                          }}
+                                        />
+                                        <span className="font-medium text-gray-900">
+                                          {opt.text}
+                                        </span>
+                                        {(drafts[q._id]?.options ||
+                                          q.options ||
+                                          [])[idx]?.isCorrect && (
+                                          <CheckCircleIcon className="w-4 h-4 text-green-600 ml-auto" />
+                                        )}
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
                               ) : (
                                 <div className="space-y-1">
-                                  <label className="text-xs text-gray-600">
-                                    Answer
+                                  <label className="text-sm font-medium text-gray-700">
+                                    Correct Answer{" "}
+                                    <span className="text-xs text-gray-500">
+                                      (Required for auto-evaluation)
+                                    </span>
                                   </label>
                                   <input
                                     type="text"
-                                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                    className="w-full px-3 py-2 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                    placeholder="Enter the correct answer..."
                                     value={
                                       drafts[q._id]?.correctAnswerText ??
                                       q.correctAnswerText ??
@@ -557,49 +641,73 @@ export default function SmartImportPreviewModal({
                                     <div className="text-gray-900">
                                       <MathText text={viewText} />
                                     </div>
-                                    {viewType === "mcq" &&
+                                    {(viewType === "mcq" ||
+                                      viewType === "truefalse") &&
                                       Array.isArray(viewOptions) &&
                                       viewOptions.length > 0 && (
-                                        <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                                          {viewOptions.map((o, i) => (
-                                            <li
-                                              key={i}
-                                              className={`flex items-start gap-2 ${
-                                                o.isCorrect
-                                                  ? "text-green-700"
-                                                  : ""
-                                              }`}
-                                            >
-                                              <span className="font-medium">
-                                                {String.fromCharCode(65 + i)}.
-                                              </span>
-                                              <MathText text={o.text} />
-                                              {o.isCorrect && (
-                                                <CheckCircleIcon className="w-4 h-4 text-green-600 ml-1" />
-                                              )}
-                                            </li>
-                                          ))}
-                                        </ul>
+                                        <div className="mt-3">
+                                          <div className="text-xs font-semibold text-gray-600 mb-1.5">
+                                            OPTIONS:
+                                          </div>
+                                          <ul className="space-y-1.5 text-sm">
+                                            {viewOptions.map((o, i) => (
+                                              <li
+                                                key={i}
+                                                className={`flex items-start gap-2 p-2 rounded-lg ${
+                                                  o.isCorrect
+                                                    ? "bg-green-50 border border-green-200 text-green-800 font-medium"
+                                                    : "text-gray-700"
+                                                }`}
+                                              >
+                                                <span className="font-semibold min-w-[20px]">
+                                                  {String.fromCharCode(65 + i)}.
+                                                </span>
+                                                <MathText text={o.text} />
+                                                {o.isCorrect && (
+                                                  <CheckCircleIcon className="w-5 h-5 text-green-600 ml-auto flex-shrink-0" />
+                                                )}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
                                       )}
-                                    {viewType !== "mcq" && viewAnswer && (
-                                      <div className="mt-2 text-sm text-gray-700">
-                                        <span className="font-medium">
-                                          Answer:
-                                        </span>{" "}
-                                        <MathText text={viewAnswer} inline />
-                                      </div>
-                                    )}
+                                    {viewType !== "mcq" &&
+                                      viewType !== "truefalse" &&
+                                      viewAnswer && (
+                                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                          <div className="text-xs font-semibold text-green-700 mb-1">
+                                            CORRECT ANSWER:
+                                          </div>
+                                          <div className="text-sm text-green-900 font-medium">
+                                            <MathText
+                                              text={viewAnswer}
+                                              inline
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                    {viewType !== "mcq" &&
+                                      viewType !== "truefalse" &&
+                                      !viewAnswer && (
+                                        <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                          <div className="text-xs font-medium text-orange-700">
+                                            ⚠️ No correct answer provided. Click
+                                            &quot;Edit&quot; to add one for
+                                            auto-evaluation.
+                                          </div>
+                                        </div>
+                                      )}
                                   </>
                                 );
                               })()}
 
                               {/* Edit toggle */}
-                              <div className="mt-2">
+                              <div className="mt-3 flex gap-2">
                                 <button
-                                  className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"
+                                  className="px-4 py-2 text-sm font-medium border-2 border-emerald-600 text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors"
                                   onClick={() => startEdit(q._id)}
                                 >
-                                  Edit
+                                  ✏️ Edit Question & Answer
                                 </button>
                               </div>
                             </>
@@ -616,6 +724,18 @@ export default function SmartImportPreviewModal({
       )}
     </AnimatePresence>
   );
+}
+
+// ------------------ Helper Functions ------------------
+// Check if question has correct answer marked
+function hasCorrectAnswer(q: PreviewQuestion): boolean {
+  if (q.type === "mcq") {
+    return Array.isArray(q.options) && q.options.some((opt) => opt.isCorrect);
+  } else if (q.type === "truefalse") {
+    return Array.isArray(q.options) && q.options.some((opt) => opt.isCorrect);
+  } else {
+    return !!q.correctAnswerText && q.correctAnswerText.trim() !== "";
+  }
 }
 
 // ------------------ Helper Conversion Functions ------------------

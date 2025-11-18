@@ -77,7 +77,7 @@ interface ReviewSection {
 interface ReviewQuestion {
   _id: string;
   text: string;
-  options?: { _id: string; text: string }[];
+  options?: { _id: string; text: string; isCorrect?: boolean }[];
   explanation?: string;
 }
 
@@ -860,33 +860,33 @@ export default function TeacherReviewPanel() {
         <AnimatePresence>
           {active && (
             <motion.div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
               <motion.div
-                className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl max-h-[90vh] overflow-hidden"
+                className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-7xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
               >
                 {/* Modal Header */}
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-5 text-white">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white font-bold text-lg border-2 border-white/30">
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-3 sm:px-6 py-3 sm:py-5 text-white flex-shrink-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white font-bold text-base sm:text-lg border-2 border-white/30 flex-shrink-0">
                         {typeof active.attempt.userId === "object" &&
                         active.attempt.userId.name
                           ? active.attempt.userId.name.charAt(0).toUpperCase()
                           : "S"}
                       </div>
-                      <div>
-                        <h2 className="text-xl font-bold">
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-base sm:text-xl font-bold truncate">
                           {active.exam.title}
                         </h2>
-                        <div className="flex items-center gap-3 text-indigo-100 text-sm mt-1">
+                        <div className="flex items-center gap-2 sm:gap-3 text-indigo-100 text-xs sm:text-sm mt-1 flex-wrap">
                           {typeof active.attempt.userId === "object" &&
                             active.attempt.userId.name && (
                               <>
@@ -914,26 +914,26 @@ export default function TeacherReviewPanel() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/20">
-                        <div className="text-xs text-indigo-100 font-medium">
+                    <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0">
+                      <div className="text-right bg-white/10 backdrop-blur-sm px-2 sm:px-4 py-1 sm:py-2 rounded-lg sm:rounded-xl border border-white/20">
+                        <div className="text-xs text-indigo-100 font-medium hidden sm:block">
                           Score
                         </div>
-                        <div className="text-2xl font-bold">
+                        <div className="text-base sm:text-2xl font-bold">
                           {active.attempt.totalScore}{" "}
-                          <span className="text-lg opacity-75">
+                          <span className="text-sm sm:text-lg opacity-75">
                             / {active.attempt.maxScore}
                           </span>
                         </div>
                       </div>
                       <motion.button
                         onClick={() => setActive(null)}
-                        className="p-2 hover:bg-white/20 rounded-xl transition-colors"
+                        className="p-1.5 sm:p-2 hover:bg-white/20 rounded-lg sm:rounded-xl transition-colors flex-shrink-0"
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
                       >
                         <svg
-                          className="w-6 h-6"
+                          className="w-5 h-5 sm:w-6 sm:h-6"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -951,9 +951,9 @@ export default function TeacherReviewPanel() {
                 </div>
 
                 {/* Modal Content */}
-                <div className="flex h-full max-h-[calc(90vh-80px)]">
+                <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
                   {/* Questions Section */}
-                  <div className="flex-1 p-6 overflow-y-auto">
+                  <div className="flex-1 p-3 sm:p-6 overflow-y-auto order-2 lg:order-1">
                     <div className="space-y-6">
                       {active.sections
                         .flatMap((sec) => sec.questionIds)
@@ -969,7 +969,7 @@ export default function TeacherReviewPanel() {
                           return (
                             <motion.div
                               key={qid}
-                              className="bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-2xl p-6"
+                              className="bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-xl sm:rounded-2xl p-3 sm:p-6"
                               initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: idx * 0.1 }}
@@ -998,34 +998,78 @@ export default function TeacherReviewPanel() {
                                     Options:
                                   </p>
                                   <div className="grid gap-2 pl-11">
-                                    {question.options.map((option, optIdx) => (
-                                      <div
-                                        key={option._id}
-                                        className={`p-3 rounded-lg border text-sm transition-colors ${
-                                          answer?.chosenOptionId === option._id
-                                            ? "bg-blue-50 border-blue-300 text-blue-900 shadow-sm"
-                                            : "bg-gray-50 border-gray-200 text-gray-700 hover:border-gray-300"
-                                        }`}
-                                      >
-                                        <div className="flex items-start gap-2">
-                                          <span className="font-bold text-gray-700 min-w-[20px]">
-                                            {String.fromCharCode(65 + optIdx)}.
-                                          </span>
-                                          <div className="flex-1">
-                                            <MathText
-                                              text={option.text}
-                                              inline
-                                            />
-                                          </div>
-                                          {answer?.chosenOptionId ===
-                                            option._id && (
-                                            <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full font-medium whitespace-nowrap">
-                                              Selected
+                                    {question.options.map((option, optIdx) => {
+                                      const isSelected =
+                                        answer?.chosenOptionId === option._id;
+                                      const isCorrect =
+                                        option.isCorrect === true;
+                                      const isWrong = isSelected && !isCorrect;
+
+                                      return (
+                                        <div
+                                          key={option._id}
+                                          className={`p-3 rounded-lg border text-sm transition-colors ${
+                                            isCorrect
+                                              ? "bg-green-50 border-green-300"
+                                              : isWrong
+                                              ? "bg-red-50 border-red-300"
+                                              : isSelected
+                                              ? "bg-blue-50 border-blue-300"
+                                              : "bg-gray-50 border-gray-200 hover:border-gray-300"
+                                          }`}
+                                        >
+                                          <div className="flex items-start gap-2">
+                                            <span
+                                              className={`font-bold min-w-[20px] ${
+                                                isCorrect
+                                                  ? "text-green-700"
+                                                  : isWrong
+                                                  ? "text-red-700"
+                                                  : "text-gray-700"
+                                              }`}
+                                            >
+                                              {String.fromCharCode(65 + optIdx)}
+                                              .
                                             </span>
-                                          )}
+                                            <div className="flex-1">
+                                              <MathText
+                                                text={option.text}
+                                                inline
+                                              />
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                              {isCorrect && (
+                                                <span className="px-2 py-0.5 bg-green-600 text-white text-xs rounded-full font-medium whitespace-nowrap flex items-center gap-1">
+                                                  <svg
+                                                    className="w-3 h-3"
+                                                    fill="currentColor"
+                                                    viewBox="0 0 20 20"
+                                                  >
+                                                    <path
+                                                      fillRule="evenodd"
+                                                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                      clipRule="evenodd"
+                                                    />
+                                                  </svg>
+                                                  Correct
+                                                </span>
+                                              )}
+                                              {isSelected && (
+                                                <span
+                                                  className={`px-2 py-0.5 text-white text-xs rounded-full font-medium whitespace-nowrap ${
+                                                    isWrong
+                                                      ? "bg-red-600"
+                                                      : "bg-blue-600"
+                                                  }`}
+                                                >
+                                                  Selected
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -1069,9 +1113,9 @@ export default function TeacherReviewPanel() {
 
                               {/* Scoring Interface */}
                               <div className="border-t border-gray-200 pt-4">
-                                <div className="flex items-center gap-4 flex-wrap">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
                                   <div className="flex items-center gap-2">
-                                    <label className="text-sm font-medium text-gray-700">
+                                    <label className="text-xs sm:text-sm font-medium text-gray-700">
                                       Score:
                                     </label>
                                     <input
@@ -1080,7 +1124,7 @@ export default function TeacherReviewPanel() {
                                       min={0}
                                       max={5}
                                       step={0.25}
-                                      className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                      className="w-16 sm:w-20 px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                       onBlur={(e) =>
                                         adjustScore(
                                           qid,
@@ -1089,12 +1133,29 @@ export default function TeacherReviewPanel() {
                                       }
                                       disabled={saving}
                                     />
-                                    <span className="text-sm text-gray-500">
+                                    <span className="text-xs sm:text-sm text-gray-500">
                                       / 5
                                     </span>
                                   </div>
 
-                                  <div className="flex gap-2">
+                                  <div className="flex gap-1.5 sm:gap-2 flex-wrap">
+                                    <motion.button
+                                      onClick={() =>
+                                        adjustScore(
+                                          qid,
+                                          Math.min(
+                                            5,
+                                            (answer?.scoreAwarded || 0) + 1
+                                          )
+                                        )
+                                      }
+                                      className="px-2.5 sm:px-3 py-1 text-xs sm:text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors font-medium"
+                                      whileHover={{ scale: 1.05 }}
+                                      whileTap={{ scale: 0.95 }}
+                                      disabled={saving}
+                                    >
+                                      +1
+                                    </motion.button>
                                     <motion.button
                                       onClick={() =>
                                         adjustScore(
@@ -1105,7 +1166,7 @@ export default function TeacherReviewPanel() {
                                           )
                                         )
                                       }
-                                      className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                                      className="px-2.5 sm:px-3 py-1 text-xs sm:text-sm bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
                                       whileHover={{ scale: 1.05 }}
                                       whileTap={{ scale: 0.95 }}
                                       disabled={saving}
@@ -1122,18 +1183,35 @@ export default function TeacherReviewPanel() {
                                           )
                                         )
                                       }
-                                      className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                                      className="px-2.5 sm:px-3 py-1 text-xs sm:text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
                                       whileHover={{ scale: 1.05 }}
                                       whileTap={{ scale: 0.95 }}
                                       disabled={saving}
                                     >
                                       -0.25
                                     </motion.button>
+                                    <motion.button
+                                      onClick={() =>
+                                        adjustScore(
+                                          qid,
+                                          Math.max(
+                                            0,
+                                            (answer?.scoreAwarded || 0) - 1
+                                          )
+                                        )
+                                      }
+                                      className="px-2.5 sm:px-3 py-1 text-xs sm:text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium"
+                                      whileHover={{ scale: 1.05 }}
+                                      whileTap={{ scale: 0.95 }}
+                                      disabled={saving}
+                                    >
+                                      -1
+                                    </motion.button>
                                   </div>
 
                                   {/* Score Visualization */}
-                                  <div className="flex-1 min-w-32">
-                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div className="w-full sm:flex-1 sm:min-w-32">
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
                                       <motion.div
                                         className="h-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
                                         initial={{ width: 0 }}
@@ -1153,15 +1231,49 @@ export default function TeacherReviewPanel() {
                   </div>
 
                   {/* Sidebar with Summary and Actions */}
-                  <div className="w-80 bg-gray-50 border-l border-gray-200 p-6 overflow-y-auto">
-                    <div className="space-y-6">
+                  <div className="w-full lg:w-80 bg-gray-50 border-b lg:border-b-0 lg:border-l border-gray-200 p-3 sm:p-4 lg:p-6 overflow-y-auto flex-shrink-0 order-1 lg:order-2 max-h-[45vh] lg:max-h-none">
+                    <div className="space-y-3 lg:space-y-6">
+                      {/* Mobile Quick Actions - Show first on mobile */}
+                      <div className="lg:hidden space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <motion.button
+                            disabled={publishing}
+                            onClick={publishAttempt}
+                            className="px-3 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            {publishing ? "Publishing..." : "Publish"}
+                          </motion.button>
+                          <motion.button
+                            onClick={() => setActive(null)}
+                            className="px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg"
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            Close
+                          </motion.button>
+                        </div>
+                        <div className="flex items-center justify-between bg-white rounded-lg p-2 border border-gray-200">
+                          <span className="text-xs text-gray-600">Score:</span>
+                          <span className="text-sm font-bold text-gray-900">
+                            {active.attempt.totalScore} /{" "}
+                            {active.attempt.maxScore}
+                          </span>
+                          <span className="text-xs font-medium text-indigo-600">
+                            {getScorePercentage(
+                              active.attempt.totalScore || 0,
+                              active.attempt.maxScore || 1
+                            )}
+                            %
+                          </span>
+                        </div>
+                      </div>
                       {/* Student Info Card */}
                       {typeof active.attempt.userId === "object" &&
                         active.attempt.userId.name && (
-                          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-4 border border-indigo-100">
-                            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl lg:rounded-2xl p-3 lg:p-4 border border-indigo-100">
+                            <h3 className="text-sm lg:text-base font-semibold text-gray-900 mb-2 lg:mb-3 flex items-center gap-2">
                               <svg
-                                className="w-5 h-5 text-indigo-600"
+                                className="w-4 h-4 lg:w-5 lg:h-5 text-indigo-600"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -1175,9 +1287,9 @@ export default function TeacherReviewPanel() {
                               </svg>
                               Student Details
                             </h3>
-                            <div className="space-y-2 text-sm">
+                            <div className="space-y-1.5 lg:space-y-2 text-xs lg:text-sm">
                               <div>
-                                <div className="text-gray-600 text-xs mb-1">
+                                <div className="text-gray-600 text-xs mb-0.5 lg:mb-1">
                                   Name
                                 </div>
                                 <div className="font-semibold text-gray-900">
@@ -1186,7 +1298,7 @@ export default function TeacherReviewPanel() {
                               </div>
                               {active.attempt.userId.email && (
                                 <div>
-                                  <div className="text-gray-600 text-xs mb-1">
+                                  <div className="text-gray-600 text-xs mb-0.5 lg:mb-1">
                                     Email
                                   </div>
                                   <div className="text-gray-900 truncate">
@@ -1194,7 +1306,7 @@ export default function TeacherReviewPanel() {
                                   </div>
                                 </div>
                               )}
-                              <div className="grid grid-cols-2 gap-2 pt-2">
+                              <div className="grid grid-cols-2 gap-1.5 lg:gap-2 pt-1.5 lg:pt-2">
                                 {active.attempt.userId.classLevel && (
                                   <div className="bg-white rounded-lg p-2 border border-indigo-100">
                                     <div className="text-gray-600 text-xs mb-1">
@@ -1221,10 +1333,10 @@ export default function TeacherReviewPanel() {
                         )}
 
                       {/* Attempt Summary */}
-                      <div className="bg-white rounded-2xl p-4 border border-gray-200">
-                        <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <div className="bg-white rounded-xl lg:rounded-2xl p-3 lg:p-4 border border-gray-200 hidden lg:block">
+                        <h3 className="text-sm lg:text-base font-semibold text-gray-900 mb-2 lg:mb-3 flex items-center gap-2">
                           <svg
-                            className="w-5 h-5 text-gray-600"
+                            className="w-4 h-4 lg:w-5 lg:h-5 text-gray-600"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -1290,8 +1402,8 @@ export default function TeacherReviewPanel() {
                       </div>
 
                       {/* Progress */}
-                      <div className="bg-white rounded-2xl p-4 border border-gray-200">
-                        <h3 className="font-semibold text-gray-900 mb-3">
+                      <div className="bg-white rounded-xl lg:rounded-2xl p-3 lg:p-4 border border-gray-200">
+                        <h3 className="text-sm lg:text-base font-semibold text-gray-900 mb-2 lg:mb-3">
                           Review Progress
                         </h3>
                         <div className="space-y-3">
@@ -1327,8 +1439,8 @@ export default function TeacherReviewPanel() {
                         </div>
                       </div>
 
-                      {/* Actions */}
-                      <div className="space-y-3">
+                      {/* Actions - Desktop Only */}
+                      <div className="hidden lg:block space-y-3">
                         <motion.button
                           disabled={publishing}
                           onClick={publishAttempt}
@@ -1371,8 +1483,8 @@ export default function TeacherReviewPanel() {
                         </motion.button>
                       </div>
 
-                      {/* Keyboard Shortcuts */}
-                      <div className="bg-gray-100 rounded-xl p-3">
+                      {/* Keyboard Shortcuts - Desktop Only */}
+                      <div className="hidden lg:block bg-gray-100 rounded-xl p-3">
                         <h4 className="text-xs font-semibold text-gray-700 mb-2">
                           Keyboard Shortcuts
                         </h4>

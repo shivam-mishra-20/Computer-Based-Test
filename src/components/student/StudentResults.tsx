@@ -763,30 +763,31 @@ export default function StudentResults() {
                                                   : false;
                                               const isCorrectOption =
                                                 option.isCorrect;
+                                              const isWrong =
+                                                isSelected && !isCorrectOption;
 
                                               return (
                                                 <div
                                                   key={option._id}
                                                   className={`p-3 rounded-lg border-2 transition-all ${
-                                                    isSelected && isCorrect
-                                                      ? "bg-emerald-50 border-emerald-300 shadow-sm"
-                                                      : isSelected && !isCorrect
+                                                    isCorrectOption
+                                                      ? "bg-green-50 border-green-300 shadow-sm"
+                                                      : isWrong
                                                       ? "bg-red-50 border-red-300 shadow-sm"
-                                                      : isCorrectOption
-                                                      ? "bg-green-50 border-green-300"
+                                                      : isSelected
+                                                      ? "bg-blue-50 border-blue-300"
                                                       : "bg-slate-50 border-slate-200"
                                                   }`}
                                                 >
                                                   <div className="flex items-start gap-3">
                                                     <div
-                                                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                                                        isSelected && isCorrect
-                                                          ? "bg-emerald-600 text-white border-emerald-600"
-                                                          : isSelected &&
-                                                            !isCorrect
-                                                          ? "bg-red-600 text-white border-red-600"
-                                                          : isCorrectOption
+                                                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 flex-shrink-0 ${
+                                                        isCorrectOption
                                                           ? "bg-green-600 text-white border-green-600"
+                                                          : isWrong
+                                                          ? "bg-red-600 text-white border-red-600"
+                                                          : isSelected
+                                                          ? "bg-blue-600 text-white border-blue-600"
                                                           : "bg-white text-slate-700 border-slate-300"
                                                       }`}
                                                     >
@@ -794,7 +795,7 @@ export default function StudentResults() {
                                                         65 + optIdx
                                                       )}
                                                     </div>
-                                                    <div className="flex-1">
+                                                    <div className="flex-1 min-w-0">
                                                       <MathText
                                                         text={
                                                           option.text ||
@@ -805,23 +806,35 @@ export default function StudentResults() {
                                                         inline
                                                       />
                                                     </div>
-                                                    {isSelected && (
-                                                      <span
-                                                        className={`text-xs font-medium px-2 py-1 rounded-full ${
-                                                          isCorrect
-                                                            ? "bg-emerald-600 text-white"
-                                                            : "bg-red-600 text-white"
-                                                        }`}
-                                                      >
-                                                        Your Answer
-                                                      </span>
-                                                    )}
-                                                    {isCorrectOption &&
-                                                      !isSelected && (
-                                                        <span className="text-xs font-medium px-2 py-1 rounded-full bg-green-600 text-white">
-                                                          Correct Answer
+                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                      {isCorrectOption && (
+                                                        <span className="text-xs font-medium px-2 py-1 rounded-full bg-green-600 text-white flex items-center gap-1">
+                                                          <svg
+                                                            className="w-3 h-3"
+                                                            fill="currentColor"
+                                                            viewBox="0 0 20 20"
+                                                          >
+                                                            <path
+                                                              fillRule="evenodd"
+                                                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                              clipRule="evenodd"
+                                                            />
+                                                          </svg>
+                                                          Correct
                                                         </span>
                                                       )}
+                                                      {isSelected && (
+                                                        <span
+                                                          className={`text-xs font-medium px-2 py-1 rounded-full ${
+                                                            isWrong
+                                                              ? "bg-red-600 text-white"
+                                                              : "bg-blue-600 text-white"
+                                                          }`}
+                                                        >
+                                                          Your Answer
+                                                        </span>
+                                                      )}
+                                                    </div>
                                                   </div>
                                                 </div>
                                               );
