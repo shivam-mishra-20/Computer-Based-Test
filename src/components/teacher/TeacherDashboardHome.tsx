@@ -478,7 +478,7 @@ export default function TeacherDashboardHome() {
             className="group bg-white rounded-2xl p-6 border-2 border-gray-100 shadow-sm hover:shadow-xl hover:border-emerald-200 transition-all duration-300 cursor-pointer"
             whileHover={{ y: -5, scale: 1.02 }}
             onClick={() => {
-              router.push("/dashboard/teacher?tab=ai");
+              router.push("/dashboard/teacher?tab=import");
             }}
           >
             <div className="flex items-start justify-between mb-4">
