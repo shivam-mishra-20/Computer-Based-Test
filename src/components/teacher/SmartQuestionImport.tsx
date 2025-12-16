@@ -3,16 +3,15 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DocumentArrowUpIcon,
-  PhotoIcon,
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  DocumentTextIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { apiFetch } from "../../lib/api";
 // Removed inline preview dependencies (MathText/Image) for modal-only flow
 import Router from "next/router";
+import Image from "next/image";
 import SmartImportPreviewModal from "./SmartImportPreviewModal";
 
 // Static option sets
@@ -129,6 +128,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   // Removed blueprint selection state for simplified flow
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
 
   // Inline edit state removed (handled in modal)
 
@@ -175,6 +175,10 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
 
     setSelectedFile(file);
     setError(null);
+
+    // Generate preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setFilePreviewUrl(previewUrl);
   }, []);
 
   const handleDrop = useCallback(
@@ -208,6 +212,15 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
 
   // Unsaved changes detection now limited to modal actions; inline edit tracker removed
   const hasUnsavedEdits = false;
+
+  // Cleanup preview URL
+  useEffect(() => {
+    return () => {
+      if (filePreviewUrl) {
+        URL.revokeObjectURL(filePreviewUrl);
+      }
+    };
+  }, [filePreviewUrl]);
 
   // Warn on browser/tab close
   useEffect(() => {
@@ -470,6 +483,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           skipped ? ` Skipped ${skipped} duplicates.` : ""
         }`
       );
+      // Close modal after successful save - will trigger refresh
       setIsPreviewOpen(false);
       setSelectedQuestions(new Set());
     } catch (e) {
@@ -557,7 +571,11 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   Review now
                 </button>
                 <button
-                  onClick={() => setSuccess(null)}
+                  onClick={() => {
+                    setSuccess(null);
+                    // Refresh page after dismissing success message
+                    window.location.reload();
+                  }}
                   className="p-1 text-green-400 hover:text-green-600"
                 >
                   <XMarkIcon className="w-4 h-4" />
@@ -776,32 +794,67 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   animate={{ opacity: 1, scale: 1 }}
                   className="space-y-4"
                 >
-                  <div className="w-16 h-16 mx-auto bg-emerald-100 rounded-full flex items-center justify-center">
+                  {/* File Preview */}
+                  <div className="max-w-3xl mx-auto">
                     {selectedFile.type === "application/pdf" ? (
-                      <DocumentTextIcon className="w-8 h-8 text-emerald-600" />
+                      <div className="w-full rounded-lg overflow-hidden border-2 border-emerald-200 bg-gray-50">
+                        <iframe
+                          src={filePreviewUrl || ""}
+                          className="w-full h-[500px]"
+                          title="PDF Preview"
+                        />
+                      </div>
                     ) : (
-                      <PhotoIcon className="w-8 h-8 text-emerald-600" />
+                      <div className="relative rounded-lg overflow-hidden border-2 border-emerald-200 bg-gray-50">
+                        <Image
+                          src={filePreviewUrl || ""}
+                          alt="Preview"
+                          width={1200}
+                          height={800}
+                          unoptimized
+                          style={{ objectFit: "contain" }}
+                          className="w-full h-auto max-h-[500px] mx-auto"
+                        />
+                      </div>
                     )}
                   </div>
-                  <div>
+
+                  {/* File Info */}
+                  <div className="text-center">
                     <p className="text-lg font-medium text-emerald-700">
                       {selectedFile.name}
                     </p>
                     <p className="text-sm text-emerald-600">
                       {(selectedFile.size / 1024 / 1024).toFixed(2)} MB •{" "}
-                      {selectedFile.type}
+                      {selectedFile.type === "application/pdf"
+                        ? "PDF Document"
+                        : "Image File"}
                     </p>
                   </div>
+
+                  {/* Action Buttons */}
                   <div className="flex items-center justify-center gap-3">
                     <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-4 py-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium rounded-lg hover:bg-emerald-50"
+                      onClick={() => {
+                        if (filePreviewUrl) {
+                          URL.revokeObjectURL(filePreviewUrl);
+                          setFilePreviewUrl(null);
+                        }
+                        fileInputRef.current?.click();
+                      }}
+                      className="px-4 py-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium rounded-lg hover:bg-emerald-50 border border-emerald-200"
                     >
                       Change File
                     </button>
                     <button
-                      onClick={() => setSelectedFile(null)}
-                      className="px-4 py-2 text-sm text-red-600 hover:text-red-700 font-medium rounded-lg hover:bg-red-50"
+                      onClick={() => {
+                        if (filePreviewUrl) {
+                          URL.revokeObjectURL(filePreviewUrl);
+                          setFilePreviewUrl(null);
+                        }
+                        setSelectedFile(null);
+                      }}
+                      className="px-4 py-2 text-sm text-red-600 hover:text-red-700 font-medium rounded-lg hover:bg-red-50 border border-red-200"
                     >
                       Remove
                     </button>

@@ -205,17 +205,17 @@ export default function SmartImportPreviewModal({
 
           {/* Modal */}
           <motion.div
-            className="relative bg-white w-[95vw] max-w-5xl max-h-[85vh] rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col"
+            className="relative bg-white w-full h-full sm:w-[95vw] sm:max-w-5xl sm:max-h-[85vh] sm:rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 30 }}
           >
             {/* Header */}
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="p-3 sm:p-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <DocumentTextIcon className="w-5 h-5 text-emerald-600" />
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Review Extracted Questions ({questions.length})
+                <DocumentTextIcon className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
+                <h3 className="text-sm sm:text-lg font-semibold text-gray-900">
+                  Review Questions ({questions.length})
                 </h3>
               </div>
               <button
@@ -228,69 +228,67 @@ export default function SmartImportPreviewModal({
             </div>
 
             {/* Toolbar */}
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="px-3 sm:px-4 py-3 border-b border-gray-200 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3 flex-wrap">
                 <button
                   onClick={onSelectAll}
-                  className="text-sm text-blue-600 hover:underline"
+                  className="text-xs sm:text-sm text-blue-600 hover:underline font-medium"
                 >
                   Select All
                 </button>
                 <button
                   onClick={onDeselectAll}
-                  className="text-sm text-gray-600 hover:underline"
+                  className="text-xs sm:text-sm text-gray-600 hover:underline font-medium"
                 >
                   Deselect All
                 </button>
                 {anySelected && (
-                  <span className="text-sm text-gray-500">
+                  <span className="text-xs sm:text-sm text-gray-500 font-medium">
                     {selectedIds.size} selected
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="text-xs text-gray-500 mr-2">
-                  💡 Click &quot;Edit&quot; to mark correct answers for
-                  auto-evaluation
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="hidden md:block text-xs text-gray-500 mr-2">
+                  💡 Click &quot;Edit&quot; to mark correct answers
                 </div>
                 {onApproveSelected && (
                   <button
                     onClick={onApproveSelected}
-                    className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    className="px-3 py-2 text-xs sm:text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium whitespace-nowrap flex items-center justify-center gap-1"
                   >
-                    <CheckCircleIcon className="w-4 h-4 inline mr-1" /> Approve
-                    Selected
+                    <CheckCircleIcon className="w-4 h-4" /> Approve Selected
                   </button>
                 )}
                 <button
                   onClick={handleSaveSelected}
                   disabled={!anySelected}
-                  className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
+                  className={`px-4 py-2 text-xs sm:text-sm rounded-lg font-medium transition-colors whitespace-nowrap ${
                     anySelected
                       ? "bg-emerald-600 text-white hover:bg-emerald-700"
                       : "bg-gray-100 text-gray-400 cursor-not-allowed"
                   }`}
                 >
-                  Save Selected to Question Bank
+                  Save Selected
                 </button>
               </div>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-auto p-2 sm:p-4">
               {questions.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
+                <div className="p-4 sm:p-8 text-center text-gray-500">
                   <DocumentTextIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
                   <p>No questions were extracted.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {questions.map((q) => (
                     <div
                       key={q._id}
-                      className="p-3 rounded-xl border border-gray-200 bg-white"
+                      className="p-2 sm:p-3 rounded-lg sm:rounded-xl border border-gray-200 bg-white"
                     >
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-2 sm:gap-3">
                         <input
                           type="checkbox"
                           className="mt-1 w-4 h-4 text-emerald-600"
@@ -298,15 +296,15 @@ export default function SmartImportPreviewModal({
                           onChange={() => onToggleSelect(q._id)}
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-800">
+                          <div className="flex items-center gap-1 sm:gap-2 mb-1 flex-wrap">
+                            <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs bg-emerald-100 text-emerald-800 font-medium">
                               Q{q.questionNumber ?? "?"}
                             </span>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
+                            <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs bg-gray-100 text-gray-700 font-medium">
                               {(drafts[q._id]?.type || q.type).toUpperCase()}
                             </span>
                             <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${
+                              className={`inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium ${
                                 q.status === "approved"
                                   ? "bg-green-100 text-green-700"
                                   : q.status === "rejected"
@@ -323,7 +321,7 @@ export default function SmartImportPreviewModal({
                                 drafts[q._id]?.correctAnswerText ??
                                 q.correctAnswerText,
                             }) && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700 font-medium">
+                              <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs bg-orange-100 text-orange-700 font-medium">
                                 ⚠️ No Answer
                               </span>
                             )}
@@ -331,11 +329,11 @@ export default function SmartImportPreviewModal({
                           {/* View/Edit area */}
                           {drafts[q._id]?.isEditing ? (
                             <div className="space-y-2">
-                              <label className="text-xs text-gray-600">
+                              <label className="text-[10px] sm:text-xs text-gray-600 font-medium">
                                 Question text (plain input; LaTeX auto on Done)
                               </label>
                               <textarea
-                                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                className="w-full px-2 sm:px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                 rows={4}
                                 value={drafts[q._id]?.plainText ?? ""}
                                 placeholder="Type question normally, e.g. d/dx tan^{-1}(sqrt(1+x^2)-1/x) ="
@@ -347,10 +345,10 @@ export default function SmartImportPreviewModal({
                                   )
                                 }
                               />
-                              <div className="text-xs text-gray-500">
+                              <div className="text-[10px] sm:text-xs text-gray-500 font-medium">
                                 Preview:
                               </div>
-                              <div className="p-3 bg-gray-50 rounded-lg text-gray-900">
+                              <div className="p-2 sm:p-3 bg-gray-50 rounded-lg text-sm sm:text-base text-gray-900">
                                 <MathText
                                   text={plainToLatex(
                                     drafts[q._id]?.plainText ||
@@ -360,11 +358,11 @@ export default function SmartImportPreviewModal({
                               </div>
 
                               <div className="flex items-center gap-2">
-                                <label className="text-xs text-gray-600">
+                                <label className="text-[10px] sm:text-xs text-gray-600 font-medium">
                                   Type
                                 </label>
                                 <select
-                                  className="px-2 py-1 border rounded-lg text-sm"
+                                  className="px-2 py-1 border rounded-lg text-xs sm:text-sm"
                                   value={drafts[q._id]?.type || q.type}
                                   onChange={(e) =>
                                     updateDraft(q._id, "type", e.target.value)
@@ -384,15 +382,15 @@ export default function SmartImportPreviewModal({
 
                               {(drafts[q._id]?.type || q.type) === "mcq" ? (
                                 <div className="space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-gray-700">
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                    <span className="text-xs sm:text-sm font-medium text-gray-700">
                                       Options{" "}
-                                      <span className="text-xs text-gray-500">
+                                      <span className="text-[10px] sm:text-xs text-gray-500">
                                         (Check the correct answer)
                                       </span>
                                     </span>
                                     <button
-                                      className="text-xs text-emerald-600 hover:underline font-medium"
+                                      className="text-xs text-emerald-600 hover:underline font-medium self-start sm:self-auto"
                                       onClick={() => {
                                         const opts = (
                                           drafts[q._id]?.options ||
@@ -424,7 +422,7 @@ export default function SmartImportPreviewModal({
                                     >
                                       <input
                                         type="checkbox"
-                                        className="mt-2 w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
+                                        className="mt-1.5 sm:mt-2 w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500 flex-shrink-0"
                                         checked={!!opt.isCorrect}
                                         onChange={(e) => {
                                           const opts = (
@@ -441,10 +439,10 @@ export default function SmartImportPreviewModal({
                                         }}
                                         title="Mark as correct answer"
                                       />
-                                      <div className="flex-1">
+                                      <div className="flex-1 min-w-0">
                                         <input
                                           type="text"
-                                          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                           value={opt.text || ""}
                                           onChange={(e) => {
                                             const opts = (
@@ -460,13 +458,13 @@ export default function SmartImportPreviewModal({
                                             updateDraft(q._id, "options", opts);
                                           }}
                                         />
-                                        <div className="text-xs text-gray-500 mt-1">
+                                        <div className="text-[10px] sm:text-xs text-gray-500 mt-1">
                                           Preview:{" "}
                                           <MathText text={opt.text} inline />
                                         </div>
                                       </div>
                                       <button
-                                        className="text-xs text-red-600 hover:underline"
+                                        className="text-[10px] sm:text-xs text-red-600 hover:underline flex-shrink-0 font-medium"
                                         onClick={() => {
                                           const opts = (
                                             drafts[q._id]?.options ||
@@ -486,18 +484,18 @@ export default function SmartImportPreviewModal({
                                 "truefalse" ? (
                                 <div className="space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-gray-700">
+                                    <span className="text-xs sm:text-sm font-medium text-gray-700">
                                       Correct Answer
                                     </span>
                                   </div>
-                                  <div className="flex gap-4">
+                                  <div className="flex gap-2 sm:gap-4">
                                     {[
                                       { text: "True", value: true },
                                       { text: "False", value: false },
                                     ].map((opt, idx) => (
                                       <label
                                         key={idx}
-                                        className={`flex-1 flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                                        className={`flex-1 flex items-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-lg border-2 cursor-pointer transition-colors ${
                                           (drafts[q._id]?.options ||
                                             q.options ||
                                             [])[idx]?.isCorrect
@@ -508,7 +506,7 @@ export default function SmartImportPreviewModal({
                                         <input
                                           type="radio"
                                           name={`tf-${q._id}`}
-                                          className="w-4 h-4 text-green-600"
+                                          className="w-4 h-4 text-green-600 flex-shrink-0"
                                           checked={
                                             !!(drafts[q._id]?.options ||
                                               q.options ||
@@ -528,13 +526,13 @@ export default function SmartImportPreviewModal({
                                             updateDraft(q._id, "options", opts);
                                           }}
                                         />
-                                        <span className="font-medium text-gray-900">
+                                        <span className="text-sm sm:text-base font-medium text-gray-900">
                                           {opt.text}
                                         </span>
                                         {(drafts[q._id]?.options ||
                                           q.options ||
                                           [])[idx]?.isCorrect && (
-                                          <CheckCircleIcon className="w-4 h-4 text-green-600 ml-auto" />
+                                          <CheckCircleIcon className="w-4 h-4 text-green-600 ml-auto flex-shrink-0" />
                                         )}
                                       </label>
                                     ))}
@@ -542,15 +540,15 @@ export default function SmartImportPreviewModal({
                                 </div>
                               ) : (
                                 <div className="space-y-1">
-                                  <label className="text-sm font-medium text-gray-700">
+                                  <label className="text-xs sm:text-sm font-medium text-gray-700">
                                     Correct Answer{" "}
-                                    <span className="text-xs text-gray-500">
+                                    <span className="text-[10px] sm:text-xs text-gray-500">
                                       (Required for auto-evaluation)
                                     </span>
                                   </label>
                                   <input
                                     type="text"
-                                    className="w-full px-3 py-2 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                     placeholder="Enter the correct answer..."
                                     value={
                                       drafts[q._id]?.correctAnswerText ??
@@ -565,7 +563,7 @@ export default function SmartImportPreviewModal({
                                       )
                                     }
                                   />
-                                  <div className="text-xs text-gray-500">
+                                  <div className="text-[10px] sm:text-xs text-gray-500">
                                     Preview:{" "}
                                     <MathText
                                       text={
@@ -580,8 +578,8 @@ export default function SmartImportPreviewModal({
                               )}
 
                               {/* Diagram upload */}
-                              <div className="mt-2 flex items-center gap-3 flex-wrap">
-                                <label className="text-xs text-gray-500">
+                              <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                                <label className="text-[10px] sm:text-xs text-gray-500 font-medium">
                                   Diagram:
                                 </label>
                                 <input
@@ -594,7 +592,7 @@ export default function SmartImportPreviewModal({
                                       [q._id]: file,
                                     }));
                                   }}
-                                  className="text-xs"
+                                  className="text-[10px] sm:text-xs w-full sm:w-auto"
                                 />
                                 {(drafts[q._id]?.diagramUrl ||
                                   q.diagramUrl) && (
@@ -611,18 +609,18 @@ export default function SmartImportPreviewModal({
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-2 pt-2">
+                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2">
                                 <button
-                                  className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"
+                                  className="px-3 py-2 text-xs sm:text-sm border-2 border-emerald-600 text-emerald-600 font-medium rounded-lg hover:bg-emerald-50"
                                   onClick={() => finalizeEdit(q._id)}
                                 >
-                                  Done (Convert to LaTeX)
+                                  ✓ Done (Convert to LaTeX)
                                 </button>
                                 <button
-                                  className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"
+                                  className="px-3 py-2 text-xs sm:text-sm border font-medium rounded-lg hover:bg-gray-50"
                                   onClick={() => cancelEdit(q._id)}
                                 >
-                                  Cancel
+                                  ✕ Cancel
                                 </button>
                               </div>
                             </div>
@@ -638,18 +636,18 @@ export default function SmartImportPreviewModal({
                                   ov?.correctAnswerText ?? q.correctAnswerText;
                                 return (
                                   <>
-                                    <div className="text-gray-900">
+                                    <div className="text-sm sm:text-base text-gray-900">
                                       <MathText text={viewText} />
                                     </div>
                                     {(viewType === "mcq" ||
                                       viewType === "truefalse") &&
                                       Array.isArray(viewOptions) &&
                                       viewOptions.length > 0 && (
-                                        <div className="mt-3">
-                                          <div className="text-xs font-semibold text-gray-600 mb-1.5">
+                                        <div className="mt-2 sm:mt-3">
+                                          <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1.5">
                                             OPTIONS:
                                           </div>
-                                          <ul className="space-y-1.5 text-sm">
+                                          <ul className="space-y-1.5 text-xs sm:text-sm">
                                             {viewOptions.map((o, i) => (
                                               <li
                                                 key={i}
@@ -674,11 +672,11 @@ export default function SmartImportPreviewModal({
                                     {viewType !== "mcq" &&
                                       viewType !== "truefalse" &&
                                       viewAnswer && (
-                                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                                          <div className="text-xs font-semibold text-green-700 mb-1">
+                                        <div className="mt-2 sm:mt-3 p-2 sm:p-3 bg-green-50 border border-green-200 rounded-lg">
+                                          <div className="text-[10px] sm:text-xs font-semibold text-green-700 mb-1">
                                             CORRECT ANSWER:
                                           </div>
-                                          <div className="text-sm text-green-900 font-medium">
+                                          <div className="text-xs sm:text-sm text-green-900 font-medium">
                                             <MathText
                                               text={viewAnswer}
                                               inline
@@ -689,8 +687,8 @@ export default function SmartImportPreviewModal({
                                     {viewType !== "mcq" &&
                                       viewType !== "truefalse" &&
                                       !viewAnswer && (
-                                        <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                                          <div className="text-xs font-medium text-orange-700">
+                                        <div className="mt-2 sm:mt-3 p-2 sm:p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                          <div className="text-[10px] sm:text-xs font-medium text-orange-700">
                                             ⚠️ No correct answer provided. Click
                                             &quot;Edit&quot; to add one for
                                             auto-evaluation.
@@ -702,9 +700,9 @@ export default function SmartImportPreviewModal({
                               })()}
 
                               {/* Edit toggle */}
-                              <div className="mt-3 flex gap-2">
+                              <div className="mt-2 sm:mt-3 flex gap-2">
                                 <button
-                                  className="px-4 py-2 text-sm font-medium border-2 border-emerald-600 text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors"
+                                  className="w-full sm:w-auto px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-2 border-emerald-600 text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors"
                                   onClick={() => startEdit(q._id)}
                                 >
                                   ✏️ Edit Question & Answer
