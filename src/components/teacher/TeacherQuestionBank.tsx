@@ -360,7 +360,7 @@ export default function TeacherQuestionBank() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="max-w-8xl mx-auto p-4 sm:p-6 lg:p-2"
+      className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-2"
     >
       {/* Header */}
       <div className="mb-8">

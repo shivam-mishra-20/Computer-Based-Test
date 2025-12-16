@@ -818,14 +818,18 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
           }
           /* Position and style the preview for printing */
           body.print-only-preview #paper-preview {
-            position: static !important;
+            position: absolute !important;
             margin: 0 !important;
             padding: 0 !important;
             width: 100% !important;
-            max-width: 100% !important;
+            height: 110% !important;
+            top: -620% !important;
+            left: 0 !important;
+
+            max-width: 120% !important;
             background: #fff !important;
             box-shadow: none !important;
-            border: none !important;
+            border: 0px solid #333 !important;
             border-radius: 0 !important;
           }
           /* Remove ALL padding and spacing from paper-preview and parent containers */

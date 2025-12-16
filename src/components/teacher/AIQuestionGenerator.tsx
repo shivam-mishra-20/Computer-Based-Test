@@ -61,6 +61,19 @@ const DIFFICULTY_OPTIONS = [
   { value: "hard", label: "Hard" },
 ];
 
+const MODEL_OPTIONS = [
+  {
+    value: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro (Advanced)",
+    description: "Enhanced reasoning for complex problems",
+  },
+  {
+    value: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash (Recommended)",
+    description: "Fast and accurate - best for most use cases",
+  },
+];
+
 interface GeneratedQuestion {
   _id: string;
   questionNumber: number;
@@ -94,6 +107,7 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
   const [questionCount, setQuestionCount] = useState("10");
   const [difficulty, setDifficulty] = useState("mixed");
   const [textInput, setTextInput] = useState("");
+  const [selectedModel, setSelectedModel] = useState("gemini-2.5-pro");
 
   // File/Upload states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -222,6 +236,7 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
         marks: marks.trim() ? Number(marks) : undefined,
         count: Number(questionCount),
         difficulty,
+        model: selectedModel,
       };
 
       if (inputMode === "text") {
@@ -778,6 +793,30 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* AI Model */}
+            <div className="md:col-span-2 lg:col-span-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                AI Model *
+              </label>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              >
+                {MODEL_OPTIONS.map((model) => (
+                  <option key={model.value} value={model.value}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {
+                  MODEL_OPTIONS.find((m) => m.value === selectedModel)
+                    ?.description
+                }
+              </p>
             </div>
           </div>
         </motion.div>

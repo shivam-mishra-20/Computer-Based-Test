@@ -57,13 +57,13 @@ const SECTION_OPTIONS = [
 const MODEL_OPTIONS = [
   {
     value: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash (Recommended - Fast & Accurate)",
-    description: "Best balance of reasoning and speed",
+    label: "Gemini 2.5 Flash (Recommended)",
+    description: "Fast and accurate - best for most use cases",
   },
   {
     value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro (Highest Quality)",
-    description: "Strongest performance for math, science, and code",
+    label: "Gemini 2.5 Pro (Advanced)",
+    description: "Enhanced reasoning for complex problems",
   },
 ];
 
@@ -136,9 +136,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [ocrProvider] = useState<"google-vision">("google-vision");
-  const [selectedModel, setSelectedModel] = useState<string>(
-    "publishers/google/models/gemini-2.5-flash"
-  );
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-pro");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -928,7 +926,11 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
         {/* Preview & Save Modal */}
         <SmartImportPreviewModal
           isOpen={isPreviewOpen}
-          onClose={() => setIsPreviewOpen(false)}
+          onClose={() => {
+            setIsPreviewOpen(false);
+            // Refresh the window after closing the modal
+            window.location.reload();
+          }}
           questions={questions}
           selectedIds={selectedQuestions}
           onToggleSelect={toggleQuestionSelection}

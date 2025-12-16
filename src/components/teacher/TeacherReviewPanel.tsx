@@ -210,14 +210,14 @@ export default function TeacherReviewPanel() {
   return (
     <Protected requiredRole="teacher">
       <motion.div
-        className="space-y-6"
+        className="space-y-6 max-w-7xl mx-auto"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
       >
         {/* Header Section */}
         <motion.div
-          className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+          className="flex flex-col max-w-7xl mx-auto lg:flex-row lg:items-center justify-between gap-4"
           variants={itemVariants}
         >
           <div className="flex items-center gap-3">
