@@ -67,9 +67,9 @@ export default function Navbar() {
         //   icon: "chart-bar",
         // },
         {
-          href: "/dashboard/admin?tab=analytics",
-          label: "Analytics",
-          icon: "chart-pie",
+          href: "/dashboard/admin?tab=questions",
+          label: "Questions",
+          icon: "question",
         },
         {
           href: "/dashboard/admin?tab=create-paper",
@@ -80,6 +80,11 @@ export default function Navbar() {
           href: "/dashboard/admin?tab=papers",
           label: "Question Papers",
           icon: "document-text",
+        },
+        {
+          href: "/dashboard/admin?tab=smart-import",
+          label: "Smart Import",
+          icon: "sparkles",
         },
       ];
     }
@@ -388,105 +393,102 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 w-full z-50 ">
-      {/* Glassy background effect */}
-      <div className="absolute inset-0 bg-white/70 backdrop-blur-md border-b border-gray-200/50 shadow-sm"></div>
+    <nav className="sticky top-0 w-full z-50">
+      {/* Enhanced glassy background with gradient accent */}
+      <div className="absolute inset-0 bg-white/85 backdrop-blur-xl border-b border-gray-200/60 shadow-md"></div>
 
       {/* Navbar content */}
-      <div className="relative max-w-7xl mx-auto px-4 py-3">
+      <div className="relative max-w-[1400px] mx-auto px-6 py-3.5">
         <div className="flex items-center justify-between">
-          {/* Logo section with animation */}
+          {/* Enhanced Logo with gradient background */}
           <Link
             href="/"
-            className="group flex items-center gap-3"
+            className="group flex items-center gap-3 hover:opacity-90 transition-opacity"
             aria-label="Go to home"
           >
-            {/* Plain neutral circular background removed per request; larger logo for better presence */}
-            <div className="relative overflow-hidden rounded-full w-14 h-14 flex items-center justify-center shadow-sm transition-transform duration-300 ease-out transform group-hover:scale-105">
+            <div className="relative overflow-hidden rounded-xl w-12 h-12 flex items-center justify-center bg-gradient-to-br from-green-600 to-emerald-700 shadow-lg shadow-green-500/25 transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl group-hover:shadow-green-500/35">
               <Image
                 src="/logo.png"
                 alt="Abhigyan Gurukul"
-                width={56}
-                height={56}
-                className="object-cover rounded-full"
+                width={48}
+                height={48}
+                className="object-cover rounded-xl"
               />
             </div>
             <div className="flex flex-col">
-              <span className="font-semibold text-gray-900 text-lg hidden sm:block transition-all">
+              <span className="font-bold text-lg hidden sm:block bg-gradient-to-r from-gray-900 to-green-800 bg-clip-text text-transparent">
                 Abhigyan Gurukul
               </span>
-              <span className="text-xs text-gray-500 hidden sm:block">
+              <span className="text-xs text-gray-600 hidden sm:block font-medium">
                 Tree of Knowledge
               </span>
             </div>
           </Link>
 
-          {/* Desktop menu */}
-          <div className="hidden md:flex items-center gap-1">
+          {/* Enhanced Desktop menu with modern styling */}
+          <div className="hidden md:flex items-center gap-2">
             {menu.map((item) => {
               const active = isActive(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative px-2 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-all duration-300
-                    ${
-                      active
-                        ? "text-green-700 bg-green-50 font-medium shadow-sm"
-                        : "text-gray-600 hover:text-green-600 hover:bg-gray-50"
-                    }`}
+                  className={`group relative px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all duration-300 ${
+                    active
+                      ? "text-white bg-gradient-to-r from-green-600 to-emerald-600 shadow-lg shadow-green-500/30"
+                      : "text-gray-700 hover:text-green-600 hover:bg-green-50/60"
+                  }`}
                 >
                   <span
-                    className={`transition-transform ${
-                      active ? "text-green-600" : "text-gray-400"
+                    className={`transition-all duration-300 ${
+                      active
+                        ? "text-white scale-110"
+                        : "text-gray-500 group-hover:text-green-600 group-hover:scale-110"
                     }`}
                   >
                     {getIcon(item.icon)}
                   </span>
                   <span>{item.label}</span>
-                  {active && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-green-500 to-emerald-400 transform origin-left transition-transform duration-300"></div>
-                  )}
                 </Link>
               );
             })}
 
-            {/* Auth button with animation */}
+            {/* Enhanced Auth button */}
             {!isAuthed ? (
               <Link
                 href="/"
-                className="ml-3 px-5 py-1.5 rounded-full bg-gradient-to-r from-green-600 to-emerald-500 text-white font-medium text-sm shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 hover:brightness-105"
+                className="ml-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold text-sm shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40 transition-all duration-300 hover:scale-105"
               >
                 Login
               </Link>
             ) : (
               <button
                 onClick={onLogout}
-                className="ml-3 px-5 py-1.5 rounded-full text-red-600 border border-red-200 hover:bg-red-50 font-medium text-sm transition-all duration-300"
+                className="ml-2 px-6 py-2.5 rounded-xl text-red-600 border-2 border-red-200 hover:bg-red-50 hover:border-red-300 font-semibold text-sm transition-all duration-300 hover:scale-105"
               >
                 Logout
               </button>
             )}
           </div>
 
-          {/* Mobile hamburger button with animation */}
+          {/* Enhanced Mobile hamburger button */}
           <button
-            className="md:hidden flex flex-col justify-center items-center w-10 h-10 rounded-lg hover:bg-gray-100 transition-colors duration-200"
+            className="md:hidden flex flex-col justify-center items-center w-11 h-11 rounded-xl hover:bg-gray-100 transition-all duration-200 active:scale-95"
             onClick={() => setOpen(!open)}
             aria-label="Toggle menu"
           >
             <div
-              className={`w-5 h-0.5 bg-gray-600 rounded transition-all duration-300 ${
+              className={`w-6 h-0.5 bg-gray-700 rounded transition-all duration-300 ${
                 open ? "transform rotate-45 translate-y-1.5" : "mb-1.5"
               }`}
             ></div>
             <div
-              className={`w-5 h-0.5 bg-gray-600 rounded transition-all duration-300 ${
+              className={`w-6 h-0.5 bg-gray-700 rounded transition-all duration-300 ${
                 open ? "opacity-0" : "mb-1.5"
               }`}
             ></div>
             <div
-              className={`w-5 h-0.5 bg-gray-600 rounded transition-all duration-300 ${
+              className={`w-6 h-0.5 bg-gray-700 rounded transition-all duration-300 ${
                 open ? "transform -rotate-45 -translate-y-1.5" : ""
               }`}
             ></div>
@@ -494,15 +496,15 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile menu as an animated overlay (framer-motion slide-down using translateY) */}
+      {/* Enhanced Mobile menu with modern styling */}
       <AnimatePresence>
         {open && (
           <motion.div
             key="mobile-menu"
-            initial={{ opacity: 0, translateY: -12 }}
+            initial={{ opacity: 0, translateY: -16 }}
             animate={{ opacity: 1, translateY: 0 }}
-            exit={{ opacity: 0, translateY: -12 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            exit={{ opacity: 0, translateY: -16 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
             className="md:hidden absolute left-0 right-0 top-full z-40"
           >
             <div className="bg-white shadow-lg border-t">

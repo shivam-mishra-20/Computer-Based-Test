@@ -41,6 +41,7 @@ interface QuestionView {
   options?: { _id: string; text: string }[];
   assertion?: string;
   reason?: string;
+  diagramUrl?: string;
 }
 
 interface AttemptViewResponse {
@@ -69,10 +70,14 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
   const [violations, setViolations] = useState(0);
   const [violationMessage, setViolationMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const autosaveRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  const attemptEndRef = useRef<number | null>(null);
+  const pausedAtRef = useRef<number | null>(null);
 
   const updateTimeLeft = useCallback((end: number) => {
     function tick() {
@@ -111,6 +116,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         if (scheduleEndMs) candidates.push(scheduleEndMs);
         if (candidates.length) {
           const end = Math.min(...candidates);
+          attemptEndRef.current = end;
           updateTimeLeft(end);
         }
       }
@@ -180,14 +186,16 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
 
   useEffect(() => {
     if (mode === "review") return;
+    const VIOLATION_THRESHOLD = 6;
     const handleViolation = (why: string) => {
       if (view?.attempt.submittedAt) return;
+      if (isPaused) return; // ignore violations while paused/offline
       setViolations((v) => v + 1);
       setViolationMessage(
         "Exam security warning: Leaving or hiding the tab is not allowed."
       );
       const nextCount = violations + 1;
-      if (nextCount >= 2) {
+      if (nextCount >= VIOLATION_THRESHOLD) {
         submitAttempt({ silent: true, reason: `violation:${why}` });
       }
     };
@@ -216,7 +224,46 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("beforeunload", beforeUnload);
     };
-  }, [attemptId, view, mode, violations, submitAttempt]);
+  }, [attemptId, view, mode, violations, submitAttempt, isPaused]);
+
+  // Pause/resume exam on network disconnect/reconnect
+  useEffect(() => {
+    if (mode === "review") return;
+    const onOffline = () => {
+      if (view?.attempt.submittedAt) return;
+      setIsPaused(true);
+      setOfflineMessage(
+        "Network disconnected — exam paused. Reconnect to resume."
+      );
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      pausedAtRef.current = Date.now();
+    };
+    const onOnline = () => {
+      if (!isPaused) return;
+      const pausedAt = pausedAtRef.current;
+      const endAt = attemptEndRef.current;
+      if (pausedAt && endAt) {
+        const pauseDuration = Date.now() - pausedAt;
+        attemptEndRef.current = endAt + pauseDuration;
+        updateTimeLeft(attemptEndRef.current);
+      }
+      setIsPaused(false);
+      setOfflineMessage(null);
+    };
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [mode, view, isPaused, updateTimeLeft]);
 
   const orderedQuestionIds = view
     ? view.sections.flatMap((sec) => sec.questionIds)
@@ -334,7 +381,8 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     if (!currentQuestion) return null;
     const q = currentQuestion;
     const ans = existingAnswer;
-    const disabled = mode === "review" || Boolean(view?.attempt.submittedAt);
+    const disabled =
+      mode === "review" || Boolean(view?.attempt.submittedAt) || isPaused;
 
     switch (q.type) {
       case "mcq":
@@ -726,7 +774,38 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                           {violationMessage}
                         </p>
                         <p className="text-amber-700 text-sm mt-1">
-                          Violations: {violations}/2
+                          Violations: {violations}/6
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Offline/Paused Banner */}
+                  {offlineMessage && !view.attempt.submittedAt && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 flex items-start gap-3"
+                    >
+                      <svg
+                        className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4.5v15m-7.5-7.5h15"
+                        />
+                      </svg>
+                      <div>
+                        <p className="text-blue-800 font-medium">
+                          {offlineMessage}
+                        </p>
+                        <p className="text-blue-700 text-sm mt-1">
+                          Your time won&apos;t count down while disconnected.
                         </p>
                       </div>
                     </motion.div>
@@ -743,6 +822,17 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                           <div className="text-lg text-slate-900 leading-relaxed whitespace-pre-wrap">
                             <MathText text={currentQuestion?.text || ""} />
                           </div>
+                          {/* Diagram Image */}
+                          {currentQuestion?.diagramUrl && (
+                            <div className="mt-3">
+                              <img
+                                src={currentQuestion.diagramUrl}
+                                alt="Diagram"
+                                className="max-w-sm h-auto max-h-48 object-contain rounded"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                          )}
                         </div>
                         <motion.button
                           whileHover={{ scale: 1.05 }}
@@ -964,27 +1054,19 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
               {view?.attempt.submittedAt && (
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                   <h3 className="font-semibold text-slate-900 mb-2">
-                    Final Score
+                    Submission Status
                   </h3>
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-slate-900">
-                      {view.attempt.totalScore} / {view.attempt.maxScore}
-                    </div>
-                    <div className="text-sm text-slate-600 mt-1">
-                      {Math.round(
-                        ((view.attempt.totalScore || 0) /
-                          (view.attempt.maxScore || 1)) *
-                          100
-                      )}
-                      %
+                    <div className="text-sm text-slate-700">
+                      Your submission has been received.
                     </div>
                     {view.attempt.resultPublished ? (
                       <div className="mt-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg py-2">
-                        Result Published
+                        Results Published — check your results page.
                       </div>
                     ) : (
                       <div className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg py-2">
-                        Awaiting Publication
+                        Marks will be published later.
                       </div>
                     )}
                   </div>

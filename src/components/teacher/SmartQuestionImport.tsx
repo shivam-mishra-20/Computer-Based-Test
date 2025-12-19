@@ -392,28 +392,6 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   // Filter questions
   const getFilteredQuestions = () => questions;
 
-  // resetForm removed (not needed in simplified flow)
-
-  // filteredQuestions removed
-
-  // Load blueprints (on demand)
-  // Blueprint loading removed
-
-  // attachDiagram removed (handled in modal)
-
-  // removeDiagram removed (handled in modal)
-
-  // Editing helpers
-  // beginEdit removed (editing moved to modal)
-
-  // cancelEdit removed
-
-  // updateEditField removed
-
-  // saveEdit removed
-
-  // Blueprint paper creation removed
-
   // Open preview modal when questions are available
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 

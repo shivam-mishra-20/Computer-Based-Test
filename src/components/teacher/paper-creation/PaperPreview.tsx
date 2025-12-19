@@ -682,6 +682,20 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
                 `
                 : ""
             }
+            ${
+              (question as unknown as { diagramUrl?: string }).diagramUrl
+                ? `
+                <tr>
+                  <td></td>
+                  <td colspan="2">
+                    <div style="margin: 12pt 0 12pt 40pt;">
+                      <img src="${(question as unknown as { diagramUrl: string }).diagramUrl}" alt="Diagram" style="max-width: 400px; max-height: 300px; object-fit: contain;" />
+                    </div>
+                  </td>
+                </tr>
+                `
+                : ""
+            }
           `
           )
           .join("")}
@@ -879,6 +893,15 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
           /* Individual question - try to keep together */
           body.print-only-preview #paper-preview .space-y-4 > div {
             page-break-inside: avoid !important;
+          }
+          /* Diagram images - ensure visible and sized correctly */
+          body.print-only-preview #paper-preview img {
+            max-width: 100% !important;
+            max-height: 300px !important;
+            display: block !important;
+            page-break-inside: avoid !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           /* Ensure crisp rules in printed output */
           body.print-only-preview #paper-preview .katex .frac-line,
@@ -1147,6 +1170,18 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
                                     </div>
                                   )
                                 )}
+                              </div>
+                            )}
+
+                            {/* Question Diagram */}
+                            {(question as unknown as { diagramUrl?: string }).diagramUrl && (
+                              <div className="mt-3 ml-4">
+                                <img
+                                  src={(question as unknown as { diagramUrl: string }).diagramUrl}
+                                  alt="Diagram"
+                                  className="max-w-xs h-auto max-h-40 object-contain"
+                                  referrerPolicy="no-referrer"
+                                />
                               </div>
                             )}
 

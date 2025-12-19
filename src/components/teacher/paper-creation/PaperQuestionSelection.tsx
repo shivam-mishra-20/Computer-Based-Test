@@ -35,6 +35,7 @@ interface Question {
   };
   options?: Array<{ text: string; isCorrect?: boolean }>;
   explanation?: string;
+  diagramUrl?: string;
 }
 
 interface Topic {
