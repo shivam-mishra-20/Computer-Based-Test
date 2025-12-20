@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
 import { Modal } from "../ui/modal";
@@ -27,6 +28,7 @@ interface Exam {
 }
 
 export default function TeacherExams() {
+  const router = useRouter();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("");
@@ -86,12 +88,8 @@ export default function TeacherExams() {
   }
 
   function openBuilder(ex: Exam) {
-    setEditingExam(ex);
-    setSectionDrafts(ex.sections || []);
-    setClassLevel(ex.classLevel || "");
-    setBatch(ex.batch || "");
-    setExamClassForQuestions(ex.classLevel || "");
-    setBuilderOpen(true);
+    // Navigate to dedicated build page instead of modal
+    router.push(`/dashboard/teacher/exams/${ex._id}/build`);
   }
 
   function addSection() {
@@ -1310,6 +1308,7 @@ interface Question {
   section?: string;
   marks?: number;
   difficulty?: string;
+  diagramUrl?: string;
 }
 
 interface FilterOptions {
@@ -1326,7 +1325,8 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
 }) => {
   const [list, setList] = useState<Question[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showAll, setShowAll] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
 
   // Filters
   const [selectedSubject, setSelectedSubject] = useState("");
@@ -1431,10 +1431,20 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
     }
   }
 
-  const displayedQuestions = showAll ? list : list.slice(0, 10);
+  // Filter by search query
+  const filteredQuestions = list.filter((q) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      q.text.toLowerCase().includes(query) ||
+      q.subject?.toLowerCase().includes(query) ||
+      q.chapter?.toLowerCase().includes(query) ||
+      q.topic?.toLowerCase().includes(query)
+    );
+  });
 
   const selectAll = () => {
-    const allIds = list.map((q) => q._id);
+    const allIds = filteredQuestions.map((q) => q._id);
     onChange([...new Set([...selected, ...allIds])]);
   };
 
@@ -1442,304 +1452,224 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
     onChange([]);
   };
 
+  const activeFiltersCount = [selectedSubject, selectedChapter, selectedTopic, selectedSection].filter(Boolean).length;
+
+  if (!classLevel) {
+    return (
+      <div className="py-6 text-center text-amber-600">
+        <p className="text-sm font-medium">⚠️ Select a class above to load questions</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      {!classLevel ? (
-        <div className="p-6 text-center bg-amber-50 border border-amber-200 rounded-lg">
-          <svg
-            className="w-12 h-12 text-amber-500 mx-auto mb-3"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
+    <div className="space-y-3">
+      {/* Compact Search & Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex-1 relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <p className="font-medium text-amber-900 mb-1">No Class Selected</p>
-          <p className="text-sm text-amber-700">
-            Please select a class above to load questions from that class&apos;s
-            question bank
-          </p>
+          <input
+            type="text"
+            placeholder="Search questions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+          />
         </div>
-      ) : (
-        <>
-          {/* Filter Panel */}
-          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <svg
-                className="w-5 h-5 text-purple-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                />
-              </svg>
-              <h5 className="font-semibold text-purple-900">
-                Filter Questions (Class {classLevel})
-              </h5>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-3 py-2 text-sm rounded-lg border flex items-center gap-1.5 ${
+              activeFiltersCount > 0 
+                ? "bg-purple-50 border-purple-200 text-purple-700" 
+                : "border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filters{activeFiltersCount > 0 && ` (${activeFiltersCount})`}
+          </button>
+          <button
+            onClick={loadQuestions}
+            disabled={loading}
+            className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {loading ? "..." : "Refresh"}
+          </button>
+          <span className="px-3 py-2 text-sm bg-purple-100 text-purple-700 rounded-lg font-medium">
+            {selected.length} selected
+          </span>
+        </div>
+      </div>
+
+      {/* Collapsible Filters */}
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-gray-50 rounded-lg">
               <select
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
-                className="px-3 py-2 border border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 bg-white text-sm"
+                className="px-2 py-1.5 border rounded text-sm bg-white"
               >
                 <option value="">All Subjects</option>
                 {filterOptions.subjects.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </select>
               <select
                 value={selectedChapter}
                 onChange={(e) => setSelectedChapter(e.target.value)}
                 disabled={!selectedSubject}
-                className="px-3 py-2 border border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 bg-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1.5 border rounded text-sm bg-white disabled:opacity-50"
               >
                 <option value="">All Chapters</option>
                 {filterOptions.chapters.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
               <select
                 value={selectedTopic}
                 onChange={(e) => setSelectedTopic(e.target.value)}
                 disabled={!selectedChapter}
-                className="px-3 py-2 border border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 bg-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1.5 border rounded text-sm bg-white disabled:opacity-50"
               >
                 <option value="">All Topics</option>
                 {filterOptions.topics.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
+                  <option key={t} value={t}>{t}</option>
                 ))}
               </select>
               <select
                 value={selectedSection}
                 onChange={(e) => setSelectedSection(e.target.value)}
                 disabled={!selectedTopic}
-                className="px-3 py-2 border border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 bg-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1.5 border rounded text-sm bg-white disabled:opacity-50"
               >
                 <option value="">All Sections</option>
                 {filterOptions.sections.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </select>
             </div>
-          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* Actions Bar */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={loadQuestions}
-                disabled={loading}
-                className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm font-medium"
-              >
-                {loading ? (
-                  <InlineLoader />
-                ) : (
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
-                  </svg>
-                )}
-                Refresh
-              </motion.button>
-              <button
-                onClick={selectAll}
-                disabled={list.length === 0}
-                className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors disabled:opacity-50 text-sm font-medium"
-              >
-                Select All
-              </button>
-              <button
-                onClick={clearAll}
-                disabled={selected.length === 0}
-                className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50 text-sm font-medium"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium">
-                {selected.length} selected
-              </div>
-              <div className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium">
-                {list.length} available
-              </div>
-            </div>
-          </div>
+      {/* Quick Actions */}
+      <div className="flex items-center gap-2 text-xs">
+        <button
+          onClick={selectAll}
+          disabled={filteredQuestions.length === 0}
+          className="text-purple-600 hover:text-purple-700 disabled:opacity-50 font-medium"
+        >
+          Select All ({filteredQuestions.length})
+        </button>
+        <span className="text-gray-300">|</span>
+        <button
+          onClick={clearAll}
+          disabled={selected.length === 0}
+          className="text-red-600 hover:text-red-700 disabled:opacity-50 font-medium"
+        >
+          Clear
+        </button>
+      </div>
 
-          {/* Questions List */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            {loading && (
-              <div className="p-8 text-center text-slate-500">
-                <InlineLoader className="mb-2" />
-                <p>Loading questions...</p>
-              </div>
+      {/* Questions List - Clean & Minimal */}
+      <div className="border rounded-lg overflow-hidden bg-white">
+        {loading ? (
+          <div className="py-8 text-center text-gray-500">
+            <InlineLoader className="mb-2" />
+            <p className="text-sm">Loading questions...</p>
+          </div>
+        ) : filteredQuestions.length === 0 ? (
+          <div className="py-8 text-center text-gray-500">
+            <p className="text-sm">No questions found</p>
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={() => {
+                  setSelectedSubject("");
+                  setSelectedChapter("");
+                  setSelectedTopic("");
+                  setSelectedSection("");
+                  setSearchQuery("");
+                }}
+                className="mt-2 text-xs text-purple-600 hover:text-purple-700 font-medium"
+              >
+                Clear filters
+              </button>
             )}
-
-            {!loading && (
-              <>
-                <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
-                  {displayedQuestions.map((question) => (
-                    <motion.label
-                      key={question._id}
-                      className="flex items-start gap-3 p-4 cursor-pointer hover:bg-purple-50/50 transition-colors"
-                      whileHover={{ x: 2 }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(question._id)}
-                        onChange={() => toggle(question._id)}
-                        className="mt-1 w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+          </div>
+        ) : (
+          <div className="divide-y max-h-[50vh] overflow-y-auto">
+            {filteredQuestions.map((question) => {
+              const isSelected = selected.includes(question._id);
+              return (
+                <label
+                  key={question._id}
+                  className={`flex gap-3 p-3 cursor-pointer transition-colors ${
+                    isSelected ? "bg-purple-50" : "hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggle(question._id)}
+                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <div className="flex-1 min-w-0">
+                    {/* Question Text - Full Display with MathText */}
+                    <div className="text-sm text-gray-900 leading-relaxed">
+                      <MathText text={question.text} />
+                    </div>
+                    
+                    {/* Diagram if present */}
+                    {question.diagramUrl && (
+                      <img
+                        src={question.diagramUrl.startsWith("http") ? question.diagramUrl : `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}${question.diagramUrl}`}
+                        alt="Diagram"
+                        className="mt-2 max-w-[200px] h-auto rounded border"
+                        loading="lazy"
                       />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-slate-900 mb-2 line-clamp-2">
-                          <MathText text={question.text} inline />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-medium">
-                            {question.type}
-                          </span>
-                          {question.subject && (
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                              {question.subject}
-                            </span>
-                          )}
-                          {question.chapter && (
-                            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-medium">
-                              {question.chapter}
-                            </span>
-                          )}
-                          {question.topic && (
-                            <span className="px-2 py-1 bg-teal-100 text-teal-700 rounded text-xs font-medium">
-                              {question.topic}
-                            </span>
-                          )}
-                          {question.marks && (
-                            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
-                              {question.marks} marks
-                            </span>
-                          )}
-                          {question.difficulty && (
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
-                                question.difficulty === "easy"
-                                  ? "bg-green-100 text-green-700"
-                                  : question.difficulty === "medium"
-                                  ? "bg-amber-100 text-amber-700"
-                                  : "bg-red-100 text-red-700"
-                              }`}
-                            >
-                              {question.difficulty}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </motion.label>
-                  ))}
-                </div>
-
-                {list.length > 10 && !showAll && (
-                  <div className="p-3 bg-slate-50 text-center border-t border-slate-100">
-                    <button
-                      onClick={() => setShowAll(true)}
-                      className="px-4 py-2 text-sm rounded-lg border border-slate-200 hover:bg-white transition-colors font-medium"
-                    >
-                      Show {list.length - 10} more questions
-                    </button>
+                    )}
+                    
+                    {/* Minimal Tags - Only essential info */}
+                    <div className="flex gap-1.5 mt-2 flex-wrap">
+                      {question.subject && (
+                        <span className="text-xs text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                          {question.subject}
+                        </span>
+                      )}
+                      {question.topic && (
+                        <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                          {question.topic}
+                        </span>
+                      )}
+                      {question.difficulty && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          question.difficulty === "easy" ? "text-green-600 bg-green-50" :
+                          question.difficulty === "medium" ? "text-amber-600 bg-amber-50" :
+                          "text-red-600 bg-red-50"
+                        }`}>
+                          {question.difficulty}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
-
-                {showAll && list.length > 10 && (
-                  <div className="p-3 bg-slate-50 text-center border-t border-slate-100">
-                    <button
-                      onClick={() => setShowAll(false)}
-                      className="px-4 py-2 text-sm rounded-lg border border-slate-200 hover:bg-white transition-colors font-medium"
-                    >
-                      Show less
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {!loading && list.length === 0 && (
-              <div className="p-12 text-center text-slate-500">
-                <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <svg
-                    className="w-8 h-8 text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium text-slate-900 mb-2">
-                  No questions found
-                </h3>
-                <p className="text-slate-600 mb-4">
-                  {selectedSubject ||
-                  selectedChapter ||
-                  selectedTopic ||
-                  selectedSection
-                    ? "Try adjusting your filters or select a different class"
-                    : "No questions available for Class " + classLevel}
-                </p>
-                {(selectedSubject ||
-                  selectedChapter ||
-                  selectedTopic ||
-                  selectedSection) && (
-                  <button
-                    onClick={() => {
-                      setSelectedSubject("");
-                      setSelectedChapter("");
-                      setSelectedTopic("");
-                      setSelectedSection("");
-                    }}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-                  >
-                    Clear All Filters
-                  </button>
-                )}
-              </div>
-            )}
+                </label>
+              );
+            })}
           </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 };
+
