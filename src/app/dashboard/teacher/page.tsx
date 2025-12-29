@@ -11,10 +11,12 @@ import SmartQuestionImport from "@/components/teacher/SmartQuestionImport";
 import TeacherAnalytics from "@/components/teacher/TeacherAnalytics";
 import CreatePaperFlow from "@/components/teacher/CreatePaperFlow";
 import CreateExamFlow from "@/components/teacher/CreateExamFlow";
-//import TeacherReports from "@/components/teacher/TeacherReports";
 import QuestionPapers from "@/components/teacher/QuestionPapers";
-//import DashboardHeader from "@/components/ui/dashboard-header";
-//import DashboardTabs from "@/components/ui/dashboard-tabs";
+import TeacherContentManagement from "@/components/teacher/TeacherContentManagement";
+import TeacherBatches from "@/components/teacher/TeacherBatches";
+import TeacherDoubts from "@/components/teacher/TeacherDoubts";
+import TeacherPerformance from "@/components/teacher/TeacherPerformance";
+import TeacherAnnouncements from "@/components/teacher/TeacherAnnouncements";
 
 const TABS = [
   "dashboard",
@@ -26,7 +28,11 @@ const TABS = [
   "import",
   "papers",
   "analytics",
-  //"reports",
+  "content",
+  "batches",
+  "doubts",
+  "performance",
+  "announcements",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -313,9 +319,21 @@ export default function TeacherDashboardPage() {
     case "analytics":
       content = <TeacherAnalytics />;
       break;
-    // case "reports":
-    //   content = <TeacherReports />;
-    //   break;
+    case "content":
+      content = <TeacherContentManagement />;
+      break;
+    case "batches":
+      content = <TeacherBatches />;
+      break;
+    case "doubts":
+      content = <TeacherDoubts />;
+      break;
+    case "performance":
+      content = <TeacherPerformance />;
+      break;
+    case "announcements":
+      content = <TeacherAnnouncements />;
+      break;
   }
 
   // Action button with pending reviews notification

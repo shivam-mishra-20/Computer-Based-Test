@@ -102,14 +102,14 @@ export default function Sidebar() {
       setRoleMenu([
         { href: "/dashboard/teacher", label: "Home", icon: "home" },
         {
-          href: "/dashboard/teacher?tab=create-paper",
-          label: "Create Paper",
-          icon: "plus",
+          href: "/dashboard/teacher?tab=content",
+          label: "Content",
+          icon: "video",
         },
         {
-          href: "/dashboard/teacher?tab=papers",
-          label: "Manage Papers",
-          icon: "document",
+          href: "/dashboard/teacher?tab=batches",
+          label: "Batches",
+          icon: "users",
         },
         {
           href: "/dashboard/teacher?tab=exams",
@@ -117,19 +117,24 @@ export default function Sidebar() {
           icon: "document-text",
         },
         {
-          href: "/dashboard/teacher?tab=import",
-          label: "Upload Questions",
-          icon: "upload",
+          href: "/dashboard/teacher?tab=doubts",
+          label: "Doubts",
+          icon: "question",
+        },
+        {
+          href: "/dashboard/teacher?tab=performance",
+          label: "Reports",
+          icon: "chart-bar",
+        },
+        {
+          href: "/dashboard/teacher?tab=announcements",
+          label: "Announcements",
+          icon: "megaphone",
         },
         {
           href: "/dashboard/teacher?tab=ai",
           label: "AI Tools",
           icon: "sparkles",
-        },
-        {
-          href: "/dashboard/teacher?tab=analytics",
-          label: "Analytics",
-          icon: "chart-pie",
         },
       ]);
     } else {
