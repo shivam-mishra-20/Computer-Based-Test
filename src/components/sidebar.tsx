@@ -88,6 +88,11 @@ export default function Sidebar() {
           icon: "document-text",
         },
         {
+          href: "/dashboard/leaves",
+          label: "Leave Management",
+          icon: "calendar",
+        },
+        {
           href: "/dashboard/admin?tab=reports",
           label: "Reports",
           icon: "chart-bar",

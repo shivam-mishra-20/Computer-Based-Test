@@ -14,6 +14,7 @@ import {
   PhotoIcon,
   PrinterIcon,
 } from "@heroicons/react/24/outline";
+import Image from "next/image";
 import { apiFetch } from "@/lib/api";
 import MathText from "@/components/ui/MathText";
 import { notify } from "@/components/ui/toast";
@@ -106,7 +107,7 @@ export default function ExamBuilderPage() {
     async function loadExam() {
       try {
         // API returns exam directly, not wrapped in {success, data}
-        const examData = (await apiFetch(`/api/exams/${examId}`)) as Exam;
+        const examData = (await apiFetch(`/exams/${examId}`)) as Exam;
         if (examData && examData._id) {
           setExam(examData);
           // Ensure at least one section exists
@@ -130,7 +131,7 @@ export default function ExamBuilderPage() {
       if (!selectedClass) return;
       try {
         const res = (await apiFetch(
-          `/api/ai/questions/class/${selectedClass}/filters`
+          `/ai/questions/class/${selectedClass}/filters`
         )) as { success: boolean; data: FilterOptions };
         if (res.success) {
           setFilterOptions(res.data);
@@ -160,7 +161,7 @@ export default function ExamBuilderPage() {
         if (selectedTopic) params.append("topic", selectedTopic);
 
         const res = (await apiFetch(
-          `/api/ai/questions/class/${selectedClass}?${params}`
+          `/ai/questions/class/${selectedClass}?${params}`
         )) as { success: boolean; data: { questions: Question[] } };
 
         if (res.success) {
@@ -250,7 +251,7 @@ export default function ExamBuilderPage() {
     if (!exam) return;
     setSaving(true);
     try {
-      await apiFetch(`/api/exams/${examId}`, {
+      await apiFetch(`/exams/${examId}`, {
         method: "PUT",
         body: JSON.stringify({
           sections,
@@ -279,7 +280,7 @@ export default function ExamBuilderPage() {
     setAssigning(true);
     try {
       // First save the sections
-      await apiFetch(`/api/exams/${examId}`, {
+      await apiFetch(`/exams/${examId}`, {
         method: "PUT",
         body: JSON.stringify({
           sections,
@@ -299,7 +300,7 @@ export default function ExamBuilderPage() {
           ? [assignClass, "Lakshya", "Aadharshilla", "Basic", "Commerce"]
           : [assignClass, assignBatch];
 
-      await apiFetch(`/api/exams/${examId}/assign`, {
+      await apiFetch(`/exams/${examId}/assign`, {
         method: "POST",
         body: JSON.stringify({ groups }),
       });
@@ -780,11 +781,14 @@ export default function ExamBuilderPage() {
                               onClick={() => setViewingImage(getImageUrl(q.diagramUrl!))}
                               className="mb-3 inline-block"
                             >
-                              <img
+                              <Image
                                 src={getImageUrl(q.diagramUrl)}
                                 alt="Diagram"
+                                width={200}
+                                height={150}
                                 className="max-w-[200px] h-auto rounded-lg border shadow-sm hover:shadow-md transition-shadow"
-                                loading="lazy"
+                                style={{ width: "auto", height: "auto" }}
+                                unoptimized
                               />
                             </button>
                           )}
@@ -1098,9 +1102,11 @@ export default function ExamBuilderPage() {
                                       marginLeft: '16px',
                                       pageBreakInside: 'avoid'
                                     }}>
-                                      <img
+                                      <Image
                                         src={getImageUrl(q.diagramUrl)}
                                         alt="Diagram"
+                                        width={200}
+                                        height={150}
                                         style={{
                                           maxWidth: '200px',
                                           maxHeight: '150px',
@@ -1108,8 +1114,11 @@ export default function ExamBuilderPage() {
                                           border: '1px solid #ddd',
                                           borderRadius: '4px',
                                           padding: '4px',
-                                          backgroundColor: '#fff'
+                                          backgroundColor: '#fff',
+                                          width: "auto",
+                                          height: "auto"
                                         }}
+                                        unoptimized
                                       />
                                     </div>
                                   )}

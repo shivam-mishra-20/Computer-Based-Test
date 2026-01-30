@@ -51,7 +51,7 @@ export default function PaperChapterSelection({
 
       // Fetch distinct chapters from backend (DB-backed). If none, show empty state.
       const items = (await apiFetch(
-        `/api/exams/questions/chapters?${params.toString()}`
+        `/exams/questions/chapters?${params.toString()}`
       )) as ChaptersApiItem[];
 
       if (Array.isArray(items)) {

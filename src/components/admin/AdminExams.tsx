@@ -35,7 +35,7 @@ export default function AdminExams() {
   async function load() {
     setLoading(true);
     try {
-      const data = (await apiFetch("/api/exams")) as { items?: Exam[] };
+      const data = (await apiFetch("/exams")) as { items?: Exam[] };
       setExams(Array.isArray(data.items) ? data.items : []);
       setRefreshKey((prev) => prev + 1);
     } catch {
@@ -59,7 +59,7 @@ export default function AdminExams() {
     if (!title.trim()) return;
     setCreating(true);
     try {
-      await apiFetch("/api/exams", {
+      await apiFetch("/exams", {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
@@ -84,7 +84,7 @@ export default function AdminExams() {
     const newTitle = prompt("New title", exam.title);
     if (!newTitle || newTitle.trim() === exam.title) return;
     try {
-      const upd = (await apiFetch(`/api/exams/${exam._id}`, {
+      const upd = (await apiFetch(`/exams/${exam._id}`, {
         method: "PUT",
         body: JSON.stringify({ title: newTitle.trim() }),
       })) as Partial<Exam>;
@@ -101,7 +101,7 @@ export default function AdminExams() {
 
   async function togglePublish(exam: Exam) {
     try {
-      const upd = (await apiFetch(`/api/exams/${exam._id}`, {
+      const upd = (await apiFetch(`/exams/${exam._id}`, {
         method: "PUT",
         body: JSON.stringify({ isPublished: !exam.isPublished }),
       })) as Partial<Exam>;
@@ -124,7 +124,7 @@ export default function AdminExams() {
     if (!confirm(`Delete exam "${exam.title}"? This action cannot be undone.`))
       return;
     try {
-      await apiFetch(`/api/exams/${exam._id}`, { method: "DELETE" });
+      await apiFetch(`/exams/${exam._id}`, { method: "DELETE" });
       setExams((arr) => arr.filter((e) => e._id !== exam._id));
       notify.success("Exam deleted successfully");
     } catch (e) {

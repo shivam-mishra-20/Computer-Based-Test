@@ -24,7 +24,7 @@ export default function AdminReports() {
     setLoading(true);
     try {
       const data = (await apiFetch(
-        `/api/reports/exams/${examId}/attendance`
+        `/reports/exams/${examId}/attendance`
       )) as { attended?: AttendanceRow[] };
       setAttendance(data.attended || []);
       setRefreshKey((prev) => prev + 1);
@@ -134,7 +134,13 @@ export default function AdminReports() {
             href="#"
             onClick={(e) => {
               e.preventDefault();
-              window.open(`/api/reports/exams/${examId}/results.csv`, "_blank");
+            const apiBase =
+              process.env.NEXT_PUBLIC_API_BASE_URL ||
+              "http://localhost:5000/api";
+            window.open(
+              `${apiBase}/reports/exams/${examId}/results.csv`,
+              "_blank"
+            );
             }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium transition-colors"
             whileHover={{ scale: 1.02 }}

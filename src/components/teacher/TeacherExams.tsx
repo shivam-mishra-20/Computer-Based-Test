@@ -47,7 +47,7 @@ export default function TeacherExams() {
   async function load() {
     setLoading(true);
     try {
-      const data = (await apiFetch("/api/exams")) as { items?: Exam[] };
+      const data = (await apiFetch("/exams")) as { items?: Exam[] };
       setExams(Array.isArray(data.items) ? data.items : []);
     } catch {
       setExams([]);
@@ -66,7 +66,7 @@ export default function TeacherExams() {
     if (!title.trim()) return;
     setCreating(true);
     try {
-      await apiFetch("/api/exams", {
+      await apiFetch("/exams", {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
@@ -120,7 +120,7 @@ export default function TeacherExams() {
     if (!editingExam) return;
     setSaving(true);
     try {
-      await apiFetch(`/api/exams/${editingExam._id}`, {
+      await apiFetch(`/exams/${editingExam._id}`, {
         method: "PUT",
         body: JSON.stringify({
           sections: sectionDrafts,
@@ -142,7 +142,7 @@ export default function TeacherExams() {
 
   async function togglePublish(ex: Exam) {
     try {
-      await apiFetch(`/api/exams/${ex._id}`, {
+      await apiFetch(`/exams/${ex._id}`, {
         method: "PUT",
         body: JSON.stringify({ isPublished: !ex.isPublished }),
       });
@@ -163,7 +163,7 @@ export default function TeacherExams() {
     }
     try {
       const batchValue = batch === "All Batches" ? "All Batches" : batch;
-      await apiFetch(`/api/exams/${editingExam._id}`, {
+      await apiFetch(`/exams/${editingExam._id}`, {
         method: "PUT",
         body: JSON.stringify({
           classLevel,
@@ -178,7 +178,7 @@ export default function TeacherExams() {
           ? [classLevel, "Lakshya", "Aadharshilla", "Basic", "Commerce"]
           : [classLevel, batch];
 
-      await apiFetch(`/api/exams/${editingExam._id}/assign`, {
+      await apiFetch(`/exams/${editingExam._id}/assign`, {
         method: "POST",
         body: JSON.stringify({ groups }),
       });
@@ -1348,7 +1348,7 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
       if (selectedSubject) params.append("subject", selectedSubject);
 
       const response = (await apiFetch(
-        `/api/ai/questions/class/${classLevel}/filters?${params}`
+        `/ai/questions/class/${classLevel}/filters?${params}`
       )) as { success: boolean; data: FilterOptions };
 
       if (response.success) {
@@ -1373,7 +1373,7 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
       if (selectedSection) params.append("section", selectedSection);
 
       const response = (await apiFetch(
-        `/api/ai/questions/class/${classLevel}?${params}`
+        `/ai/questions/class/${classLevel}?${params}`
       )) as { success: boolean; data: { questions: Question[] } };
 
       if (response.success) {

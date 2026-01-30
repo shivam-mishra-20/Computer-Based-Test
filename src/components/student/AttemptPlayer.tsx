@@ -95,7 +95,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
   const load = useCallback(async () => {
     try {
       const data = (await apiFetch(
-        `/api/attempts/${attemptId}`
+        `/attempts/${attemptId}`
       )) as AttemptViewResponse;
       setView(data);
       if (!data.attempt.submittedAt) {
@@ -133,7 +133,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         if (!ok) return;
       }
       try {
-        await apiFetch(`/api/attempts/${attemptId}/submit`, {
+        await apiFetch(`/attempts/${attemptId}/submit`, {
           method: "POST",
           body: JSON.stringify({ auto: silent, reason: opts?.reason }),
         });
@@ -175,7 +175,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     if (!view || view.attempt.submittedAt) return;
     if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     heartbeatRef.current = setInterval(() => {
-      apiFetch(`/api/attempts/${attemptId}/heartbeat`, {
+      apiFetch(`/attempts/${attemptId}/heartbeat`, {
         method: "POST",
       }).catch(() => {});
     }, 30000);
@@ -206,8 +206,9 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     const beforeUnload = (e: BeforeUnloadEvent) => {
       if (view?.attempt.submittedAt) return;
       try {
+        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
         navigator.sendBeacon?.(
-          `/api/attempts/${attemptId}/submit`,
+          `${base}/attempts/${attemptId}/submit`,
           new Blob([JSON.stringify({ auto: true, reason: "unload" })], {
             type: "application/json",
           })
@@ -329,7 +330,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       cloned.attempt.answers.push(newAns);
     }
     setView(cloned);
-    apiFetch(`/api/attempts/${attemptId}/answer`, {
+    apiFetch(`/attempts/${attemptId}/answer`, {
       method: "POST",
       body: JSON.stringify({
         questionId: currentQid,
@@ -367,7 +368,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       )?.isMarkedForReview;
       if (typeof currentMark !== "undefined")
         payload.isMarkedForReview = currentMark;
-      await apiFetch(`/api/attempts/${attemptId}/answer`, {
+      await apiFetch(`/attempts/${attemptId}/answer`, {
         method: "POST",
         body: JSON.stringify(payload),
       });

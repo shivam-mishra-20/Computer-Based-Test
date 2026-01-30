@@ -38,7 +38,7 @@ export default function TeacherAnnouncements() {
 
   const fetchAnnouncements = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/announcements") as { announcements?: Announcement[] } | Announcement[];
+      const res = await apiFetch("/announcements") as { announcements?: Announcement[] } | Announcement[];
       setAnnouncements(Array.isArray(res) ? res : res?.announcements || []);
     } catch (error) {
       console.error("Error fetching announcements:", error);
@@ -49,7 +49,7 @@ export default function TeacherAnnouncements() {
 
   const fetchBatches = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/teacher/batches") as { batches: BatchOption[] };
+      const res = await apiFetch("/teacher/batches") as { batches: BatchOption[] };
       setBatches(res?.batches || []);
     } catch (error) {
       console.error("Error fetching batches:", error);
@@ -67,7 +67,7 @@ export default function TeacherAnnouncements() {
     
     setSaving(true);
     try {
-      await apiFetch("/api/announcements", {
+      await apiFetch("/announcements", {
         method: "POST",
         body: JSON.stringify({
           title: formData.title,

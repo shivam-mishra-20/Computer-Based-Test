@@ -122,7 +122,7 @@ export default function TeacherReviewPanel() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch("/api/attempts/review/pending");
+      const data = await apiFetch("/attempts/review/pending");
       if (Array.isArray(data)) setPending(data as PendingAttemptSummary[]);
       else setPending([]);
     } catch (e) {
@@ -140,7 +140,7 @@ export default function TeacherReviewPanel() {
 
   async function openAttempt(id: string) {
     try {
-      const view = await apiFetch(`/api/attempts/${id}/review`);
+      const view = await apiFetch(`/attempts/${id}/review`);
       setActive(view as ReviewView);
     } catch {
       /* ignore */
@@ -155,7 +155,7 @@ export default function TeacherReviewPanel() {
     if (!active) return;
     setSaving(true);
     try {
-      await apiFetch(`/api/attempts/${active.attempt._id}/adjust`, {
+      await apiFetch(`/attempts/${active.attempt._id}/adjust`, {
         method: "PATCH",
         body: JSON.stringify({
           answerQuestionId: questionId,
@@ -179,7 +179,7 @@ export default function TeacherReviewPanel() {
       return;
     setPublishing(true);
     try {
-      await apiFetch(`/api/attempts/${active.attempt._id}/publish`, {
+      await apiFetch(`/attempts/${active.attempt._id}/publish`, {
         method: "POST",
         body: JSON.stringify({ publish: true }),
       });

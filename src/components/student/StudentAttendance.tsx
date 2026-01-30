@@ -43,8 +43,8 @@ export default function StudentAttendance() {
     const loadAttendance = async () => {
       try {
         const [recordsData, summaryData] = await Promise.all([
-          apiFetch(`/api/attendance/my?month=${selectedMonth}&year=${selectedYear}`) as Promise<AttendanceResponse>,
-          apiFetch('/api/attendance/summary') as Promise<AttendanceSummary>,
+          apiFetch(`/attendance/my?month=${selectedMonth}&year=${selectedYear}`) as Promise<AttendanceResponse>,
+          apiFetch('/attendance/summary') as Promise<AttendanceSummary>,
         ]);
         
         setAttendanceRecords(recordsData?.records || []);

@@ -8,6 +8,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
 } from "@heroicons/react/24/outline";
+import Image from "next/image";
 import MathText from "../../ui/MathText";
 
 interface BankQuestion {
@@ -303,11 +304,14 @@ export default function BankExamModal({
                                       }}
                                       className="relative group inline-block"
                                     >
-                                      <img
+                                      <Image
                                         src={getImageUrl(q.diagramUrl)}
                                         alt="Question diagram"
+                                        width={280}
+                                        height={210}
+                                        style={{ width: "auto", height: "auto" }}
                                         className="max-w-full sm:max-w-[280px] h-auto rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all"
-                                        loading="lazy"
+                                        unoptimized
                                       />
                                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
                                         <span className="opacity-0 group-hover:opacity-100 text-xs bg-black/70 text-white px-2.5 py-1 rounded-lg transition-opacity">
@@ -444,10 +448,14 @@ export default function BankExamModal({
               className="relative max-w-4xl max-h-[90vh] w-full"
               onClick={(e) => e.stopPropagation()}
             >
-              <img
+              <Image
                 src={viewingImage}
                 alt="Question diagram"
+                width={1200}
+                height={900}
+                style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: "85vh" }}
                 className="w-full h-auto max-h-[85vh] object-contain rounded-xl"
+                unoptimized
               />
               <button
                 onClick={() => setViewingImage(null)}

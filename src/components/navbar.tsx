@@ -175,6 +175,11 @@ export default function Navbar() {
     return currentTab === tabInLink;
   };
 
+  // Hide navbar for app-management section (has its own layout)
+  if (pathname?.startsWith('/dashboard/admin/app-management')) {
+    return null;
+  }
+
   // Icon helper for menu items
   const getIcon = (name: string) => {
     switch (name) {

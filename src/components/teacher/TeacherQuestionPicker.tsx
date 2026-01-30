@@ -32,7 +32,7 @@ const TeacherQuestionPicker: React.FC<QuestionPickerProps> = ({
         tags?: { subject?: string; topic?: string; difficulty?: string };
       }
       const data = (await apiFetch(
-        `/api/exams/questions${query ? `?q=${encodeURIComponent(query)}` : ""}`
+        `/exams/questions${query ? `?q=${encodeURIComponent(query)}` : ""}`
       )) as { items: QShape[] };
       setList(data.items || []);
     } catch {

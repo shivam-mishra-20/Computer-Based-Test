@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
+import Image from "next/image";
 
 interface Lecture {
   _id: string;
@@ -54,7 +55,7 @@ export default function TeacherContentManagement() {
 
   const fetchHierarchy = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/lectures/hierarchy") as ContentHierarchy[];
+      const res = await apiFetch("/lectures/hierarchy") as ContentHierarchy[];
       setHierarchy(res || []);
     } catch (error) {
       console.error("Error fetching content:", error);
@@ -77,9 +78,9 @@ export default function TeacherContentManagement() {
       };
 
       if (editingLecture) {
-        await apiFetch(`/api/lectures/${editingLecture._id}`, { method: "PUT", body: JSON.stringify(payload) });
+        await apiFetch(`/lectures/${editingLecture._id}`, { method: "PUT", body: JSON.stringify(payload) });
       } else {
-        await apiFetch("/api/lectures", { method: "POST", body: JSON.stringify(payload) });
+        await apiFetch("/lectures", { method: "POST", body: JSON.stringify(payload) });
       }
 
       setShowAddModal(false);
@@ -106,7 +107,7 @@ export default function TeacherContentManagement() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this lecture?")) return;
     try {
-      await apiFetch(`/api/lectures/${id}`, { method: "DELETE" });
+      await apiFetch(`/lectures/${id}`, { method: "DELETE" });
       fetchHierarchy();
     } catch (error) {
       console.error("Error deleting lecture:", error);
@@ -131,7 +132,7 @@ export default function TeacherContentManagement() {
 
   const toggleStatus = async (lecture: Lecture) => {
     try {
-      await apiFetch(`/api/lectures/${lecture._id}`, {
+      await apiFetch(`/lectures/${lecture._id}`, {
         method: "PUT",
         body: JSON.stringify({ status: lecture.status === "published" ? "draft" : "published" }),
       });
@@ -378,10 +379,12 @@ export default function TeacherContentManagement() {
                                             >
                                               {/* YouTube Preview */}
                                               <div className="relative w-24 h-14 bg-gray-200 rounded-md overflow-hidden flex-shrink-0">
-                                                <img
+                                                <Image
                                                   src={`https://img.youtube.com/vi/${lecture.youtubeVideoId}/mqdefault.jpg`}
                                                   alt={lecture.title}
                                                   className="w-full h-full object-cover"
+                                                  width={100}
+                                                  height={100}
                                                 />
                                                 <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                                                   <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">

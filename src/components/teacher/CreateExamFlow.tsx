@@ -15,6 +15,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { apiFetch } from "../../lib/api";
 import MathText from "../ui/MathText";
+import Image from "next/image";
 
 const CLASS_OPTIONS = ["6", "7", "8", "9", "10", "11", "12"];
 
@@ -87,7 +88,7 @@ export default function CreateExamFlow() {
       if (selectedSubject) params.append("subject", selectedSubject);
 
       const response = (await apiFetch(
-        `/api/ai/questions/class/${examClass}/filters?${params}`
+        `/ai/questions/class/${examClass}/filters?${params}`
       )) as { success: boolean; data: FilterOptions };
 
       if (response.success) {
@@ -108,7 +109,7 @@ export default function CreateExamFlow() {
       if (selectedSection) params.append("section", selectedSection);
 
       const response = (await apiFetch(
-        `/api/ai/questions/class/${examClass}?${params}`
+        `/ai/questions/class/${examClass}?${params}`
       )) as { success: boolean; data: { questions: Question[] } };
 
       if (response.success) {
@@ -232,7 +233,7 @@ export default function CreateExamFlow() {
 
     setSaving(true);
     try {
-      await apiFetch("/api/exams", {
+      await apiFetch("/exams", {
         method: "POST",
         body: JSON.stringify({
           title: examTitle.trim(),
@@ -690,11 +691,14 @@ export default function CreateExamFlow() {
                                   }}
                                   className="relative group inline-block"
                                 >
-                                  <img
+                                  <Image
                                     src={getImageUrl(q.diagramUrl)}
                                     alt="Question diagram"
-                                    className="max-w-full sm:max-w-xs h-auto rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all"
-                                    loading="lazy"
+                                    width={400}
+                                    height={300}
+                                    style={{ width: "auto", height: "auto", maxWidth: "100%" }}
+                                    className="max-w-full sm:max-w-xs rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all"
+                                    unoptimized
                                   />
                                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center">
                                     <span className="opacity-0 group-hover:opacity-100 text-xs bg-black/70 text-white px-2 py-1 rounded transition-opacity">
@@ -935,10 +939,12 @@ export default function CreateExamFlow() {
               className="relative max-w-4xl max-h-[90vh] w-full"
               onClick={(e) => e.stopPropagation()}
             >
-              <img
+              <Image
                 src={viewingImage}
                 alt="Question diagram"
                 className="w-full h-auto max-h-[85vh] object-contain rounded-lg"
+                width={1200}
+                height={900}
               />
               <button
                 onClick={() => setViewingImage(null)}

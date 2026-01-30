@@ -8,7 +8,7 @@ export type LoginResponse = { token?: string; user?: User } | Record<string, unk
 
 export async function login(credentials: Credentials) {
 	// expects backend to return { accessToken, user }
-	const data = (await apiFetch('/api/auth/login', {
+	const data = (await apiFetch('/auth/login', {
 		method: 'POST',
 		body: JSON.stringify(credentials),
 	})) as LoginResponse;
@@ -42,6 +42,11 @@ export function getToken() {
 	return localStorage.getItem('accessToken');
 }
 
+export function getAuthHeader(): Record<string, string> {
+	const token = getToken();
+	return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function getUser(): User | null {
 	if (typeof window === 'undefined') return null;
 	try {
@@ -58,19 +63,19 @@ export function setUser(user: User) {
 }
 
 // Admin-only: create user via backend
-export async function adminCreateUser(payload: { name: string; email: string; password: string; role: 'admin' | 'teacher' | 'student'; classLevel?: string; batch?: string }) {
+export async function adminCreateUser(payload: { name: string; email: string; password: string; role: 'admin' | 'teacher' | 'student'; classLevel?: string; batch?: string; empCode?: string }) {
 	const { apiFetch } = await import('./api');
-	return apiFetch('/api/users', { method: 'POST', body: JSON.stringify(payload) });
+	return apiFetch('/users', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 // Get admin dashboard stats
 export async function getAdminStats() {
 	const { apiFetch } = await import('./api');
-	return apiFetch('/api/users/dashboard');
+	return apiFetch('/users/dashboard');
 }
 
 // Validate token and retrieve current user from backend
 export async function fetchMe() {
 	const { apiFetch } = await import('./api');
-	return apiFetch('/api/auth/me');
+	return apiFetch('/auth/me');
 }

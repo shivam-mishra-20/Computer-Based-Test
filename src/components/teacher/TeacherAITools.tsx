@@ -444,7 +444,7 @@ export default function TeacherAITools() {
   const loadBlueprints = useCallback(async () => {
     setLoadingBlueprints(true);
     try {
-      const data = (await apiFetch("/api/exams/blueprints")) as {
+      const data = (await apiFetch("/exams/blueprints")) as {
         items: SavedBlueprint[];
       };
       setBlueprints(data.items || []);
@@ -477,7 +477,7 @@ export default function TeacherAITools() {
         generalInstructions: paperBlueprint.generalInstructions,
         sections: paperBlueprint.sections,
       };
-      await apiFetch("/api/exams/blueprints", {
+      await apiFetch("/exams/blueprints", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -505,7 +505,7 @@ export default function TeacherAITools() {
   async function deleteBlueprint(id: string) {
     if (!confirm("Delete blueprint?")) return;
     try {
-      await apiFetch(`/api/exams/blueprints/${id}`, { method: "DELETE" });
+      await apiFetch(`/exams/blueprints/${id}`, { method: "DELETE" });
       await loadBlueprints();
     } catch {
       /* ignore */
@@ -536,7 +536,7 @@ export default function TeacherAITools() {
         },
         options,
       };
-      await apiFetch("/api/exams/from-paper", {
+      await apiFetch("/exams/from-paper", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -562,7 +562,7 @@ export default function TeacherAITools() {
   const loadBankQuestions = useCallback(async () => {
     setBankLoading(true);
     try {
-      const data = (await apiFetch("/api/exams/questions?limit=200")) as {
+      const data = (await apiFetch("/exams/questions?limit=200")) as {
         items: BankQuestion[];
       };
       setBankQuestionsList(data.items || []);
@@ -583,7 +583,7 @@ export default function TeacherAITools() {
     }
     setBankExamCreating(true);
     try {
-      await apiFetch("/api/exams", {
+      await apiFetch("/exams", {
         method: "POST",
         body: JSON.stringify({
           title: bankExamTitle,
@@ -625,7 +625,7 @@ export default function TeacherAITools() {
     setLoading(true);
     setError(null);
     try {
-      const res = (await apiFetch("/api/ai/generate/text", {
+      const res = (await apiFetch("/ai/generate/text", {
         method: "POST",
         body: JSON.stringify({ text, ...meta, types: meta.types }),
       })) as { items?: GenQuestion[] };
@@ -653,8 +653,8 @@ export default function TeacherAITools() {
         else form.append(k, String(v));
       });
       const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-      const res = await fetch(base + "/api/ai/generate/pdf", {
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+      const res = await fetch(base + "/ai/generate/pdf", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("accessToken") || ""}`,
@@ -687,8 +687,8 @@ export default function TeacherAITools() {
         else form.append(k, String(v));
       });
       const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-      const res = await fetch(base + "/api/ai/generate/image", {
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+      const res = await fetch(base + "/ai/generate/image", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("accessToken") || ""}`,
@@ -810,8 +810,8 @@ export default function TeacherAITools() {
                 })
               );
               const base =
-                process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-              const resp = await fetch(base + "/api/upload/image", {
+                process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+              const resp = await fetch(base + "/upload/image", {
                 method: "POST",
                 headers: {
                   Authorization: `Bearer ${
@@ -861,7 +861,7 @@ export default function TeacherAITools() {
       );
 
       // Use new validation endpoint
-      const result = (await apiFetch("/api/ai/save-questions", {
+      const result = (await apiFetch("/ai/save-questions", {
         method: "POST",
         body: JSON.stringify({ questions: questionsWithUrls }),
       })) as {
@@ -914,7 +914,7 @@ export default function TeacherAITools() {
     if (!q) return;
     setRefiningIdx(idx);
     try {
-      const refined = (await apiFetch("/api/ai/refine", {
+      const refined = (await apiFetch("/ai/refine", {
         method: "POST",
         body: JSON.stringify({
           question: q,
@@ -961,8 +961,8 @@ export default function TeacherAITools() {
                 })
               );
               const base =
-                process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-              const resp = await fetch(base + "/api/upload/image", {
+                process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+              const resp = await fetch(base + "/upload/image", {
                 method: "POST",
                 headers: {
                   Authorization: `Bearer ${
@@ -979,7 +979,7 @@ export default function TeacherAITools() {
               // ignore
             }
           }
-          const created = (await apiFetch("/api/exams/questions", {
+          const created = (await apiFetch("/exams/questions", {
             method: "POST",
             body: JSON.stringify({
               text: q.text,
@@ -1011,7 +1011,7 @@ export default function TeacherAITools() {
         }
       }
       if (!createdIds.length) throw new Error("No questions created");
-      await apiFetch("/api/exams", {
+      await apiFetch("/exams", {
         method: "POST",
         body: JSON.stringify({
           title: genExamTitle,
@@ -1107,7 +1107,7 @@ export default function TeacherAITools() {
           setPaperLoading(false);
           return;
         }
-        const res = (await apiFetch("/api/ai/generate/paper", {
+        const res = (await apiFetch("/ai/generate/paper", {
           method: "POST",
           body: JSON.stringify({
             sourceText: paperSource,
@@ -1117,7 +1117,7 @@ export default function TeacherAITools() {
         setPaperResult(res);
         // persist to history
         try {
-          await apiFetch("/api/papers", {
+          await apiFetch("/papers", {
             method: "POST",
             body: JSON.stringify({
               ...res,
@@ -1135,8 +1135,8 @@ export default function TeacherAITools() {
         form.append("file", paperPdfFile);
         form.append("blueprint", JSON.stringify(paperBlueprint));
         const base =
-          process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-        const res = await fetch(base + "/api/ai/generate/paper-pdf", {
+          process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        const res = await fetch(base + "/ai/generate/paper-pdf", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${
@@ -1158,7 +1158,7 @@ export default function TeacherAITools() {
         const data = (await res.json()) as GeneratedPaperResult;
         setPaperResult(data);
         try {
-          await apiFetch("/api/papers", {
+          await apiFetch("/papers", {
             method: "POST",
             body: JSON.stringify({
               ...data,
@@ -1176,8 +1176,8 @@ export default function TeacherAITools() {
         form.append("image", paperImageFile);
         form.append("blueprint", JSON.stringify(paperBlueprint));
         const base =
-          process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-        const res = await fetch(base + "/api/ai/generate/paper-image", {
+          process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        const res = await fetch(base + "/ai/generate/paper-image", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${
@@ -1199,7 +1199,7 @@ export default function TeacherAITools() {
         const data = (await res.json()) as GeneratedPaperResult;
         setPaperResult(data);
         try {
-          await apiFetch("/api/papers", {
+          await apiFetch("/papers", {
             method: "POST",
             body: JSON.stringify({
               ...data,
@@ -1357,7 +1357,7 @@ export default function TeacherAITools() {
     try {
       // Convert LaTeX to MathML before sending to server so exported PDF contains proper MathML
       const mathmlPaper = convertPaperToMathMLHtml(paperResult);
-      const res = await fetch(`/api/pdf`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api"}/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paper: mathmlPaper, mathFormat: "mathml" }),
@@ -1395,7 +1395,7 @@ export default function TeacherAITools() {
     try {
       // Convert LaTeX to MathML prior to Word export
       const mathmlPaper = convertPaperToMathMLHtml(paperResult);
-      const res = await fetch(`/api/word`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api"}/word`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paper: mathmlPaper, mathFormat: "mathml" }),
@@ -1436,7 +1436,7 @@ export default function TeacherAITools() {
     if (savingPaper) return;
     setSavingPaper(true);
     try {
-      await apiFetch("/api/papers", {
+      await apiFetch("/papers", {
         method: "POST",
         body: JSON.stringify({
           ...paperResult,

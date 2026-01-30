@@ -138,7 +138,7 @@ export default function TeacherAnalytics() {
   // Load available exams for dropdown
   const loadExamOptions = useCallback(async () => {
     try {
-      const data = (await apiFetch("/api/exams")) as {
+      const data = (await apiFetch("/exams")) as {
         items?: ExamOption[];
       } | null;
       if (data && data.items) {
@@ -164,7 +164,7 @@ export default function TeacherAnalytics() {
     setError(null);
     try {
       const data = (await apiFetch(
-        `/api/analytics/exams/${examId}/insights`
+        `/analytics/exams/${examId}/insights`
       )) as Insight;
       const exam = examOptions.find((e) => e._id === examId);
       setInsight(data);

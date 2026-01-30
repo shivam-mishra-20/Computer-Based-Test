@@ -29,7 +29,7 @@ export default function TeacherBatches() {
 
   const fetchBatches = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/teacher/batches") as { batches: BatchData[] };
+      const res = await apiFetch("/teacher/batches") as { batches: BatchData[] };
       setBatches(res?.batches || []);
     } catch (error) {
       console.error("Error fetching batches:", error);
@@ -45,7 +45,7 @@ export default function TeacherBatches() {
   const fetchStudents = async (batch: string) => {
     setStudentsLoading(true);
     try {
-      const res = await apiFetch(`/api/teacher/students?batch=${encodeURIComponent(batch)}`) as { students: Student[] };
+      const res = await apiFetch(`/teacher/students?batch=${encodeURIComponent(batch)}`) as { students: Student[] };
       setStudents(res?.students || []);
     } catch (error) {
       console.error("Error fetching students:", error);

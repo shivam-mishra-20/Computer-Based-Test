@@ -42,8 +42,8 @@ export default function StudentAssignedExams() {
     setError(null);
     try {
       const [examData, myAttempts] = await Promise.all([
-        apiFetch("/api/attempts/assigned"),
-        apiFetch("/api/attempts/mine"),
+        apiFetch("/attempts/assigned"),
+        apiFetch("/attempts/mine"),
       ]);
       if (Array.isArray(examData)) {
         setExams(examData as ExamLite[]);
@@ -102,7 +102,7 @@ export default function StudentAssignedExams() {
 
   async function startAttempt(examId: string) {
     try {
-      const attemptResp = await apiFetch(`/api/attempts/${examId}/start`, {
+      const attemptResp = await apiFetch(`/attempts/${examId}/start`, {
         method: "POST",
       });
       const attempt = attemptResp as AttemptLite;

@@ -3,16 +3,25 @@
 // Replace or extend with refresh-token logic / cookie-based auth as needed.
 
 // default to local backend per API_Implementation.md
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
 	const url = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 
 	const headers = new Headers(options.headers || {});
+	let token: string | null = null;
 	try {
 		if (typeof window !== 'undefined') {
-			const token = localStorage.getItem('accessToken');
-			if (token) headers.set('Authorization', `Bearer ${token}`);
+			token = localStorage.getItem('accessToken');
+			// Handle case where localStorage has string "null" instead of actual null
+			if (token && token !== 'null' && token !== 'undefined' && token.trim() !== '') {
+				headers.set('Authorization', `Bearer ${token}`);
+				console.log('[apiFetch] Token found and added to headers');
+			} else {
+				console.warn('[apiFetch] No valid token found in localStorage. Token value:', token);
+				token = null;
+				// Don't add Authorization header at all if token is invalid
+			}
 		}
 	} catch {
 		// ignore in SSR
@@ -21,6 +30,8 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 	if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
 		headers.set('Content-Type', 'application/json');
 	}
+
+	console.log('[apiFetch] Request:', { url, method: options.method || 'GET', hasToken: !!token });
 
 	const res = await fetch(url, { ...options, headers });
 
@@ -41,6 +52,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 				}
 
 			const message = hasMessage(data) ? data.message : res.statusText || 'API error';
+			console.error('[apiFetch] Error:', { status: res.status, message, data });
 			const err = new Error(message) as Error & { status?: number; data?: unknown };
 			err.status = res.status;
 			err.data = data;

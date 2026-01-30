@@ -19,7 +19,7 @@ export default function AdminAudit() {
   async function load() {
     setLoading(true);
     try {
-      const res = (await apiFetch("/api/admin/audit-logs")) as {
+      const res = (await apiFetch("/admin/audit-logs")) as {
         items: Audit[];
         total: number;
       };

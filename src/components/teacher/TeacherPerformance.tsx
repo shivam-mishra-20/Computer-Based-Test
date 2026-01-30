@@ -35,7 +35,7 @@ export default function TeacherPerformance() {
   const fetchPerformance = useCallback(async () => {
     try {
       const params = selectedBatch ? `?batch=${encodeURIComponent(selectedBatch)}` : "";
-      const res = await apiFetch(`/api/teacher/performance${params}`) as { performance: StudentPerformance[]; batchStats: BatchStat[] };
+      const res = await apiFetch(`/teacher/performance${params}`) as { performance: StudentPerformance[]; batchStats: BatchStat[] };
       setPerformance(res?.performance || []);
       setBatchStats(res?.batchStats || []);
     } catch (error) {

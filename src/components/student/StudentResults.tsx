@@ -99,7 +99,7 @@ export default function StudentResults() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await apiFetch("/api/attempts/mine?published=1");
+      const resp = await apiFetch("/attempts/mine?published=1");
       if (Array.isArray(resp)) setAttempts(resp as AttemptSummary[]);
       else setAttempts([]);
     } catch (e) {
@@ -117,7 +117,7 @@ export default function StudentResults() {
     setDetailLoading(true);
     try {
       const data = (await apiFetch(
-        `/api/attempts/${id}`
+        `/attempts/${id}`
       )) as unknown as AttemptViewResponse;
       const attempt = data?.attempt;
       if (!attempt) throw new Error("Malformed attempt view");

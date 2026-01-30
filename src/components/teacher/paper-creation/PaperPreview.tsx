@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Download, Save, Loader2, CheckCircle, Printer, X } from "lucide-react";
+import Image from "next/image";
 import { PaperFormData } from "../CreatePaperFlow";
 import { Button } from "../../ui/button";
 import { apiFetch } from "../../../lib/api";
@@ -117,7 +118,7 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
         },
       };
 
-      const response = (await apiFetch("/api/papers", {
+      const response = (await apiFetch("/papers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(paperData),
@@ -163,7 +164,8 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
             const fullHtml = `<!doctype html><html><head>${base}${headHtml}</head><body style="margin:0;background:#ffffff">${element.outerHTML}</body></html>`;
 
             // POST to server API which will generate a PDF using Puppeteer
-            const resp = await fetch("/api/pdf", {
+            const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+            const resp = await fetch(`${apiBase}/pdf`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -1176,11 +1178,13 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
                             {/* Question Diagram */}
                             {(question as unknown as { diagramUrl?: string }).diagramUrl && (
                               <div className="mt-3 ml-4">
-                                <img
+                                <Image
                                   src={(question as unknown as { diagramUrl: string }).diagramUrl}
                                   alt="Diagram"
+                                  width={320}
+                                  height={160}
                                   className="max-w-xs h-auto max-h-40 object-contain"
-                                  referrerPolicy="no-referrer"
+                                  unoptimized
                                 />
                               </div>
                             )}

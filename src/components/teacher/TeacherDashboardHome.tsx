@@ -20,16 +20,16 @@ export default function TeacherDashboardHome() {
   async function load() {
     setLoading(true);
     try {
-      const qs = (await apiFetch(`/api/exams/questions?limit=1`)) as {
+      const qs = (await apiFetch(`/exams/questions?limit=1`)) as {
         total?: number;
       };
-      const ex = (await apiFetch(`/api/exams?limit=1`)) as { total?: number };
+      const ex = (await apiFetch(`/exams?limit=1`)) as { total?: number };
 
       // Try to fetch pending reviews using the same endpoint as TeacherReviewPanel
       // which returns an array of pending attempts. Fall back gracefully if shape differs.
       let pending = 0;
       try {
-        const pr = await apiFetch(`/api/attempts/review/pending`);
+        const pr = await apiFetch(`/attempts/review/pending`);
         if (Array.isArray(pr)) {
           pending = pr.length;
         } else if (
@@ -49,7 +49,7 @@ export default function TeacherDashboardHome() {
       // AI generated papers count
       let aiCount = 0;
       try {
-        const pap = (await apiFetch(`/api/papers?limit=1`)) as {
+        const pap = (await apiFetch(`/papers?limit=1`)) as {
           total?: number;
         };
         aiCount = pap?.total ?? 0;

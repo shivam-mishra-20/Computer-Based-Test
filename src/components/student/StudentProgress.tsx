@@ -40,7 +40,7 @@ export default function StudentProgress() {
     setLoading(true);
     setError(null);
     try {
-      const resp = (await apiFetch("/api/analytics/me/progress")) as unknown;
+      const resp = (await apiFetch("/analytics/me/progress")) as unknown;
       if (Array.isArray(resp)) {
         setPoints(resp as AttemptPoint[]);
       } else if (

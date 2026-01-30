@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, PhotoIcon } from "@heroicons/react/24/outline";
+import Image from "next/image";
 import MathText from "./MathText";
 
 interface QuestionCardProps {
@@ -124,11 +125,14 @@ export default function QuestionCard({
                     }}
                     className="relative group"
                   >
-                    <img
+                    <Image
                       src={q.diagramUrl.startsWith("http") ? q.diagramUrl : `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}${q.diagramUrl}`}
                       alt="Question diagram"
+                      width={320}
+                      height={240}
                       className="max-w-full sm:max-w-xs h-auto rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
-                      loading="lazy"
+                      style={{ width: "auto", height: "auto" }}
+                      unoptimized
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center">
                       <span className="opacity-0 group-hover:opacity-100 text-xs bg-black/70 text-white px-2 py-1 rounded transition-opacity">
@@ -219,10 +223,14 @@ export default function QuestionCard({
               className="relative max-w-4xl max-h-[90vh] w-full"
               onClick={(e) => e.stopPropagation()}
             >
-              <img
+              <Image
                 src={q.diagramUrl.startsWith("http") ? q.diagramUrl : `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}${q.diagramUrl}`}
                 alt="Question diagram"
+                width={1200}
+                height={900}
                 className="w-full h-auto max-h-[85vh] object-contain rounded-lg"
+                style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: "85vh" }}
+                unoptimized
               />
               <button
                 onClick={() => setShowFullImage(false)}

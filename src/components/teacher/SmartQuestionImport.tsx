@@ -323,7 +323,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   const fetchBatchDetails = async (batchId: string) => {
     try {
       const batchData = (await apiFetch(
-        `/api/import-paper/batch/${batchId}`
+        `/import-paper/batch/${batchId}`
       )) as {
         batch: ImportBatch;
         questions: ImportedQuestion[];
@@ -365,7 +365,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
 
     try {
       const result = (await apiFetch(
-        "/api/import-paper/questions/bulk-approve",
+        "/import-paper/questions/bulk-approve",
         {
           method: "POST",
           body: JSON.stringify({
@@ -450,7 +450,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           (q as unknown as { diagramUrl?: string }).diagramUrl,
       }));
 
-      const result = (await apiFetch("/api/ai/save-questions", {
+      const result = (await apiFetch("/ai/save-questions", {
         method: "POST",
         body: JSON.stringify({ questions: payload }),
       })) as { success: boolean; data?: { saved: number; skipped: number } };

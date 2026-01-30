@@ -34,7 +34,7 @@ export default function TeacherReports() {
     setLoading(true);
     try {
       const data = (await apiFetch(
-        `/api/reports/exams/${examId}/attendance`
+        `/reports/exams/${examId}/attendance`
       )) as { attended?: AttendanceRow[] };
       setAttendance(data.attended || []);
     } catch {
@@ -51,7 +51,7 @@ export default function TeacherReports() {
     }
     setLogLoading(true);
     try {
-      const data = (await apiFetch(`/api/reports/exams/${examId}/logs`)) as {
+      const data = (await apiFetch(`/reports/exams/${examId}/logs`)) as {
         attempts?: AttemptWithLogs[];
       };
       setLogs(data.attempts || []);
@@ -90,7 +90,13 @@ export default function TeacherReports() {
             href={`#`}
             onClick={(e) => {
               e.preventDefault();
-              window.open(`/api/reports/exams/${examId}/results.csv`, "_blank");
+            const apiBase =
+              process.env.NEXT_PUBLIC_API_BASE_URL ||
+              "http://localhost:5000/api";
+            window.open(
+              `${apiBase}/reports/exams/${examId}/results.csv`,
+              "_blank"
+            );
             }}
             className="text-sm text-primary underline"
           >

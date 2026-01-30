@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Protected from "../../../components/Protected";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,6 +25,7 @@ const TABS = [
   "questions",
   "papers",
   "smart-import",
+  "automation",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -38,6 +40,7 @@ const tabLabels: Record<Tab, string> = {
   questions: "Question Bank",
   papers: "Question Papers",
   "smart-import": "Smart Import",
+  automation: "EPUB Automation",
 };
 
 // Get icon for each tab
@@ -191,6 +194,23 @@ const getTabIcon = (tab: Tab) => {
           />
         </svg>
       );
+    case "automation":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      );
   }
 };
 
@@ -256,6 +276,14 @@ export default function AdminDashboardPage() {
       break;
     case "smart-import":
       content = <SmartQuestionImport />;
+      break;
+    case "automation":
+      // Dynamically import to avoid SSR issues
+      const AutomationDashboard = dynamic(
+        () => import('@/components/admin/AutomationDashboard'),
+        { ssr: false }
+      );
+      content = <AutomationDashboard />;
       break;
   }
 

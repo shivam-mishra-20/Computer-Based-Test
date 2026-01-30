@@ -239,7 +239,7 @@ export default function QuestionPapers() {
         },
         options: {},
       };
-      await apiFetch("/api/exams/from-paper", {
+      await apiFetch("/exams/from-paper", {
         method: "POST",
         body: JSON.stringify(payload),
       });

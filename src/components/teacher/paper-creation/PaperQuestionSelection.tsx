@@ -205,7 +205,7 @@ export default function PaperQuestionSelection({
         }
 
         const response = (await apiFetch(
-          `/api/exams/questions/topics?${params.toString()}`
+          `/exams/questions/topics?${params.toString()}`
         )) as Topic[];
 
         // Filter to only topics from this specific chapter
@@ -258,15 +258,12 @@ export default function PaperQuestionSelection({
         return;
       }
 
-      // Fetch questions for all selected chapters
-      const allQuestions: Question[] = [];
-
-      for (const chapter of formData.selectedChapters) {
+      // Fetch questions for all selected chapters in parallel
+      const chapterPromises = formData.selectedChapters.map(async (chapter) => {
         const params = new URLSearchParams({
           subject: formData.subject,
           chapter: chapter,
-          limit: "100", // Increased limit per chapter
-          page: "1",
+          // No limit = fetch all questions
         });
 
         // Add class and board filters if available
@@ -279,14 +276,19 @@ export default function PaperQuestionSelection({
         }
 
         const response = (await apiFetch(
-          `/api/exams/questions/for-paper?${params}`
+          `/exams/questions/for-paper?${params}`
         )) as { items?: Question[]; questions?: Question[] };
 
-        const list = response.items || response.questions;
-        if (list && Array.isArray(list)) {
+        return response.items || response.questions || [];
+      });
+
+      const results = await Promise.all(chapterPromises);
+      const allQuestions: Question[] = [];
+      results.forEach(list => {
+        if (Array.isArray(list)) {
           allQuestions.push(...list);
         }
-      }
+      });
 
       // Remove duplicates by ID
       const uniqueQuestions = Array.from(

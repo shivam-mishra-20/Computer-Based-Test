@@ -148,7 +148,7 @@ export default function SmartImportPreviewModal({
           (async () => {
             const form = new FormData();
             form.append("image", file);
-            const resp = await fetch(`${baseUrl}/api/uploads/image`, {
+            const resp = await fetch(`${baseUrl}/uploads/image`, {
               method: "POST",
               headers: {
                 Authorization: `Bearer ${

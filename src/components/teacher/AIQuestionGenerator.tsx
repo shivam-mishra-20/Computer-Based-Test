@@ -240,13 +240,13 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
       };
 
       if (inputMode === "text") {
-        endpoint = "/api/ai/ai-generate/text";
+        endpoint = "/ai/ai-generate/text";
         jsonBody = { ...baseData, text: textInput.trim() };
       } else {
         const isPDF = selectedFile!.type === "application/pdf";
         endpoint = isPDF
-          ? "/api/ai/ai-generate/pdf"
-          : "/api/ai/ai-generate/image";
+          ? "/ai/ai-generate/pdf"
+          : "/ai/ai-generate/image";
 
         formData = new FormData();
         formData.append("file", selectedFile!);
@@ -321,7 +321,7 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
         diagramUrl: overrides?.[q._id]?.diagramUrl ?? undefined,
       }));
 
-      const result = (await apiFetch("/api/ai/save-questions", {
+      const result = (await apiFetch("/ai/save-questions", {
         method: "POST",
         body: JSON.stringify({ questions: payload }),
       })) as { success: boolean; data?: { saved: number; skipped: number } };

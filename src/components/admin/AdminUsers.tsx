@@ -15,6 +15,7 @@ interface User {
   role: Role;
   classLevel?: string;
   batch?: string;
+  empCode?: string;
 }
 
 export default function AdminUsers() {
@@ -31,6 +32,7 @@ export default function AdminUsers() {
     role: "student" as Role,
     classLevel: "",
     batch: "",
+    empCode: "",
   });
   const [message, setMessage] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -40,7 +42,7 @@ export default function AdminUsers() {
     setError(null);
     try {
       const q = filterRole === "all" ? "" : `?role=${filterRole}`;
-      const data = (await apiFetch(`/api/users${q}`)) as Array<
+      const data = (await apiFetch(`/users${q}`)) as Array<
         Record<string, unknown>
       >;
       setUsers(
@@ -51,6 +53,7 @@ export default function AdminUsers() {
           role: u.role as Role,
           classLevel: (u.classLevel as string) || "",
           batch: (u.batch as string) || "",
+          empCode: (u.empCode as string) || "",
         }))
       );
       setRefreshKey((prev) => prev + 1);
@@ -81,6 +84,7 @@ export default function AdminUsers() {
         role: form.role,
         classLevel: form.role === "student" ? form.classLevel : undefined,
         batch: form.role === "student" ? form.batch : undefined,
+        empCode: form.empCode,
       });
       toast.success("User Created Successfully", {
         description: `${form.name} has been added as a ${form.role}`,
@@ -94,6 +98,7 @@ export default function AdminUsers() {
         role: "student",
         classLevel: "",
         batch: "",
+        empCode: "",
       });
       await load();
       setShowForm(false);
@@ -185,7 +190,7 @@ export default function AdminUsers() {
   async function onDeleteUser(id: string) {
     if (!confirm("Delete this user permanently?")) return;
     try {
-      await apiFetch(`/api/users/${id}`, { method: "DELETE" });
+      await apiFetch(`/users/${id}`, { method: "DELETE" });
       setUsers((arr) => arr.filter((u) => u.id !== id));
       toast.success("User deleted");
     } catch (e) {
@@ -197,7 +202,7 @@ export default function AdminUsers() {
     const password = prompt("Enter new password for this user");
     if (!password) return;
     try {
-      await apiFetch(`/api/users/${id}`, {
+      await apiFetch(`/users/${id}`, {
         method: "PUT",
         body: JSON.stringify({ password }),
       });
@@ -213,14 +218,20 @@ export default function AdminUsers() {
     const role = (prompt("Role (admin|teacher|student)", u.role) ??
       u.role) as Role;
     let classLevel = u.classLevel || "";
+
     let batch = u.batch || "";
+    let empCode = u.empCode || "";
+    
+    // EmpCode should be editable for migration
+    empCode = prompt("Employee/Student Code (Required for Attendance)", empCode) ?? empCode;
+    
     if (role === "student") {
       classLevel = prompt("Class (7-12)", classLevel) ?? classLevel;
       batch =
         prompt("Batch (Lakshya|Aadharshilla|Basic|Commerce)", batch) ?? batch;
     }
     try {
-      const resp = (await apiFetch(`/api/users/${u.id}`, {
+      const resp = (await apiFetch(`/users/${u.id}`, {
         method: "PUT",
         body: JSON.stringify({
           name,
@@ -228,6 +239,7 @@ export default function AdminUsers() {
           role,
           classLevel: role === "student" ? classLevel : undefined,
           batch: role === "student" ? batch : undefined,
+          empCode,
         }),
       })) as Partial<User>;
       setUsers((arr) =>
@@ -240,6 +252,7 @@ export default function AdminUsers() {
                 role,
                 classLevel: resp.classLevel ?? classLevel,
                 batch: resp.batch ?? batch,
+                empCode: resp.empCode ?? empCode,
               }
             : x
         )
@@ -482,16 +495,15 @@ export default function AdminUsers() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Password
+                        Code (EmpCode) <span className="text-red-500">*</span>
                       </label>
                       <input
-                        type="password"
-                        value={form.password}
+                        value={form.empCode}
                         onChange={(e) =>
-                          setForm({ ...form, password: e.target.value })
+                          setForm({ ...form, empCode: e.target.value })
                         }
                         className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200"
-                        placeholder="Enter secure password"
+                        placeholder="e.g. 0001"
                         required
                       />
                     </div>
@@ -512,6 +524,22 @@ export default function AdminUsers() {
                         <option value="admin">Administrator</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={form.password}
+                      onChange={(e) =>
+                        setForm({ ...form, password: e.target.value })
+                      }
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200"
+                      placeholder="Enter secure password"
+                      required
+                    />
                   </div>
 
                   {form.role === "student" && (
@@ -723,6 +751,11 @@ export default function AdminUsers() {
                           <p className="text-slate-600 text-sm truncate">
                             {user.email}
                           </p>
+                          {user.empCode && (
+                            <p className="text-slate-500 text-xs mt-0.5">
+                              Code: {user.empCode}
+                            </p>
+                          )}
                           <div className="flex items-center gap-2 mt-2">
                             <span
                               className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${getRoleBadgeStyles(

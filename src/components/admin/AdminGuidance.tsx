@@ -22,7 +22,7 @@ export default function AdminGuidance() {
   async function load() {
     setLoading(true);
     try {
-      const res = (await apiFetch("/api/ai/guidance")) as {
+      const res = (await apiFetch("/ai/guidance")) as {
         items: GuidanceDoc[];
       };
       setItems(res.items || []);
@@ -40,7 +40,7 @@ export default function AdminGuidance() {
     if (!draft.instructions.trim()) return alert("Add some instructions");
     setSaving(true);
     try {
-      await apiFetch("/api/ai/guidance", {
+      await apiFetch("/ai/guidance", {
         method: "POST",
         body: JSON.stringify(draft),
       });
@@ -55,7 +55,7 @@ export default function AdminGuidance() {
 
   async function toggleActive(id: string, isActive: boolean) {
     try {
-      await apiFetch(`/api/ai/guidance/${id}`, {
+      await apiFetch(`/ai/guidance/${id}`, {
         method: "PUT",
         body: JSON.stringify({ isActive }),
       });
@@ -66,7 +66,7 @@ export default function AdminGuidance() {
   async function remove(id: string) {
     if (!confirm("Delete guidance?")) return;
     try {
-      await apiFetch(`/api/ai/guidance/${id}`, { method: "DELETE" });
+      await apiFetch(`/ai/guidance/${id}`, { method: "DELETE" });
       await load();
     } catch {}
   }

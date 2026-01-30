@@ -218,7 +218,6 @@ const sourceColors = {
 
 export default function AdminQuestionBank() {
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [filteredQuestions, setFilteredQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -297,20 +296,39 @@ export default function AdminQuestionBank() {
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
       console.log(`Fetching questions from class_${selectedClass}...`);
 
-      // Fetch questions from class-specific collection
+      const queryParams = new URLSearchParams();
+      queryParams.append("page", currentPage.toString());
+      queryParams.append("limit", itemsPerPage.toString());
+      if (query) queryParams.append("query", query);
+      if (filters.type) queryParams.append("type", filters.type);
+      if (filters.subject) queryParams.append("subject", filters.subject);
+      if (filters.topic) queryParams.append("topic", filters.topic);
+      if (filters.chapter) queryParams.append("chapter", filters.chapter);
+      if (filters.difficulty) queryParams.append("difficulty", filters.difficulty);
+      if (filters.source) queryParams.append("source", filters.source);
+      if (filters.hasCorrectAnswer) queryParams.append("hasCorrectAnswer", filters.hasCorrectAnswer);
+      if (filters.hasImage) queryParams.append("hasImage", filters.hasImage);
+      if (filters.hasExplanation) queryParams.append("hasExplanation", filters.hasExplanation);
+
+      // Fetch questions from class-specific collection with server-side pagination
       const response = (await apiFetch(
-        `/api/ai/questions/class/${selectedClass}?limit=500`
+        `/ai/questions/class/${selectedClass}?${queryParams.toString()}`
       )) as {
         success: boolean;
         data: {
           questions: Partial<Question>[];
           total: number;
+          page: number;
+          totalPages: number;
           class: string;
         };
       };
@@ -381,48 +399,12 @@ export default function AdminQuestionBank() {
         `Loaded ${mappedQuestions.length} questions from class_${selectedClass}`
       );
       setQuestions(mappedQuestions);
+      setTotalPages(response.data.totalPages || 1);
+      setTotalQuestions(response.data.total || 0);
 
-      // Also fetch filter options for this class
-      try {
-        const filtersResponse = (await apiFetch(
-          `/api/ai/questions/class/${selectedClass}/filters`
-        )) as {
-          success: boolean;
-          data: {
-            subjects: string[];
-            chapters: string[];
-            topics: string[];
-            sections: string[];
-          };
-        };
-
-        if (filtersResponse.success) {
-          const types = [...new Set(mappedQuestions.map((q) => q.type))].filter(
-            (t): t is string => Boolean(t)
-          );
-          setFilterOptions({
-            types,
-            subjects: filtersResponse.data.subjects || [],
-            topics: filtersResponse.data.topics || [],
-            chapters: filtersResponse.data.chapters || [],
-          });
-        }
-      } catch {
-        // Fallback: extract filter options from loaded questions
-        const types = [...new Set(mappedQuestions.map((q) => q.type))].filter(
-          (t): t is string => Boolean(t)
-        );
-        const subjects = [
-          ...new Set(mappedQuestions.map((q) => q.subject).filter(Boolean)),
-        ] as string[];
-        const topics = [
-          ...new Set(mappedQuestions.map((q) => q.topic).filter(Boolean)),
-        ] as string[];
-        const chapters = [
-          ...new Set(mappedQuestions.map((q) => q.chapter).filter(Boolean)),
-        ] as string[];
-        setFilterOptions({ types, subjects, topics, chapters });
-      }
+      // fetch filters only once or when class changes (optional optimization, keeping it simple here)
+       // Also fetch filter options for this class if first load or needed
+       // For now, we rely on the implementation below or separate call.
     } catch (err) {
       console.error("Error loading questions:", err);
       const errorMessage =
@@ -433,103 +415,48 @@ export default function AdminQuestionBank() {
     } finally {
       setLoading(false);
     }
-  }, [selectedClass]);
+  }, [selectedClass, currentPage, itemsPerPage, query, filters]);
 
+  // Load questions when dependencies change
   useEffect(() => {
     load();
   }, [load]);
 
-  // Apply filters
+  // Fetch filter metadata (separately, once per class change)
   useEffect(() => {
-    let filtered = [...questions];
+     async function fetchFilters() {
+        try {
+          const filtersResponse = (await apiFetch(
+            `/ai/questions/class/${selectedClass}/filters`
+          )) as {
+            success: boolean;
+            data: {
+              subjects: string[];
+              chapters: string[];
+              topics: string[];
+              sections: string[];
+            };
+          };
 
-    // Search query
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      filtered = filtered.filter(
-        (item) =>
-          item.text.toLowerCase().includes(q) ||
-          item.tags?.subject?.toLowerCase().includes(q) ||
-          item.tags?.topic?.toLowerCase().includes(q) ||
-          item.explanation?.toLowerCase().includes(q)
-      );
-    }
+          if (filtersResponse.success) {
+             // We can't get all types easily without an aggregation, so we might static list or fetch from usage
+             // For now, relying on static or partially accumulated lists
+             setFilterOptions(prev => ({
+                ...prev,
+                subjects: filtersResponse.data.subjects || [],
+                topics: filtersResponse.data.topics || [],
+                chapters: filtersResponse.data.chapters || [],
+             }));
+          }
+        } catch(e) { console.error(e); }
+     }
+     fetchFilters();
+  }, [selectedClass]);
 
-    // Type filter
-    if (filters.type) {
-      filtered = filtered.filter((q) => q.type === filters.type);
-    }
-
-    // Subject filter
-    if (filters.subject) {
-      filtered = filtered.filter((q) => q.tags?.subject === filters.subject);
-    }
-
-    // Topic filter
-    if (filters.topic) {
-      filtered = filtered.filter((q) => q.tags?.topic === filters.topic);
-    }
-
-    // Chapter filter
-    if (filters.chapter) {
-      filtered = filtered.filter((q) => q.tags?.chapter === filters.chapter);
-    }
-
-    // Difficulty filter
-    if (filters.difficulty) {
-      filtered = filtered.filter(
-        (q) => q.tags?.difficulty === filters.difficulty
-      );
-    }
-
-    // Source filter
-    if (filters.source) {
-      filtered = filtered.filter(
-        (q) => (q.source || "manual") === filters.source
-      );
-    }
-
-    // Has correct answer filter
-    if (filters.hasCorrectAnswer === "yes") {
-      filtered = filtered.filter((q) => {
-        if (q.type === "mcq" || q.type === "mcq-single") {
-          return q.options?.some((o) => o.isCorrect);
-        }
-        return !!q.correctAnswerText;
-      });
-    } else if (filters.hasCorrectAnswer === "no") {
-      filtered = filtered.filter((q) => {
-        if (q.type === "mcq" || q.type === "mcq-single") {
-          return !q.options?.some((o) => o.isCorrect);
-        }
-        return !q.correctAnswerText;
-      });
-    }
-
-    // Has image filter
-    if (filters.hasImage === "yes") {
-      filtered = filtered.filter((q) => !!q.diagramUrl);
-    } else if (filters.hasImage === "no") {
-      filtered = filtered.filter((q) => !q.diagramUrl);
-    }
-
-    // Has explanation filter
-    if (filters.hasExplanation === "yes") {
-      filtered = filtered.filter((q) => !!q.explanation);
-    } else if (filters.hasExplanation === "no") {
-      filtered = filtered.filter((q) => !q.explanation);
-    }
-
-    setFilteredQuestions(filtered);
-    setCurrentPage(1);
-  }, [questions, query, filters]);
-
-  // Pagination
-  const totalPages = Math.ceil(filteredQuestions.length / itemsPerPage);
-  const paginatedQuestions = filteredQuestions.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // Remove Client-side filtering effect
+  
+  // questions IS the paginated list now
+  const paginatedQuestions = questions;
 
   function onCreate() {
     setDraft(emptyDraft());
@@ -582,10 +509,10 @@ export default function AdminQuestionBank() {
         setUploadingDiagram(true);
         try {
           const base =
-            process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+            process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
           const formData = new FormData();
           formData.append("image", pendingDiagramFile);
-          const resp = await fetch(`${base}/api/uploads/image`, {
+          const resp = await fetch(`${base}/uploads/image`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${
@@ -625,7 +552,7 @@ export default function AdminQuestionBank() {
       if (draft._id) {
         // Use class-based update endpoint
         const response = (await apiFetch(
-          `/api/ai/questions/class/${questionClass}/${draft._id}`,
+          `/ai/questions/class/${questionClass}/${draft._id}`,
           {
             method: "PUT",
             body: JSON.stringify(payload),
@@ -638,7 +565,7 @@ export default function AdminQuestionBank() {
         notify.success("Question updated");
       } else {
         // Use save-questions endpoint for new questions
-        const response = (await apiFetch(`/api/ai/save-questions`, {
+        const response = (await apiFetch(`/ai/save-questions`, {
           method: "POST",
           body: JSON.stringify({ questions: [payload] }),
         })) as { success: boolean; data: { saved: number } };
@@ -663,7 +590,7 @@ export default function AdminQuestionBank() {
     try {
       // Use class-based delete endpoint
       const response = (await apiFetch(
-        `/api/ai/questions/class/${selectedClass}/${id}`,
+        `/ai/questions/class/${selectedClass}/${id}`,
         { method: "DELETE" }
       )) as { success: boolean };
       if (!response.success) {
@@ -689,7 +616,7 @@ export default function AdminQuestionBank() {
     try {
       await Promise.all(
         Array.from(selectedIds).map((id) =>
-          apiFetch(`/api/ai/questions/class/${selectedClass}/${id}`, {
+          apiFetch(`/ai/questions/class/${selectedClass}/${id}`, {
             method: "DELETE",
           })
         )
@@ -709,7 +636,7 @@ export default function AdminQuestionBank() {
     setSolvingId(id);
     try {
       const response = (await apiFetch(
-        `/api/ai/questions/class/${selectedClass}/${id}/solve`,
+        `/ai/questions/class/${selectedClass}/${id}/solve`,
         {
           method: "POST",
           body: JSON.stringify({ preview: true }),
@@ -747,7 +674,7 @@ export default function AdminQuestionBank() {
   // AI Solve all questions without answers
   async function onSolveAll() {
     // Find questions without correct answers (all types)
-    const unsolved = filteredQuestions.filter((q) => {
+    const unsolved = questions.filter((q) => {
       const isMCQ = [
         "mcq",
         "mcq-single",
@@ -783,7 +710,7 @@ export default function AdminQuestionBank() {
     try {
       const questionIds = unsolved.map((q) => q._id).filter(Boolean);
       const response = (await apiFetch(
-        `/api/ai/questions/class/${selectedClass}/solve-batch`,
+        `/ai/questions/class/${selectedClass}/solve-batch`,
         {
           method: "POST",
           body: JSON.stringify({ questionIds, preview: true }),
@@ -892,7 +819,7 @@ export default function AdminQuestionBank() {
       });
 
       const response = (await apiFetch(
-        `/api/ai/questions/class/${selectedClass}/bulk-update`,
+        `/ai/questions/class/${selectedClass}/bulk-update`,
         {
           method: "PUT",
           body: JSON.stringify({ updates }),
@@ -1034,19 +961,10 @@ export default function AdminQuestionBank() {
               <div className="bg-white rounded-lg px-2.5 py-1.5 sm:px-3 sm:py-2 border border-gray-200 shadow-sm flex items-center gap-2 sm:gap-3">
                 <div className="text-center">
                   <span className="text-[10px] sm:text-xs text-gray-500 block">
-                    Total
+                    {activeFilterCount > 0 ? "Filtered" : "Total"}
                   </span>
                   <span className="text-base sm:text-lg font-bold text-gray-900">
-                    {questions.length}
-                  </span>
-                </div>
-                <div className="h-6 w-px bg-gray-200" />
-                <div className="text-center">
-                  <span className="text-[10px] sm:text-xs text-gray-500 block">
-                    Filtered
-                  </span>
-                  <span className="text-base sm:text-lg font-bold text-blue-600">
-                    {filteredQuestions.length}
+                    {totalQuestions}
                   </span>
                 </div>
               </div>
@@ -1128,7 +1046,7 @@ export default function AdminQuestionBank() {
                 ) : (
                   <>
                     <Wand2 className="w-4 h-4" />
-                    <span className="hidden sm:inline">AI Solve All</span>
+                    <span className="hidden sm:inline">AI Solve Page</span>
                     <span className="sm:hidden">Solve</span>
                   </>
                 )}
@@ -1837,12 +1755,12 @@ export default function AdminQuestionBank() {
                   <span className="font-bold text-gray-800">
                     {Math.min(
                       currentPage * itemsPerPage,
-                      filteredQuestions.length
+                      totalQuestions
                     )}
                   </span>
                   <span> of </span>
                   <span className="font-bold text-blue-600">
-                    {filteredQuestions.length}
+                    {totalQuestions}
                   </span>
                   <span className="hidden sm:inline"> questions</span>
                 </div>

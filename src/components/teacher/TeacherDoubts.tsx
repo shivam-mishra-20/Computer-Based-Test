@@ -47,7 +47,7 @@ export default function TeacherDoubts() {
   const fetchDoubts = useCallback(async () => {
     try {
       const params = filter !== "all" ? `?status=${filter}` : "";
-      const res = await apiFetch(`/api/doubts/teacher${params}`) as { doubts: Doubt[]; stats: DoubtStats };
+      const res = await apiFetch(`/doubts/teacher${params}`) as { doubts: Doubt[]; stats: DoubtStats };
       setDoubts(res?.doubts || []);
       setStats(res?.stats || {});
     } catch (error) {
@@ -65,7 +65,7 @@ export default function TeacherDoubts() {
     if (!selectedDoubt || !reply.trim()) return;
     setSending(true);
     try {
-      await apiFetch(`/api/doubts/${selectedDoubt._id}/reply`, { method: "PUT", body: JSON.stringify({ reply }) });
+      await apiFetch(`/doubts/${selectedDoubt._id}/reply`, { method: "PUT", body: JSON.stringify({ reply }) });
       setReply("");
       setSelectedDoubt(null);
       fetchDoubts();
@@ -78,7 +78,7 @@ export default function TeacherDoubts() {
 
   const handleResolve = async (id: string) => {
     try {
-      await apiFetch(`/api/doubts/${id}/resolve`, { method: "PUT" });
+      await apiFetch(`/doubts/${id}/resolve`, { method: "PUT" });
       fetchDoubts();
       if (selectedDoubt?._id === id) {
         setSelectedDoubt(null);

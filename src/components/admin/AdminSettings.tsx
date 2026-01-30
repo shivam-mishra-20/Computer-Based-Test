@@ -18,7 +18,7 @@ export default function AdminSettings() {
   async function load() {
     setLoading(true);
     try {
-      const res = (await apiFetch("/api/admin/settings")) as {
+      const res = (await apiFetch("/admin/settings")) as {
         items: Setting[];
       };
       setItems(res.items || []);
@@ -33,7 +33,7 @@ export default function AdminSettings() {
   async function save() {
     setSaving(true);
     try {
-      await apiFetch("/api/admin/settings", {
+      await apiFetch("/admin/settings", {
         method: "POST",
         body: JSON.stringify(form),
       });
@@ -45,7 +45,7 @@ export default function AdminSettings() {
   }
 
   async function remove(key: string) {
-    await apiFetch(`/api/admin/settings/${encodeURIComponent(key)}`, {
+    await apiFetch(`/admin/settings/${encodeURIComponent(key)}`, {
       method: "DELETE",
     });
     await load();

@@ -123,7 +123,7 @@ export default function TeacherQuestionBank() {
     setLoading(true);
     try {
       const data = (await apiFetch(
-        `/api/exams/questions${query ? `?q=${encodeURIComponent(query)}` : ""}`
+        `/exams/questions${query ? `?q=${encodeURIComponent(query)}` : ""}`
       )) as { items: Question[]; total: number };
       setQuestions(data.items || []);
     } catch {
@@ -142,7 +142,7 @@ export default function TeacherQuestionBank() {
   useEffect(() => {
     (async () => {
       try {
-        const data = (await apiFetch(`/api/imports/subjects`)) as {
+        const data = (await apiFetch(`/imports/subjects`)) as {
           subjects: { subject: string; count: number }[];
         };
         setSubjects(data.subjects || []);
@@ -179,13 +179,13 @@ export default function TeacherQuestionBank() {
     try {
       const payload = { ...draft } as Draft;
       if (draft._id) {
-        await apiFetch(`/api/exams/questions/${draft._id}`, {
+        await apiFetch(`/exams/questions/${draft._id}`, {
           method: "PUT",
           body: JSON.stringify(payload),
         });
         notify.success("Question updated");
       } else {
-        await apiFetch(`/api/exams/questions`, {
+        await apiFetch(`/exams/questions`, {
           method: "POST",
           body: JSON.stringify(payload),
         });
@@ -204,7 +204,7 @@ export default function TeacherQuestionBank() {
     if (!confirm("Delete this question?")) return;
     setDeletingId(id);
     try {
-      await apiFetch(`/api/exams/questions/${id}`, { method: "DELETE" });
+      await apiFetch(`/exams/questions/${id}`, { method: "DELETE" });
       notify.success("Deleted");
       setQuestions((qs) => qs.filter((q) => q._id !== id));
     } catch (e) {
@@ -240,7 +240,7 @@ export default function TeacherQuestionBank() {
     }
     try {
       const data = (await apiFetch(
-        `/api/imports/topics?subject=${encodeURIComponent(subj)}`
+        `/imports/topics?subject=${encodeURIComponent(subj)}`
       )) as { topics: { subject: string; topic: string; count: number }[] };
       setTopics(data.topics || []);
     } catch {
@@ -259,7 +259,7 @@ export default function TeacherQuestionBank() {
       params.set("subject", selectedSubject);
       if (selectedTopic) params.set("topic", selectedTopic);
       const data = (await apiFetch(
-        `/api/imports/questions?${params.toString()}`
+        `/imports/questions?${params.toString()}`
       )) as { items: ImportedAPIItem[]; total: number };
       // Map to Question shape used in this component
       const mapped: Question[] = (data.items || []).map((q) => ({
