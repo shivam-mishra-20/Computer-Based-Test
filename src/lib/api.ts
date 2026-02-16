@@ -1,8 +1,3 @@
-// Lightweight fetch wrapper for frontend API calls.
-// Adds Authorization header with access token from localStorage.
-// Replace or extend with refresh-token logic / cookie-based auth as needed.
-
-// default to local backend per API_Implementation.md
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
@@ -33,7 +28,11 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 
 	console.log('[apiFetch] Request:', { url, method: options.method || 'GET', hasToken: !!token });
 
-	const res = await fetch(url, { ...options, headers });
+	const res = await fetch(url, { 
+		...options, 
+		headers,
+		credentials: 'include' // Ensure cookies and credentials are sent with cross-origin requests
+	});
 
 	// handle common status codes
 	if (res.status === 204) return null;

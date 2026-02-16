@@ -45,8 +45,8 @@ export default function StudentScheduleView() {
       setError(null);
       const data = await apiFetch("/schedule/live");
       setLiveSchedule(data as LiveSchedule);
-    } catch (err: any) {
-      setError(err.message || "Failed to load schedule");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load schedule");
     } finally {
       setLoading(false);
     }
@@ -247,7 +247,7 @@ export default function StudentScheduleView() {
         {liveSchedule?.todaySchedule && liveSchedule.todaySchedule.length > 0 && (
           <div>
             <h2 className="text-2xl font-bold text-slate-900 mb-4">
-              Today's Schedule
+              Today&apos;s Schedule
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {liveSchedule.todaySchedule.map((schedule) => (

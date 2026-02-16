@@ -93,6 +93,11 @@ export default function Sidebar() {
           icon: "calendar",
         },
         {
+          href: "/dashboard/admin?tab=eod-reports",
+          label: "EOD Reports",
+          icon: "file-text",
+        },
+        {
           href: "/dashboard/admin?tab=reports",
           label: "Reports",
           icon: "chart-bar",
@@ -578,6 +583,23 @@ function getMenuIcon(name: string) {
             strokeLinejoin="round"
             strokeWidth={2}
             d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z"
+          />
+        </svg>
+      );
+    case "file-text":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
           />
         </svg>
       );

@@ -41,9 +41,9 @@ export default function NewCoursePage() {
       }) as { _id: string };
       
       router.push(`/dashboard/admin/app-management/courses/${course._id}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to create course", error);
-      alert(error.message || "Failed to create course");
+      alert(error instanceof Error ? error.message : "Failed to create course");
     } finally {
       setSaving(false);
     }

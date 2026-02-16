@@ -342,7 +342,7 @@ export default function AutomationDashboard() {
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 3000); // Poll every 3 seconds
+    }, 30000); 
   };
 
   const saveSchedule = async () => {
@@ -409,7 +409,7 @@ export default function AutomationDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-                EPUB Automation Control
+                Question Extractor Control
               </h1>
               <p className="text-sm text-gray-600 mt-1">Automated question extraction and processing</p>
             </div>
@@ -609,7 +609,7 @@ export default function AutomationDashboard() {
             >
               <div className="bg-white rounded-lg shadow-xl p-6">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">Select Class Folder</h2>
-                <p className="text-sm text-gray-600 mb-6">Choose which class folder to process for EPUB extraction</p>
+                <p className="text-sm text-gray-600 mb-6">Choose which class folder to process for question extraction</p>
 
                 {availableFolders.length > 0 ? (
                   <div className="space-y-3">
@@ -628,7 +628,7 @@ export default function AutomationDashboard() {
                               {folder.name.replace('_', ' ').toUpperCase()}
                             </div>
                             <div className="text-sm text-gray-600 mt-1">
-                              {folder.fileCount} EPUB file{folder.fileCount !== 1 ? 's' : ''} found
+                              {folder.fileCount} file{folder.fileCount !== 1 ? 's' : ''} (EPUB/PDF)
                             </div>
                           </div>
                           <div className="text-2xl">📚</div>

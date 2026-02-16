@@ -13,6 +13,7 @@ import AdminQuestionBank from "@/components/admin/AdminQuestionBank";
 import CreatePaperFlow from "@/components/teacher/CreatePaperFlow";
 import AdminPapers from "@/components/admin/AdminPapers";
 import SmartQuestionImport from "@/components/teacher/SmartQuestionImport";
+import AdminEODReports from "@/components/admin/AdminEODReports";
 import DashboardHeader from "@/components/ui/dashboard-header";
 //import DashboardTabs from "@/components/ui/dashboard-tabs";
 const TABS = [
@@ -20,6 +21,7 @@ const TABS = [
   "create-paper",
   "users",
   "exams",
+  "eod-reports",
   "analytics",
   "guidance",
   "questions",
@@ -35,6 +37,7 @@ const tabLabels: Record<Tab, string> = {
   "create-paper": "Create Paper",
   users: "Users",
   exams: "Exams",
+  "eod-reports": "EOD Reports",
   analytics: "Analytics",
   guidance: "LLM Guidance",
   questions: "Question Bank",
@@ -261,6 +264,9 @@ export default function AdminDashboardPage() {
       break;
     case "exams":
       content = <AdminExams />;
+      break;
+    case "eod-reports":
+      content = <AdminEODReports />;
       break;
     case "analytics":
       content = <AdminAnalytics />;
