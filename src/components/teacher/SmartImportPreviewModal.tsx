@@ -27,6 +27,7 @@ type Override = Partial<
   > & {
     isEditing?: boolean; // whether this question is currently being edited
     plainText?: string; // user-friendly plain input (auto-converted to LaTeX on Done)
+    marks?: number; // marks for this question (1-5)
   }
 >;
 
@@ -46,6 +47,7 @@ interface SmartImportPreviewModalProps {
   onSaveSelected: (
     overrides?: Record<string, Override>
   ) => Promise<void> | void;
+  onClearStorage?: () => void;
 }
 
 export default function SmartImportPreviewModal({
@@ -58,6 +60,7 @@ export default function SmartImportPreviewModal({
   onDeselectAll,
   onApproveSelected,
   onSaveSelected,
+  onClearStorage,
 }: SmartImportPreviewModalProps) {
   const anySelected = selectedIds.size > 0;
 
@@ -182,7 +185,18 @@ export default function SmartImportPreviewModal({
       delete rest.plainText;
       cleaned[id] = rest as CleanOverride;
     }
-    await onSaveSelected(Object.keys(cleaned).length ? cleaned : undefined);
+    
+    try {
+      await onSaveSelected(Object.keys(cleaned).length ? cleaned : undefined);
+      // Successfully saved - clear storage and close modal
+      if (onClearStorage) {
+        onClearStorage();
+      }
+      onClose();
+    } catch (error) {
+      console.error("Failed to save questions:", error);
+      // Don't close modal on error - let user retry
+    }
   }
 
   return (
@@ -329,14 +343,19 @@ export default function SmartImportPreviewModal({
                           {/* View/Edit area */}
                           {drafts[q._id]?.isEditing ? (
                             <div className="space-y-2">
-                              <label className="text-[10px] sm:text-xs text-gray-600 font-medium">
-                                Question text (plain input; LaTeX auto on Done)
-                              </label>
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] sm:text-xs text-gray-600 font-medium">
+                                  Question Text
+                                </label>
+                                <div className="text-[9px] sm:text-[10px] text-gray-500 bg-blue-50 px-2 py-1 rounded">
+                                  💡 Tip: Type naturally - we&apos;ll format math automatically
+                                </div>
+                              </div>
                               <textarea
-                                className="w-full px-2 sm:px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                rows={4}
+                                className="w-full px-2 sm:px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                                rows={5}
                                 value={drafts[q._id]?.plainText ?? ""}
-                                placeholder="Type question normally, e.g. d/dx tan^{-1}(sqrt(1+x^2)-1/x) ="
+                                placeholder="Examples:&#10;• Fractions: (a/b) or sqrt(x+2)&#10;• Powers: x^2 or x^{10}&#10;• Greek: alpha, beta, pi&#10;• Symbols: >= or <=&#10;• Already LaTeX? Keep as-is!"
                                 onChange={(e) =>
                                   updateDraft(
                                     q._id,
@@ -345,16 +364,36 @@ export default function SmartImportPreviewModal({
                                   )
                                 }
                               />
-                              <div className="text-[10px] sm:text-xs text-gray-500 font-medium">
-                                Preview:
-                              </div>
-                              <div className="p-2 sm:p-3 bg-gray-50 rounded-lg text-sm sm:text-base text-gray-900">
-                                <MathText
-                                  text={plainToLatex(
-                                    drafts[q._id]?.plainText ||
-                                      latexToPlain(q.text)
-                                  )}
-                                />
+                              
+                              {/* Quick reference guide */}
+                              <details className="text-[9px] sm:text-[10px] text-gray-600 bg-gray-50 rounded p-2">
+                                <summary className="cursor-pointer font-semibold text-emerald-700 hover:text-emerald-800">
+                                  📚 Math Input Quick Reference
+                                </summary>
+                                <div className="mt-2 space-y-1 pl-2">
+                                  <div><strong>Fractions:</strong> {`(x+1/2) → $\\frac{x+1}{2}$`}</div>
+                                  <div><strong>Roots:</strong> {`sqrt(x) → $\\sqrt{x}$`}</div>
+                                  <div><strong>Powers:</strong> {`x^2, a^{10} → $x^2$, $a^{10}$`}</div>
+                                  <div><strong>Subscripts:</strong> {`x_1, a_{10} → $x_1$, $a_{10}$`}</div>
+                                  <div><strong>Greek:</strong> alpha, beta, theta, pi</div>
+                                  <div><strong>Operators:</strong> × ÷ ± ≤ ≥ ≠ ≈</div>
+                                  <div><strong>Trig:</strong> sin, cos, tan, log, ln</div>
+                                  <div><strong>Calculus:</strong> d/dx, int, lim, ∞</div>
+                                </div>
+                              </details>
+                              
+                              <div className="bg-gradient-to-r from-emerald-50 to-blue-50 p-3 rounded-lg border border-emerald-200">
+                                <div className="text-[10px] sm:text-xs text-emerald-700 font-semibold mb-1.5 flex items-center gap-1">
+                                  <span>👀</span> Live Preview:
+                                </div>
+                                <div className="bg-white p-2 sm:p-3 rounded text-sm sm:text-base text-gray-900 border border-gray-200 min-h-[60px]">
+                                  <MathText
+                                    text={plainToLatex(
+                                      drafts[q._id]?.plainText ||
+                                        latexToPlain(q.text)
+                                    )}
+                                  />
+                                </div>
                               </div>
 
                               <div className="flex items-center gap-2">
@@ -442,8 +481,9 @@ export default function SmartImportPreviewModal({
                                       <div className="flex-1 min-w-0">
                                         <input
                                           type="text"
-                                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                          className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                                           value={opt.text || ""}
+                                          placeholder="Type option (supports math: x^2, (a/b))"
                                           onChange={(e) => {
                                             const opts = (
                                               drafts[q._id]?.options ||
@@ -458,9 +498,8 @@ export default function SmartImportPreviewModal({
                                             updateDraft(q._id, "options", opts);
                                           }}
                                         />
-                                        <div className="text-[10px] sm:text-xs text-gray-500 mt-1">
-                                          Preview:{" "}
-                                          <MathText text={opt.text} inline />
+                                        <div className="text-[10px] sm:text-xs text-gray-500 mt-1 bg-white p-1 rounded border border-gray-200">
+                                          Preview: <MathText text={plainToLatex(opt.text || "")} inline />
                                         </div>
                                       </div>
                                       <button
@@ -699,6 +738,36 @@ export default function SmartImportPreviewModal({
                                 );
                               })()}
 
+                              {/* Marks Assignment */}
+                              <div className="mt-2 sm:mt-3 flex items-center gap-2 p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <span className="text-xs sm:text-sm font-semibold text-blue-900">
+                                  Marks:
+                                </span>
+                                <div className="flex gap-1 sm:gap-2">
+                                  {[1, 2, 3, 4, 5].map((mark) => (
+                                    <button
+                                      key={mark}
+                                      onClick={() =>
+                                        updateDraft(q._id, "marks", mark)
+                                      }
+                                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg font-semibold text-xs sm:text-sm transition-all ${
+                                        (drafts[q._id]?.marks ?? 0) === mark
+                                          ? "bg-blue-600 text-white shadow-md scale-110"
+                                          : "bg-white text-blue-600 border border-blue-300 hover:bg-blue-100"
+                                      }`}
+                                    >
+                                      {mark}
+                                    </button>
+                                  ))}
+                                </div>
+                                {drafts[q._id]?.marks && (
+                                  <span className="text-xs text-blue-700 font-medium ml-auto">
+                                    ✓ {drafts[q._id].marks} mark
+                                    {drafts[q._id].marks! > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                              </div>
+
                               {/* Edit toggle */}
                               <div className="mt-2 sm:mt-3 flex gap-2">
                                 <button
@@ -737,58 +806,202 @@ function hasCorrectAnswer(q: PreviewQuestion): boolean {
 }
 
 // ------------------ Helper Conversion Functions ------------------
-// Very lightweight heuristics; can be extended for more coverage.
+// Enhanced LaTeX conversion supporting complex middle school mathematics
+
+/**
+ * Convert LaTeX to plain text for editing
+ * Supports algebra, factorization, division, and more (classes 8-10)
+ */
 function latexToPlain(latex: string): string {
   if (!latex) return "";
-  let s = latex.replace(/\$/g, ""); // drop $ wrappers
+  let s = latex;
+  
+  // Remove outer $ delimiters
+  s = s.replace(/^\$+|\$+$/g, "");
+  
+  // Fractions: \frac{a}{b} -> (a/b)
   s = s.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1/$2)");
+  
+  // Square roots: \sqrt{x} -> sqrt(x), \sqrt[n]{x} -> nthroot(x)
+  s = s.replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, "$1throot($2)");
   s = s.replace(/\\sqrt\{([^}]+)\}/g, "sqrt($1)");
-  s = s.replace(/\\int/g, "int");
-  s = s.replace(/\\cdot/g, "*");
-  s = s.replace(/\\pi/g, "pi");
+  
+  // Powers with braces: x^{2} -> x^2
+  s = s.replace(/\^\\{([^}]+)\\}/g, "^$1");
+  s = s.replace(/\^\\{([^}]+)\\}/g, "^($1)");
+  
+  // Subscripts with braces: x_{1} -> x_1
+  s = s.replace(/\_\\{([^}]+)\\}/g, "_$1");
+  
+  // Greek letters
+  const greekMap: Record<string, string> = {
+    "\\alpha": "alpha", "\\beta": "beta", "\\gamma": "gamma",
+    "\\delta": "delta", "\\theta": "theta", "\\lambda": "lambda",
+    "\\pi": "pi", "\\sigma": "sigma", "\\omega": "omega",
+    "\\mu": "mu", "\\nu": "nu", "\\phi": "phi", "\\psi": "psi"
+  };
+  Object.entries(greekMap).forEach(([tex, plain]) => {
+    s = s.replace(new RegExp(tex.replace(/\\/g, "\\\\"), "g"), plain);
+  });
+  
+  // Mathematical operators
+  s = s.replace(/\\times/g, "×");
+  s = s.replace(/\\div/g, "÷");
+  s = s.replace(/\\cdot/g, "·");
+  s = s.replace(/\\pm/g, "±");
+  s = s.replace(/\\mp/g, "∓");
+  
+  // Comparison operators
+  s = s.replace(/\\leq/g, "≤");
+  s = s.replace(/\\geq/g, "≥");
+  s = s.replace(/\\neq/g, "≠");
+  s = s.replace(/\\approx/g, "≈");
+  
+  // Trigonometric functions
+  s = s.replace(/\\sin/g, "sin");
+  s = s.replace(/\\cos/g, "cos");
+  s = s.replace(/\\tan/g, "tan");
+  s = s.replace(/\\cot/g, "cot");
+  s = s.replace(/\\sec/g, "sec");
+  s = s.replace(/\\csc/g, "csc");
+  
+  // Calculus
+  s = s.replace(/\\int/g, "∫");
+  s = s.replace(/\\infty/g, "∞");
+  s = s.replace(/\\lim/g, "lim");
+  
+  // Arrows
+  s = s.replace(/\\rightarrow/g, "→");
+  s = s.replace(/\\leftarrow/g, "←");
+  s = s.replace(/\\Rightarrow/g, "⇒");
+  
+  // Parentheses
   s = s.replace(/\\left\s*\(|\\right\s*\)/g, "");
+  s = s.replace(/\\left\s*\[|\\right\s*\]/g, "");
+  s = s.replace(/\\left\s*\\{|\\right\s*\\}/g, "");
+  
+  // Text blocks
+  s = s.replace(/\\text\{([^}]+)\}/g, "$1");
+  
   // Collapse multiple spaces
   s = s.replace(/\s+/g, " ").trim();
+  
   return s;
 }
 
+/**
+ * Convert plain text to LaTeX with enhanced mathematics support
+ * Handles algebra, factorization, division (classes 8-10)
+ */
 function plainToLatex(input: string): string {
   if (!input) return "";
   let s = input.trim();
-  // Fractions: (a/b) -> \frac{a}{b} for simple tokens
-  s = s.replace(/\(([^()\s]+)\/([^()\s]+)\)/g, "\\frac{$1}{$2}");
-  // sqrt(x) -> \sqrt{x}
-  s = s.replace(/sqrt\(([^()]+)\)/g, "\\sqrt{$1}");
-  // Derivative d/dx -> \frac{d}{dx}
+  
+  // Preserve existing LaTeX if already present
+  if (s.includes("\\frac") || s.includes("\\sqrt")) {
+    // Already has LaTeX, just wrap if needed
+    if (!s.startsWith("$")) {
+      s = `$${s}$`;
+    }
+    return s;
+  }
+  
+  // Convert Unicode math symbols back to LaTeX
+  s = s.replace(/×/g, "\\times ");
+  s = s.replace(/÷/g, "\\div ");
+  s = s.replace(/·/g, "\\cdot ");
+  s = s.replace(/±/g, "\\pm ");
+  s = s.replace(/∓/g, "\\mp ");
+  s = s.replace(/≤/g, "\\leq ");
+  s = s.replace(/≥/g, "\\geq ");
+  s = s.replace(/≠/g, "\\neq ");
+  s = s.replace(/≈/g, "\\approx ");
+  s = s.replace(/∫/g, "\\int ");
+  s = s.replace(/∞/g, "\\infty");
+  s = s.replace(/→/g, "\\rightarrow ");
+  s = s.replace(/←/g, "\\leftarrow ");
+  s = s.replace(/⇒/g, "\\Rightarrow ");
+  
+  // Fractions: (a/b) -> \frac{a}{b}
+  // Handle nested parentheses for complex fractions
+  let prevS = "";
+  let iterations = 0;
+  while (s !== prevS && iterations < 10) {
+    prevS = s;
+    s = s.replace(/\(([^()]+)\/([^()]+)\)/g, "\\frac{$1}{$2}");
+    iterations++;
+  }
+  
+  // Simple fractions without parentheses: a/b -> \frac{a}{b} (for simple tokens)
+  s = s.replace(/\b(\w+)\s*\/\s*(\w+)\b/g, "\\frac{$1}{$2}");
+  
+  // Derivative notation: d/dx -> \frac{d}{dx}
   s = s.replace(/d\s*\/\s*d([a-zA-Z])/g, "\\frac{d}{d$1}");
-  // Powers: x^2 or x^10 -> add braces if exponent has more than one char
-  s = s.replace(/([a-zA-Z0-9])\^([a-zA-Z0-9]+)/g, (m, base, exp) => {
-    if (exp.length > 1) return `${base}^{${exp}}`;
+  s = s.replace(/∂\s*\/\s*∂([a-zA-Z])/g, "\\frac{\\partial}{\\partial $1}");
+  
+  // Square roots: sqrt(x) -> \sqrt{x}
+  s = s.replace(/sqrt\(([^()]+)\)/g, "\\sqrt{$1}");
+  s = s.replace(/√\(([^()]+)\)/g, "\\sqrt{$1}");
+  
+  // Nth roots: nthroot(x) -> \sqrt[n]{x}
+  s = s.replace(/(\d+)throot\(([^()]+)\)/g, "\\sqrt[$1]{$2}");
+  
+  // Powers: x^2 or x^{10} -> ensure braces for multi-char exponents
+  s = s.replace(/([a-zA-Z0-9)])\^([a-zA-Z0-9]+)/g, (m, base, exp) => {
+    if (exp.length > 1 && !exp.startsWith("{")) {
+      return `${base}^{${exp}}`;
+    }
     return `${base}^${exp}`;
   });
-  // Greek common
-  const greek: Record<string, string> = {
-    alpha: "\\alpha",
-    beta: "\\beta",
-    gamma: "\\gamma",
-    delta: "\\delta",
-    theta: "\\theta",
-    lambda: "\\lambda",
-    pi: "\\pi",
-    sigma: "\\sigma",
-    omega: "\\omega",
+  
+  // Subscripts: x_1 -> x_{1} for multi-char subscripts
+  s = s.replace(/([a-zA-Z0-9)])\\_([a-zA-Z0-9]+)/g, (m, base, sub) => {
+    if (sub.length > 1 && !sub.startsWith("{")) {
+      return `${base}_{${sub}}`;
+    }
+    return `${base}_${sub}`;
+  });
+  
+  // Greek letters (whole word)
+  const greekWords: Record<string, string> = {
+    "alpha": "\\alpha", "beta": "\\beta", "gamma": "\\gamma",
+    "delta": "\\delta", "theta": "\\theta", "lambda": "\\lambda",
+    "pi": "\\pi", "sigma": "\\sigma", "omega": "\\omega",
+    "mu": "\\mu", "nu": "\\nu", "phi": "\\phi", "psi": "\\psi"
   };
-  s = s.replace(
-    /\b(alpha|beta|gamma|delta|theta|lambda|pi|sigma|omega)\b/g,
-    (_, g) => greek[g]
-  );
-  // Replace int with \int (avoid word boundaries inside words)
+  Object.entries(greekWords).forEach(([word, tex]) => {
+    s = s.replace(new RegExp(`\\b${word}\\b`, "gi"), tex);
+  });
+  
+  // Trigonometric functions
+  s = s.replace(/\bsin\b/g, "\\sin");
+  s = s.replace(/\bcos\b/g, "\\cos");
+  s = s.replace(/\btan\b/g, "\\tan");
+  s = s.replace(/\bcot\b/g, "\\cot");
+  s = s.replace(/\bsec\b/g, "\\sec");
+  s = s.replace(/\bcsc\b/g, "\\csc");
+  
+  // Logarithms
+  s = s.replace(/\blog\b/g, "\\log");
+  s = s.replace(/\bln\b/g, "\\ln");
+  
+  // Limits
+  s = s.replace(/\blim\b/g, "\\lim");
+  
+  // Integrals (if not already converted)
   s = s.replace(/\bint\b/g, "\\int");
-  // Clean extra spaces
+  
+  // Clean up extra spaces around operators
+  s = s.replace(/\s*\\times\s*/g, " \\times ");
+  s = s.replace(/\s*\\div\s*/g, " \\div ");
   s = s.replace(/\s+/g, " ").trim();
-  // Wrap inline math candidates containing \frac, \sqrt, ^, _ , \int etc. in $ ... $
-  if (/\\frac|\\sqrt|\^|\\int|\\alpha|\\beta|\\gamma|\\pi/.test(s)) {
-    s = `$${s}$`;
+  
+  // Wrap in $ if contains LaTeX commands
+  if (/\\frac|\\sqrt|\\int|\\sum|\\alpha|\\beta|\\gamma|\\pi|\\theta|\\leq|\\geq|\^|_/.test(s)) {
+    if (!s.startsWith("$")) {
+      s = `$${s}$`;
+    }
   }
+  
   return s;
 }

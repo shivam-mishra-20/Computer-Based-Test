@@ -130,6 +130,45 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   // Removed blueprint selection state for simplified flow
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
 
+  // Persist state across modal sessions
+  const STORAGE_KEY = "smartImport_questions";
+  const BATCH_KEY = "smartImport_batch";
+
+  // Load persisted questions on mount
+  useEffect(() => {
+    const savedQuestions = sessionStorage.getItem(STORAGE_KEY);
+    const savedBatch = sessionStorage.getItem(BATCH_KEY);
+    if (savedQuestions) {
+      try {
+        const parsed = JSON.parse(savedQuestions);
+        setQuestions(parsed);
+      } catch (e) {
+        console.error("Failed to parse saved questions:", e);
+      }
+    }
+    if (savedBatch) {
+      try {
+        const parsed = JSON.parse(savedBatch);
+        setCurrentBatch(parsed);
+      } catch (e) {
+        console.error("Failed to parse saved batch:", e);
+      }
+    }
+  }, []);
+
+  // Persist questions whenever they change
+  useEffect(() => {
+    if (questions.length > 0) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(questions));
+    }
+  }, [questions]);
+
+  useEffect(() => {
+    if (currentBatch) {
+      sessionStorage.setItem(BATCH_KEY, JSON.stringify(currentBatch));
+    }
+  }, [currentBatch]);
+
   // Inline edit state removed (handled in modal)
 
   // Form fields
@@ -411,7 +450,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
         Pick<
           ImportedQuestion,
           "text" | "type" | "options" | "correctAnswerText" | "diagramUrl"
-        >
+        > & { marks?: number }
       >
     >
   ) => {
@@ -435,7 +474,8 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
         board: board.trim() || undefined,
         chapter: chapter.trim() || undefined,
         section: section.trim() || undefined,
-        marks: marks.trim() ? Number(marks) : undefined,
+        // Use per-question marks if provided in overrides, otherwise use global marks field
+        marks: overrides?.[q._id]?.marks ?? (marks.trim() ? Number(marks) : undefined),
         source: "Smart Import",
         options:
           (overrides?.[q._id]?.options as
@@ -959,8 +999,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           isOpen={isPreviewOpen}
           onClose={() => {
             setIsPreviewOpen(false);
-            // Refresh the window after closing the modal
-            window.location.reload();
+            // Don't reload - state is now persisted in sessionStorage
           }}
           questions={questions}
           selectedIds={selectedQuestions}
@@ -969,6 +1008,14 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           onDeselectAll={deselectAllQuestions}
           onApproveSelected={bulkApproveQuestions}
           onSaveSelected={saveSelectedToBank}
+          onClearStorage={() => {
+            // Clear storage when questions are successfully saved
+            sessionStorage.removeItem(STORAGE_KEY);
+            sessionStorage.removeItem(BATCH_KEY);
+            setQuestions([]);
+            setCurrentBatch(null);
+            setSelectedQuestions(new Set());
+          }}
         />
       </div>
     </div>
