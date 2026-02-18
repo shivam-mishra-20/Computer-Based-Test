@@ -232,13 +232,27 @@ export default function SmartImportPreviewModal({
                   Review Questions ({questions.length})
                 </h3>
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100"
-                aria-label="Close preview"
-              >
-                <XMarkIcon className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (window.confirm('Discard all questions without saving? This cannot be undone.')) {
+                      onClearStorage?.();
+                      onClose();
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs sm:text-sm text-red-600 hover:text-red-700 border border-red-200 hover:bg-red-50 rounded-lg font-medium transition-colors"
+                  aria-label="Discard and close"
+                >
+                  Discard & Close
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+                  aria-label="Close preview"
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Toolbar */}
@@ -897,12 +911,9 @@ function plainToLatex(input: string): string {
   if (!input) return "";
   let s = input.trim();
   
-  // Preserve existing LaTeX if already present
-  if (s.includes("\\frac") || s.includes("\\sqrt")) {
-    // Already has LaTeX, just wrap if needed
-    if (!s.startsWith("$")) {
-      s = `$${s}$`;
-    }
+  // Preserve existing LaTeX if already present (check for $ symbols or LaTeX commands)
+  if (s.includes("$") || s.includes("\\frac") || s.includes("\\sqrt") || s.includes("\\")) {
+    // Already has LaTeX formatting, return as-is
     return s;
   }
   

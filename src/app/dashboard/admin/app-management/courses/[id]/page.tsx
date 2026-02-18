@@ -6,6 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
+import { toast } from "sonner";
 
 interface YoutubeMeta {
   durationSec: number;
@@ -76,10 +77,14 @@ export default function CourseDetailPage() {
 
   const fetchCourse = useCallback(async () => {
     try {
+      console.log("[Course Detail] Fetching course:", courseId);
       const data = await apiFetch(`/courses/${courseId}`) as Course;
+      console.log("[Course Detail] Course data received:", data);
       setCourse(data);
     } catch (error) {
       console.error("Failed to fetch course", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to load course";
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -101,8 +106,11 @@ export default function CourseDetailPage() {
         body: JSON.stringify(updates),
       });
       await fetchCourse();
+      toast.success("Course updated successfully");
     } catch (error) {
       console.error("Failed to save course", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to update course";
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -126,29 +134,46 @@ export default function CourseDetailPage() {
   // Open edit course modal
   const openEditCourse = () => {
     if (course) {
+      console.log("[Course Edit] Opening edit modal for course:", course);
       setCourseForm({
-        title: course.title,
-        description: course.description,
-        subject: course.subject,
-        classLevel: course.classLevel,
-        isFree: course.isFree,
+        title: course.title || "",
+        description: course.description || "",
+        subject: course.subject || "Physics",
+        classLevel: course.classLevel || "11",
+        isFree: course.isFree || false,
       });
       setCourseEditModal(true);
+    } else {
+      toast.error("Course data not loaded yet");
     }
   };
 
   // Save course edits
   const saveEditCourse = async () => {
+    if (!courseForm.title.trim()) {
+      toast.error("Course title is required");
+      return;
+    }
+    
+    if (!courseForm.subject || !courseForm.classLevel) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    
     setSaving(true);
     try {
+      console.log("[Course Edit] Saving course:", { courseId, courseForm });
       await apiFetch(`/courses/${courseId}`, {
         method: "PUT",
         body: JSON.stringify(courseForm),
       });
       await fetchCourse();
       setCourseEditModal(false);
+      toast.success("Course details updated successfully");
     } catch (error) {
       console.error("Failed to update course", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to update course details";
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }

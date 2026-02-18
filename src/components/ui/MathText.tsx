@@ -12,15 +12,19 @@ export function MathText({
 }) {
   const content = useMemo(() => {
     if (!text) return null;
+    
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
-    const displayMathRegex = /\$\$(.*?)\$\$/g;
+    
+    // First, find all display math ($$...$$) to avoid conflicts with inline math
+    const displayMathRegex = /\$\$((?:(?!\$\$).)+?)\$\$/gs;
     const displayMatches: Array<{
       start: number;
       end: number;
       content: string;
     }> = [];
     let displayMatch: RegExpExecArray | null;
+    
     while ((displayMatch = displayMathRegex.exec(text)) !== null) {
       displayMatches.push({
         start: displayMatch.index,
@@ -28,14 +32,18 @@ export function MathText({
         content: displayMatch[1],
       });
     }
-    const inlineMathRegex = /\$([^$]+?)\$/g;
+    
+    // Then find all inline math ($...$), but skip those inside display math
+    const inlineMathRegex = /\$([^\$\n]+?)\$/g;
     const inlineMatches: Array<{
       start: number;
       end: number;
       content: string;
     }> = [];
     let inlineMatch: RegExpExecArray | null;
+    
     while ((inlineMatch = inlineMathRegex.exec(text)) !== null) {
+      // Check if this inline match is inside a display match
       const isInDisplay = displayMatches.some(
         (dm) => inlineMatch!.index >= dm.start && inlineMatch!.index < dm.end
       );
@@ -47,24 +55,36 @@ export function MathText({
         });
       }
     }
+    
+    // Combine and sort all matches by position
     const allMatches = [
       ...displayMatches.map((m) => ({ ...m, type: "display" as const })),
       ...inlineMatches.map((m) => ({ ...m, type: "inline" as const })),
     ].sort((a, b) => a.start - b.start);
+    
+    // Build the result by interleaving text and math
     allMatches.forEach((match, index) => {
+      // Add text before this math expression
       if (lastIndex < match.start) {
-        parts.push(
-          <span key={`text-${index}`}>
-            {text.substring(lastIndex, match.start)}
-          </span>
-        );
+        const textContent = text.substring(lastIndex, match.start);
+        if (textContent) {
+          parts.push(
+            <span key={`text-${index}`}>
+              {textContent}
+            </span>
+          );
+        }
       }
+      
+      // Render the math expression
       try {
         const html = katex.renderToString(match.content, {
           displayMode: match.type === "display",
           throwOnError: false,
           output: "html",
+          strict: false,
         });
+        
         if (match.type === "display") {
           parts.push(
             <div
@@ -77,29 +97,45 @@ export function MathText({
           parts.push(
             <span
               key={`math-${index}`}
+              className="inline-block"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
         }
-      } catch {
+      } catch (error) {
+        // If KaTeX fails, show the raw LaTeX with error styling
         parts.push(
           <code
             key={`error-${index}`}
             className="text-red-500 bg-red-50 px-1 rounded text-xs"
+            title={error instanceof Error ? error.message : "LaTeX error"}
           >
             ${match.content}$
           </code>
         );
       }
+      
       lastIndex = match.end;
     });
+    
+    // Add any remaining text after the last math expression
     if (lastIndex < text.length) {
-      parts.push(<span key="text-final">{text.substring(lastIndex)}</span>);
+      const textContent = text.substring(lastIndex);
+      if (textContent) {
+        parts.push(<span key="text-final">{textContent}</span>);
+      }
     }
+    
+    // If no math was found, just return the text
+    if (parts.length === 0) {
+      return <span>{text}</span>;
+    }
+    
     return <>{parts}</>;
   }, [text]);
-  if (inline) return <span>{content}</span>;
-  return <div>{content}</div>;
+  
+  if (inline) return <span className="inline-flex items-baseline gap-0.5">{content}</span>;
+  return <div className="flex flex-wrap items-baseline gap-0.5">{content}</div>;
 }
 
 export default MathText;

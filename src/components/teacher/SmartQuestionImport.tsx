@@ -55,14 +55,19 @@ const SECTION_OPTIONS = [
 
 const MODEL_OPTIONS = [
   {
-    value: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash (Recommended)",
-    description: "Fast and accurate - best for most use cases",
+    value: "gemini-2.0-flash-thinking-exp-01-21",
+    label: "Gemini 2.0 Flash Thinking (Most Accurate)",
+    description: "Advanced reasoning for complex math - highest accuracy",
   },
   {
     value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro (Advanced)",
+    label: "Gemini 2.5 Pro (Recommended)",
     description: "Enhanced reasoning for complex problems",
+  },
+  {
+    value: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash (Fast)",
+    description: "Fast and accurate - best for simple use cases",
   },
 ];
 
@@ -175,7 +180,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [ocrProvider] = useState<"google-vision">("google-vision");
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-pro");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash-thinking-exp-01-21");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -324,8 +329,8 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
       if (marks.trim()) formData.append("marks", marks.trim());
 
       const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-      const response = await fetch(`${base}/api/import-paper`, {
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+      const response = await fetch(`${base}/import-paper`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("accessToken") || ""}`,
