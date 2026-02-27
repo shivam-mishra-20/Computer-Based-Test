@@ -101,11 +101,11 @@ export default function CourseDetailPage() {
   const saveCourse = async (updates: Partial<Course>) => {
     setSaving(true);
     try {
-      await apiFetch(`/courses/${courseId}`, {
+      const updated = await apiFetch(`/courses/${courseId}`, {
         method: "PUT",
         body: JSON.stringify(updates),
-      });
-      await fetchCourse();
+      }) as Course;
+      setCourse(updated);
       toast.success("Course updated successfully");
     } catch (error) {
       console.error("Failed to save course", error);
@@ -163,11 +163,11 @@ export default function CourseDetailPage() {
     setSaving(true);
     try {
       console.log("[Course Edit] Saving course:", { courseId, courseForm });
-      await apiFetch(`/courses/${courseId}`, {
+      const updated = await apiFetch(`/courses/${courseId}`, {
         method: "PUT",
         body: JSON.stringify(courseForm),
-      });
-      await fetchCourse();
+      }) as Course;
+      setCourse(updated);
       setCourseEditModal(false);
       toast.success("Course details updated successfully");
     } catch (error) {
@@ -184,14 +184,16 @@ export default function CourseDetailPage() {
     if (!moduleTitle.trim()) return;
     setSaving(true);
     try {
-      await apiFetch(`/courses/${courseId}/modules`, {
+      const updated = await apiFetch(`/courses/${courseId}/modules`, {
         method: "POST",
         body: JSON.stringify({ title: moduleTitle, description: moduleDesc }),
-      });
-      await fetchCourse();
+      }) as Course;
+      setCourse(updated);
       resetModuleModal();
+      toast.success("Module added successfully");
     } catch (error) {
       console.error("Failed to add module", error);
+      toast.error(error instanceof Error ? error.message : "Failed to add module");
     } finally {
       setSaving(false);
     }
@@ -201,14 +203,16 @@ export default function CourseDetailPage() {
     if (editingModuleIndex === null) return;
     setSaving(true);
     try {
-      await apiFetch(`/courses/${courseId}/modules/${editingModuleIndex}`, {
+      const updated = await apiFetch(`/courses/${courseId}/modules/${editingModuleIndex}`, {
         method: "PUT",
         body: JSON.stringify({ title: moduleTitle, description: moduleDesc }),
-      });
-      await fetchCourse();
+      }) as Course;
+      setCourse(updated);
       resetModuleModal();
+      toast.success("Module updated successfully");
     } catch (error) {
       console.error("Failed to update module", error);
+      toast.error(error instanceof Error ? error.message : "Failed to update module");
     } finally {
       setSaving(false);
     }
@@ -218,12 +222,18 @@ export default function CourseDetailPage() {
     if (!confirm("Delete this module and all its lectures?")) return;
     setSaving(true);
     try {
-      await apiFetch(`/courses/${courseId}/modules/${index}`, {
-        method: "DELETE",
+      await apiFetch(`/courses/${courseId}/modules/${index}`, { method: "DELETE" });
+      setCourse(prev => {
+        if (!prev) return prev;
+        const newSyllabus = [...(prev.syllabus || [])];
+        newSyllabus.splice(index, 1);
+        const newLectureCount = newSyllabus.reduce((sum, m) => sum + m.lectures.length, 0);
+        return { ...prev, syllabus: newSyllabus, lectureCount: newLectureCount };
       });
-      await fetchCourse();
+      toast.success("Module deleted");
     } catch (error) {
       console.error("Failed to delete module", error);
+      toast.error(error instanceof Error ? error.message : "Failed to delete module");
     } finally {
       setSaving(false);
     }
@@ -234,14 +244,16 @@ export default function CourseDetailPage() {
     if (!lectureTitle.trim() || targetModuleIndex === null) return;
     setSaving(true);
     try {
-      await apiFetch(`/courses/${courseId}/modules/${targetModuleIndex}/lectures`, {
+      const updated = await apiFetch(`/courses/${courseId}/modules/${targetModuleIndex}/lectures`, {
         method: "POST",
         body: JSON.stringify({ title: lectureTitle, videoUrl: lectureUrl }),
-      });
-      await fetchCourse();
+      }) as Course;
+      setCourse(updated);
       resetLectureModal();
+      toast.success("Lecture added successfully");
     } catch (error) {
       console.error("Failed to add lecture", error);
+      toast.error(error instanceof Error ? error.message : "Failed to add lecture");
     } finally {
       setSaving(false);
     }
@@ -251,14 +263,16 @@ export default function CourseDetailPage() {
     if (targetModuleIndex === null || editingLectureIndex === null) return;
     setSaving(true);
     try {
-      await apiFetch(`/courses/${courseId}/modules/${targetModuleIndex}/lectures/${editingLectureIndex}`, {
+      const updated = await apiFetch(`/courses/${courseId}/modules/${targetModuleIndex}/lectures/${editingLectureIndex}`, {
         method: "PUT",
         body: JSON.stringify({ title: lectureTitle, videoUrl: lectureUrl }),
-      });
-      await fetchCourse();
+      }) as Course;
+      setCourse(updated);
       resetLectureModal();
+      toast.success("Lecture updated successfully");
     } catch (error) {
       console.error("Failed to update lecture", error);
+      toast.error(error instanceof Error ? error.message : "Failed to update lecture");
     } finally {
       setSaving(false);
     }
@@ -268,12 +282,22 @@ export default function CourseDetailPage() {
     if (!confirm("Delete this lecture?")) return;
     setSaving(true);
     try {
-      await apiFetch(`/courses/${courseId}/modules/${moduleIndex}/lectures/${lectureIndex}`, {
-        method: "DELETE",
+      await apiFetch(`/courses/${courseId}/modules/${moduleIndex}/lectures/${lectureIndex}`, { method: "DELETE" });
+      setCourse(prev => {
+        if (!prev) return prev;
+        const newSyllabus = prev.syllabus?.map((mod, mIdx) => {
+          if (mIdx !== moduleIndex) return mod;
+          const newLectures = [...mod.lectures];
+          newLectures.splice(lectureIndex, 1);
+          return { ...mod, lectures: newLectures };
+        }) || [];
+        const newLectureCount = newSyllabus.reduce((sum, m) => sum + m.lectures.length, 0);
+        return { ...prev, syllabus: newSyllabus, lectureCount: newLectureCount };
       });
-      await fetchCourse();
+      toast.success("Lecture deleted");
     } catch (error) {
       console.error("Failed to delete lecture", error);
+      toast.error(error instanceof Error ? error.message : "Failed to delete lecture");
     } finally {
       setSaving(false);
     }
@@ -500,7 +524,7 @@ export default function CourseDetailPage() {
                     mod.lectures.map((lec, lecIndex) => (
                       <div key={lecIndex} className="p-4 flex items-center gap-4 hover:bg-slate-50 transition">
                         {/* Thumbnail or placeholder */}
-                        <div className="w-24 h-14 bg-slate-200 rounded-lg overflow-hidden flex-shrink-0">
+                        <div className="relative w-24 h-14 bg-slate-200 rounded-lg overflow-hidden flex-shrink-0">
                           {lec.youtubeMeta?.thumbnail ? (
                             <Image
                               src={lec.youtubeMeta.thumbnail}
@@ -565,15 +589,7 @@ export default function CourseDetailPage() {
               </motion.div>
             ))}
 
-            {(!course?.syllabus || course.syllabus.length === 0) && (
-              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-12 text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-                <h4 className="mt-4 text-slate-600 font-medium">No modules yet</h4>
-                <p className="text-slate-400 text-sm mt-1">Start by adding your first module</p>
-              </div>
-            )}
+
           </div>
         </div>
 
