@@ -11,37 +11,41 @@ interface AppSidebarProps {
 const MENU_ITEMS = [
   {
     category: "Overview",
+    items: [{ name: "Dashboard", href: "/dashboard/admin/app-management", icon: "HomeIcon" }],
+  },
+  {
+    category: "People",
     items: [
-      { name: "Dashboard", href: "/dashboard/admin/app-management", icon: "HomeIcon" },
-      { name: "Analytics", href: "/dashboard/admin/app-management/analytics", icon: "ChartBarIcon" },
+      { name: "Users", href: "/dashboard/admin/app-management/users", icon: "UsersIcon" },
+      {
+        name: "Registrations",
+        href: "/dashboard/admin/app-management/registrations",
+        icon: "ShieldCheckIcon",
+      },
     ],
   },
   {
-    category: "Management",
+    category: "Academics",
     items: [
       { name: "Courses", href: "/dashboard/admin/app-management/courses", icon: "BookOpenIcon" },
-      { name: "Users", href: "/dashboard/admin/app-management/users", icon: "UsersIcon" },
-      { name: "Registrations", href: "/dashboard/admin/app-management/registrations", icon: "ShieldCheckIcon" },
-      { name: "Attendance", href: "/dashboard/admin/app-management/attendance", icon: "ClockIcon" },
-      { name: "Schedule", href: "/dashboard/admin/app-management/schedule", icon: "CalendarIcon" },
-      { name: "Leave Management", href: "/dashboard/admin/app-management/leaves", icon: "CalendarIcon" },
-      { name: "EOD Reports", href: "/dashboard/admin/app-management/eod", icon: "DocumentTextIcon" },
+      { name: "Batches", href: "/dashboard/admin/app-management/batches", icon: "UsersIcon" },
+      { name: "Resources", href: "/dashboard/admin/app-management/resources", icon: "DatabaseIcon" },
     ],
   },
   {
     category: "Operations",
     items: [
-      { name: "Subscriptions", href: "/dashboard/admin/app-management/subscriptions", icon: "CreditCardIcon" },
-      { name: "Notifications", href: "/dashboard/admin/app-management/notifications", icon: "BellIcon" },
-      { name: "Reports", href: "/dashboard/admin/app-management/reports", icon: "DocumentReportIcon" },
+      { name: "Attendance", href: "/dashboard/admin/app-management/attendance", icon: "ClockIcon" },
+      { name: "Schedule", href: "/dashboard/admin/app-management/schedule", icon: "CalendarIcon" },
+      { name: "Leaves", href: "/dashboard/admin/app-management/leaves", icon: "CalendarIcon" },
+      { name: "Holidays", href: "/dashboard/admin/app-management/holidays", icon: "CalendarIcon" },
+      { name: "EOD Reports", href: "/dashboard/admin/app-management/eod", icon: "DocumentTextIcon" },
     ],
   },
   {
     category: "System",
     items: [
-      { name: "Settings", href: "/dashboard/admin/app-management/settings", icon: "CogIcon" },
-      { name: "Security & Audit", href: "/dashboard/admin/app-management/security", icon: "LockClosedIcon" },
-      { name: "Support", href: "/dashboard/admin/app-management/support", icon: "SupportIcon" },
+      { name: "Firebase Sync", href: "/dashboard/admin/app-management/sync", icon: "DatabaseIcon" },
     ],
   },
 ];
@@ -102,8 +106,8 @@ export default function AppSidebar({ onClose }: AppSidebarProps) {
         </div>
       </div>
 
-      {/* Navigation - Fixed, no scroll */}
-      <nav className="flex-1 px-3 py-4 space-y-6 overflow-hidden">
+      {/* Navigation - Scrollable */}
+      <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
         {MENU_ITEMS.map((section, sectionIndex) => (
           <motion.div 
             key={section.category}

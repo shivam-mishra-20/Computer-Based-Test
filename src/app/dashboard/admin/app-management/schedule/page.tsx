@@ -64,6 +64,8 @@ interface TimeSlot {
   label: string;
 }
 
+type TimeSlotView = "evening" | "all";
+
 const DAYS = [
   "Sunday",
   "Monday",
@@ -75,6 +77,62 @@ const DAYS = [
 ];
 const CLASS_LEVELS = ["7", "8", "9", "10", "11", "12"];
 
+const DEFAULT_EVENING_TIME_SLOTS: TimeSlot[] = [
+  { start: "14:30", end: "15:30", label: "2:30 - 3:30 PM" },
+  { start: "15:30", end: "16:30", label: "3:30 - 4:30 PM" },
+  { start: "16:30", end: "17:30", label: "4:30 - 5:30 PM" },
+  { start: "17:30", end: "18:30", label: "5:30 - 6:30 PM" },
+  { start: "18:30", end: "19:30", label: "6:30 - 7:30 PM" },
+  { start: "19:30", end: "20:30", label: "7:30 - 8:30 PM" },
+];
+
+function parseHHMMToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map((v) => Number(v));
+  return h * 60 + m;
+}
+
+function minutesToHHMM(totalMinutes: number): string {
+  const minutesInDay = 24 * 60;
+  const normalized = ((totalMinutes % minutesInDay) + minutesInDay) % minutesInDay;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function to12HourLabel(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(":");
+  const hours24 = Number(hStr);
+  const minutes = Number(mStr);
+  const period = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  return `${hours12}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
+function generateTimeSlots(options: {
+  start: string;
+  end: string;
+  stepMinutes: number;
+  durationMinutes: number;
+}): TimeSlot[] {
+  const startMin = parseHHMMToMinutes(options.start);
+  const endMin = parseHHMMToMinutes(options.end);
+
+  // If end <= start, treat end as end-of-day boundary
+  const endBoundary = endMin > startMin ? endMin : 24 * 60;
+
+  const slots: TimeSlot[] = [];
+  for (let t = startMin; t + options.durationMinutes <= endBoundary; t += options.stepMinutes) {
+    const start = minutesToHHMM(t);
+    const end = minutesToHHMM(t + options.durationMinutes);
+    slots.push({
+      start,
+      end,
+      label: `${to12HourLabel(start)} - ${to12HourLabel(end)}`,
+    });
+  }
+  return slots;
+}
+
 export default function ScheduleManagement() {
   const [activeTab, setActiveTab] = useState<"regular" | "custom" | "batches" | "daily_view">(
     "regular"
@@ -84,6 +142,7 @@ export default function ScheduleManagement() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [timeSlotView, setTimeSlotView] = useState<TimeSlotView>("evening");
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
@@ -177,15 +236,20 @@ export default function ScheduleManagement() {
         source: 'mongodb'
       })));
 
-      // Set Time Slots
-      setTimeSlots([
-        { start: '14:30', end: '15:30', label: '2:30 - 3:30 PM' },
-        { start: '15:30', end: '16:30', label: '3:30 - 4:30 PM' },
-        { start: '16:30', end: '17:30', label: '4:30 - 5:30 PM' },
-        { start: '17:30', end: '18:30', label: '5:30 - 6:30 PM' },
-        { start: '18:30', end: '19:30', label: '6:30 - 7:30 PM' },
-        { start: '19:30', end: '20:30', label: '7:30 - 8:30 PM' }
-      ]);
+      // Default Time Slots (Evening)
+      try {
+        const serverSlots = await apiFetch('/schedule/timeslots');
+        if (
+          Array.isArray(serverSlots) &&
+          serverSlots.every((s) => typeof s?.start === 'string' && typeof s?.end === 'string')
+        ) {
+          setTimeSlots(serverSlots as TimeSlot[]);
+        } else {
+          setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
+        }
+      } catch {
+        setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
+      }
 
       if (Array.isArray(batchesData) && batchesData.length > 0) {
         setFilterBatch(batchesData[0].name);
@@ -200,6 +264,54 @@ export default function ScheduleManagement() {
   useEffect(() => {
     loadInitialData();
   }, []); // Initial load only
+
+  useEffect(() => {
+    const applyTimeSlotView = async () => {
+      if (timeSlotView === 'all') {
+        setTimeSlots(
+          generateTimeSlots({
+            start: '00:00',
+            end: '24:00',
+            stepMinutes: 30,
+            durationMinutes: 60,
+          })
+        );
+        return;
+      }
+
+      // Evening
+      try {
+        const serverSlots = await apiFetch('/schedule/timeslots');
+        if (
+          Array.isArray(serverSlots) &&
+          serverSlots.every((s) => typeof s?.start === 'string' && typeof s?.end === 'string')
+        ) {
+          setTimeSlots(serverSlots as TimeSlot[]);
+        } else {
+          setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
+        }
+      } catch {
+        setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
+      }
+    };
+
+    applyTimeSlotView();
+  }, [timeSlotView]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    if (formData.scheduleType !== 'regular') return;
+    if (!timeSlots.length) return;
+
+    const exists = timeSlots.some((t) => t.start === formData.startTimeSlot);
+    if (exists) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      startTimeSlot: timeSlots[0].start,
+      endTimeSlot: timeSlots[0].end,
+    }));
+  }, [timeSlots, isModalOpen, formData.scheduleType, formData.startTimeSlot]);
 
   useEffect(() => {
     if (activeTab === "daily_view") {
@@ -549,6 +661,25 @@ export default function ScheduleManagement() {
           </button>
         ))}
       </div>
+
+      {/* Time Slot Range */}
+      {activeTab !== "batches" && (
+        <div className="flex flex-wrap gap-4 mb-6 p-4 bg-white rounded-xl border border-slate-200 shadow-sm items-end">
+          <div className="min-w-[220px]">
+            <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
+              Time Slots
+            </label>
+            <select
+              value={timeSlotView}
+              onChange={(e) => setTimeSlotView(e.target.value as TimeSlotView)}
+              className="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white transition-all"
+            >
+              <option value="evening">Evening (2:30 PM - 8:30 PM)</option>
+              <option value="all">All Day</option>
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Regular Schedule - Timetable Grid */}
       {activeTab === "regular" && (
