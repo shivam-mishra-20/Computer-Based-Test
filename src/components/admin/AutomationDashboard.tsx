@@ -12,15 +12,8 @@ interface AutomationStatus {
   isEnabled: boolean;
   currentlyRunning: boolean;
   lastRun?: string;
-  nextScheduledRun?: string;
   totalRuns: number;
   successfulRuns: number;
-  failedRuns: number;
-  schedule?: {
-    cronExpression: string;
-    enabled: boolean;
-    lastModified: string;
-  };
 }
 
 interface ProcessingStat {
@@ -60,10 +53,7 @@ export default function AutomationDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
-  const [scheduleTime, setScheduleTime] = useState('02:00');
-  const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [processingLogs, setProcessingLogs] = useState<string[]>([]);
   const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
   const [availableFolders, setAvailableFolders] = useState<Array<{name: string; path: string; fileCount: number}>>([]);
@@ -145,27 +135,6 @@ export default function AutomationDashboard() {
         }
       }
 
-      // Fetch schedule
-      try {
-        const scheduleRes = await fetch(`${API_BASE_URL}/api/automation/schedule`, {
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        if (scheduleRes.ok) {
-          const scheduleData = await scheduleRes.json();
-          if (scheduleData.time && scheduleData.days) {
-            setScheduleTime(scheduleData.time);
-            setSelectedDays(scheduleData.days);
-          }
-        }
-      } catch {
-        console.log('No schedule configured');
-      }
-    } catch (err) {
-      setError('Failed to fetch automation data');
-      console.error('Fetch error:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -345,47 +314,6 @@ export default function AutomationDashboard() {
     }, 30000); 
   };
 
-  const saveSchedule = async () => {
-    try {
-      const token = getToken();
-      if (!token) {
-        setError('Authentication required');
-        return;
-      }
-
-      const res = await fetch(`${API_BASE_URL}/api/automation/schedule`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          time: scheduleTime,
-          days: selectedDays,
-          enabled: true
-        })
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        alert(`Schedule saved! ${data.schedule.description}`);
-        setShowScheduleModal(false);
-        fetchData();
-      }
-    } catch (error) {
-      console.error('Failed to save schedule:', error);
-      setError('Failed to save schedule');
-    }
-  };
-
-  const toggleDay = (day: number) => {
-    setSelectedDays(prev =>
-      prev.includes(day)
-        ? prev.filter(d => d !== day)
-        : [...prev, day].sort()
-    );
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -476,13 +404,6 @@ export default function AutomationDashboard() {
                   ▶ Run Now
                 </Button>
               )}
-              <Button 
-                onClick={() => setShowScheduleModal(true)}
-                variant="outline"
-                className="border-gray-300 hover:bg-gray-50"
-              >
-                ⚙ Schedule
-              </Button>
             </div>
           </div>
 
@@ -504,14 +425,6 @@ export default function AutomationDashboard() {
             <div className="bg-gray-50 p-4 rounded-lg">
               <div className="text-xs text-gray-600 uppercase tracking-wide mb-1">Success Rate</div>
               <div className="text-2xl font-bold text-gray-900">{successRate}%</div>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="text-xs text-gray-600 uppercase tracking-wide mb-1">Schedule</div>
-              <div className="text-xs font-medium text-gray-900 leading-tight mt-1">
-                {selectedDays.length > 0 
-                  ? `${dayNames.filter((_, i) => selectedDays.includes(i)).join(', ')} at ${scheduleTime}`
-                  : 'Not configured'}
-              </div>
             </div>
           </div>
         </div>
@@ -651,72 +564,6 @@ export default function AutomationDashboard() {
                   >
                     Cancel
                   </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Schedule Modal */}
-      <AnimatePresence>
-        {showScheduleModal && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowScheduleModal(false)}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="max-w-md w-full"
-            >
-              <div className="bg-white rounded-lg shadow-xl p-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Schedule Automation</h2>
-
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Time</label>
-                    <input
-                      type="time"
-                      value={scheduleTime}
-                      onChange={(e) => setScheduleTime(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-3">Days</label>
-                    <div className="grid grid-cols-7 gap-2">
-                      {dayNames.map((day, index) => (
-                        <button
-                          key={index}
-                          onClick={() => toggleDay(index)}
-                          className={`py-2 sm:py-3 text-xs sm:text-sm rounded-lg font-medium transition-all ${
-                            selectedDays.includes(index)
-                              ? 'bg-emerald-600 text-white shadow-md'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <Button 
-                      onClick={() => setShowScheduleModal(false)} 
-                      variant="outline"
-                      className="flex-1 border-gray-300 hover:bg-gray-50"
-                    >
-                      Cancel
-                    </Button>
-                    <Button 
-                      onClick={saveSchedule} 
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                      Save Schedule
-                    </Button>
-                  </div>
                 </div>
               </div>
             </div>
