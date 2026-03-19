@@ -417,10 +417,10 @@ export default function TeacherDashboardHome() {
               </svg>
             </div>
             <h4 className="font-bold text-lg text-gray-900 mb-2">
-              AI Question Generator
+              Add Questions
             </h4>
             <p className="text-sm text-gray-600">
-              Use AI to create high-quality questions instantly
+              Add your own questions manually with answers and diagrams
             </p>
           </motion.div>
 

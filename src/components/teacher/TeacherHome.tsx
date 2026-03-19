@@ -59,7 +59,7 @@ export default function TeacherHome({ onNavigate }: TeacherHomeProps) {
       action: () => handleNavigate("import"),
     },
     {
-      title: "AI Tools",
+      title: "Add Questions",
       icon: <Sparkles className="w-6 h-6" />,
       action: () => handleNavigate("ai"),
     },

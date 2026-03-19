@@ -143,7 +143,7 @@ export default function Sidebar() {
         },
         {
           href: "/dashboard/teacher?tab=ai",
-          label: "AI Tools",
+          label: "Add Questions",
           icon: "sparkles",
         },
       ]);
