@@ -1229,14 +1229,16 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                             </span>
                           )}
                         </div>
-                        <input
-                          type="text"
+                        <EquationEditor
                           value={option.text}
-                          onChange={(e) =>
-                            handleManualOptionTextChange(index, e.target.value)
+                          onChange={(value) =>
+                            handleManualOptionTextChange(index, value)
                           }
+                          label=""
                           placeholder={`Enter option ${index + 1}...`}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium"
+                          showPreview={false}
+                          showHelp={false}
+                          rows={2}
                         />
                         {!!option.text?.trim() && (
                           <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200">
@@ -1283,17 +1285,19 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                   <label className="block text-sm font-semibold text-gray-700 mb-4">
                     Correct Answer
                   </label>
-                  <textarea
+                  <EquationEditor
                     value={manualCorrectAnswerText}
-                    onChange={(e) => setManualCorrectAnswerText(e.target.value)}
+                    onChange={setManualCorrectAnswerText}
+                    label=""
                     placeholder="Enter the correct answer..."
+                    showPreview={false}
+                    showHelp={false}
                     rows={manualQuestionType === "long" ? 4 : 2}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium resize-none"
                   />
                   {!!manualCorrectAnswerText.trim() && (
                     <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200">
                       <p className="text-xs text-gray-500 mb-2">Preview</p>
-                      <p className="text-sm text-gray-700">{manualCorrectAnswerText}</p>
+                      <MathText text={manualCorrectAnswerText} />
                     </div>
                   )}
                 </div>
@@ -1391,19 +1395,19 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                                         name={`manual-correct-${q._id}`}
                                         className="h-4 w-4 text-indigo-600"
                                       />
-                                      <input
-                                        type="text"
-                                        value={opt.text}
-                                        onChange={(e) =>
-                                          updateManualOption(
-                                            q._id,
-                                            optIndex,
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder={`Option ${optIndex + 1}`}
-                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
-                                      />
+                                      <div className="flex-1">
+                                        <EquationEditor
+                                          value={opt.text}
+                                          onChange={(value) =>
+                                            updateManualOption(q._id, optIndex, value)
+                                          }
+                                          label=""
+                                          placeholder={`Option ${optIndex + 1}`}
+                                          showPreview={false}
+                                          showHelp={false}
+                                          rows={2}
+                                        />
+                                      </div>
                                     </div>
                                     {!!opt.text?.trim() && (
                                       <div className="ml-6 text-xs text-gray-600">
@@ -1443,22 +1447,24 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                             )}
 
                             {q.type !== "mcq" && q.type !== "truefalse" && (
-                              <input
-                                type="text"
+                              <EquationEditor
                                 value={q.correctAnswerText || ""}
-                                onChange={(e) =>
+                                onChange={(value) =>
                                   updateManualQuestion(q._id, (x) => ({
                                     ...x,
-                                    correctAnswerText: e.target.value,
+                                    correctAnswerText: value,
                                     integerAnswer:
                                       x.type === "integer" &&
-                                      !Number.isNaN(Number(e.target.value))
-                                        ? Number(e.target.value)
+                                      !Number.isNaN(Number(value))
+                                        ? Number(value)
                                         : x.integerAnswer,
                                   }))
                                 }
+                                label=""
                                 placeholder="Enter correct answer"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                showPreview={false}
+                                showHelp={false}
+                                rows={2}
                               />
                             )}
 

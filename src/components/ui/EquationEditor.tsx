@@ -12,6 +12,9 @@ interface EquationEditorProps {
   placeholder?: string;
   label?: string;
   showPreview?: boolean;
+  showToolbar?: boolean;
+  showHelp?: boolean;
+  rows?: number;
 }
 
 export default function EquationEditor({
@@ -20,6 +23,9 @@ export default function EquationEditor({
   placeholder = "Type your equation or use the toolbar...",
   label = "Equation",
   showPreview = true,
+  showToolbar = true,
+  showHelp = true,
+  rows = 6,
 }: EquationEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [, setCursorPosition] = useState(0);
@@ -82,19 +88,21 @@ export default function EquationEditor({
       )}
 
       {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-        {toolbarItems.map((item) => (
-          <button
-            key={item.template}
-            type="button"
-            onClick={() => insertAtCursor(item.template, item.cursorOffset)}
-            title={item.description}
-            className="px-2 py-1.5 sm:px-3 sm:py-2 text-sm sm:text-base bg-white hover:bg-indigo-50 border border-gray-200 hover:border-indigo-300 rounded transition-colors font-medium text-gray-700 hover:text-indigo-600"
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {showToolbar && (
+        <div className="flex flex-wrap gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          {toolbarItems.map((item) => (
+            <button
+              key={item.template}
+              type="button"
+              onClick={() => insertAtCursor(item.template, item.cursorOffset)}
+              title={item.description}
+              className="px-2 py-1.5 sm:px-3 sm:py-2 text-sm sm:text-base bg-white hover:bg-indigo-50 border border-gray-200 hover:border-indigo-300 rounded transition-colors font-medium text-gray-700 hover:text-indigo-600"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input Textarea */}
       <div className="relative">
@@ -104,7 +112,7 @@ export default function EquationEditor({
           onChange={(e) => onChange(e.target.value)}
           onSelect={(e) => setCursorPosition(e.currentTarget.selectionStart)}
           placeholder={placeholder}
-          rows={6}
+          rows={rows}
           className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-vertical font-mono text-sm"
         />
         {value && (
@@ -139,18 +147,20 @@ export default function EquationEditor({
       )}
 
       {/* Quick Help */}
-      <div className="text-xs text-gray-500 p-3 bg-blue-50 rounded border border-blue-100">
-        <p className="font-semibold text-blue-700 mb-2 flex items-center gap-1">
-          <SparklesIcon className="w-3 h-3" />
-          Math Tips - Toolbar buttons insert complete LaTeX automatically
-        </p>
-        <ul className="space-y-1 ml-4 list-disc text-gray-600">
-          <li><span className="font-mono text-blue-700">$...$</span> wrapping is <span className="font-semibold">automatic</span> - just click buttons!</li>
-          <li><span className="font-mono text-blue-700">^</span> for exponents: <code className="bg-white px-1 rounded">$a^{'{2}'}$</code></li>
-          <li><span className="font-mono text-blue-700">_</span> for subscripts: <code className="bg-white px-1 rounded">$a_{'1'}$</code></li>
-          <li><span className="font-mono text-blue-700">\frac</span> for fractions: <code className="bg-white px-1 rounded">$\frac{'{a}'}{'{b}'}$</code></li>
-        </ul>
-      </div>
+      {showHelp && (
+        <div className="text-xs text-gray-500 p-3 bg-blue-50 rounded border border-blue-100">
+          <p className="font-semibold text-blue-700 mb-2 flex items-center gap-1">
+            <SparklesIcon className="w-3 h-3" />
+            Math Tips - Toolbar buttons insert complete LaTeX automatically
+          </p>
+          <ul className="space-y-1 ml-4 list-disc text-gray-600">
+            <li><span className="font-mono text-blue-700">$...$</span> wrapping is <span className="font-semibold">automatic</span> - just click buttons!</li>
+            <li><span className="font-mono text-blue-700">^</span> for exponents: <code className="bg-white px-1 rounded">$a^{'{2}'}$</code></li>
+            <li><span className="font-mono text-blue-700">_</span> for subscripts: <code className="bg-white px-1 rounded">$a_{'1'}$</code></li>
+            <li><span className="font-mono text-blue-700">\frac</span> for fractions: <code className="bg-white px-1 rounded">$\frac{'{a}'}{'{b}'}$</code></li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
