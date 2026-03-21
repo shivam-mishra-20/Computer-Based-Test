@@ -252,6 +252,7 @@ export default function AdminQuestionBank() {
     subject: "",
     topic: "",
     difficulty: "",
+    board: "",
     source: "",
     hasCorrectAnswer: "",
     hasImage: "",
@@ -287,11 +288,13 @@ export default function AdminQuestionBank() {
     subjects: string[];
     topics: string[];
     chapters: string[];
+    boards: string[];
   }>({
     types: [],
     subjects: [],
     topics: [],
     chapters: [],
+    boards: [],
   });
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -314,6 +317,7 @@ export default function AdminQuestionBank() {
       if (filters.topic) queryParams.append("topic", filters.topic);
       if (filters.chapter) queryParams.append("chapter", filters.chapter);
       if (filters.difficulty) queryParams.append("difficulty", filters.difficulty);
+      if (filters.board) queryParams.append("board", filters.board);
       if (filters.source) queryParams.append("source", filters.source);
       if (filters.hasCorrectAnswer) queryParams.append("hasCorrectAnswer", filters.hasCorrectAnswer);
       if (filters.hasImage) queryParams.append("hasImage", filters.hasImage);
@@ -402,6 +406,17 @@ export default function AdminQuestionBank() {
       setTotalPages(response.data.totalPages || 1);
       setTotalQuestions(response.data.total || 0);
 
+      // Keep board options populated even if metadata endpoint doesn't provide it.
+      setFilterOptions((prev) => {
+        const boards = Array.from(
+          new Set([
+            ...prev.boards,
+            ...mappedQuestions.map((q) => q.board).filter(Boolean) as string[],
+          ])
+        ).sort((a, b) => a.localeCompare(b));
+        return { ...prev, boards };
+      });
+
       // fetch filters only once or when class changes (optional optimization, keeping it simple here)
        // Also fetch filter options for this class if first load or needed
        // For now, we rely on the implementation below or separate call.
@@ -435,6 +450,7 @@ export default function AdminQuestionBank() {
               chapters: string[];
               topics: string[];
               sections: string[];
+              boards?: string[];
             };
           };
 
@@ -446,6 +462,7 @@ export default function AdminQuestionBank() {
                 subjects: filtersResponse.data.subjects || [],
                 topics: filtersResponse.data.topics || [],
                 chapters: filtersResponse.data.chapters || [],
+               boards: filtersResponse.data.boards || prev.boards,
              }));
           }
         } catch(e) { console.error(e); }
@@ -892,6 +909,7 @@ export default function AdminQuestionBank() {
       subject: "",
       topic: "",
       difficulty: "",
+      board: "",
       source: "",
       hasCorrectAnswer: "",
       hasImage: "",
@@ -1198,6 +1216,28 @@ export default function AdminQuestionBank() {
                       <option value="easy">Easy</option>
                       <option value="medium">Medium</option>
                       <option value="hard">Hard</option>
+                    </select>
+                  </div>
+
+                  {/* Board */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Board
+                    </label>
+                    <select
+                      value={filters.board}
+                      onChange={(e) =>
+                        setFilters({ ...filters, board: e.target.value })
+                      }
+                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
+                    >
+                      <option value="">All Boards</option>
+                      {filterOptions.boards.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
