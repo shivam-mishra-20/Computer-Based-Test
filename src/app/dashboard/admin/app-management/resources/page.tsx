@@ -31,6 +31,217 @@ interface StudyResource {
   createdAt: string;
 }
 
+interface YouTubeMetadataResponse {
+  videoId: string;
+  title?: string;
+  description?: string;
+  thumbnailUrl?: string;
+  durationSec?: number;
+  viewCount?: number;
+  tags?: string[];
+  canonicalUrl?: string;
+}
+
+function extractYouTubeId(urlOrId: string): string | null {
+  const input = (urlOrId || '').trim();
+  if (!input) return null;
+
+  // Direct 11-char YouTube ID
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) {
+    return input;
+  }
+
+  try {
+    const parsed = new URL(input);
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      return id && id.length === 11 ? id : null;
+    }
+
+    if (host.includes('youtube.com')) {
+      const v = parsed.searchParams.get('v');
+      if (v && v.length === 11) return v;
+
+      const pathParts = parsed.pathname.split('/').filter(Boolean);
+      if (pathParts[0] === 'shorts' && pathParts[1]?.length === 11) {
+        return pathParts[1];
+      }
+      if (pathParts[0] === 'embed' && pathParts[1]?.length === 11) {
+        return pathParts[1];
+      }
+    }
+  } catch {
+    // Fall through to regex for malformed URL-like input
+  }
+
+  const match = input.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return match?.[1] || null;
+}
+
+const SUBJECT_PATTERNS: Array<{ subject: string; patterns: RegExp[] }> = [
+  {
+    subject: 'Mathematics',
+    patterns: [
+      /\bmath\b/i,
+      /\bmaths\b/i,
+      /\bmathematics\b/i,
+      /\balgebra\b/i,
+      /\bgeometry\b/i,
+      /\btrigonometry\b/i,
+      /\bcalculus\b/i,
+    ],
+  },
+  {
+    subject: 'Physics',
+    patterns: [
+      /\bphysics\b/i,
+      /\bmechanics\b/i,
+      /\belectricity\b/i,
+      /\bmagnetism\b/i,
+      /\boptics\b/i,
+      /\bthermodynamics\b/i,
+      /\bwaves\b/i,
+      /\bmotion\b/i,
+      /\bforce\b/i,
+    ],
+  },
+  {
+    subject: 'Chemistry',
+    patterns: [
+      /\bchemistry\b/i,
+      /\borganic\b/i,
+      /\binorganic\b/i,
+      /\bphysical chemistry\b/i,
+      /\bmole\b/i,
+      /\bacid\b/i,
+      /\bbase\b/i,
+    ],
+  },
+  {
+    subject: 'Biology',
+    patterns: [
+      /\bbiology\b/i,
+      /\bbotany\b/i,
+      /\bzoology\b/i,
+      /\bcell\b/i,
+      /\bgenetics\b/i,
+      /\bevolution\b/i,
+    ],
+  },
+  {
+    subject: 'English',
+    patterns: [
+      /\benglish\b/i,
+      /\bgrammar\b/i,
+      /\bliterature\b/i,
+      /\bpoetry\b/i,
+      /\bprose\b/i,
+    ],
+  },
+  {
+    subject: 'Social Science',
+    patterns: [
+      /\bsocial science\b/i,
+      /\bsst\b/i,
+      /\bhistory\b/i,
+      /\bcivics\b/i,
+      /\bgeography\b/i,
+      /\beconomics\b/i,
+      /\bpolitical science\b/i,
+    ],
+  },
+  {
+    subject: 'Computer Science',
+    patterns: [
+      /\bcomputer\b/i,
+      /\bprogramming\b/i,
+      /\bcoding\b/i,
+      /\bpython\b/i,
+      /\bjava\b/i,
+      /\bjavascript\b/i,
+      /\bai\b/i,
+      /\bdata structure\b/i,
+    ],
+  },
+];
+
+function inferClassLevelFromTitle(title: string): string {
+  const classMap: Array<{ classLevel: string; patterns: RegExp[] }> = [
+    {
+      classLevel: '12',
+      patterns: [/\bclass\s*12\b/i, /\b12th\b/i, /\bxii\b/i],
+    },
+    {
+      classLevel: '11',
+      patterns: [/\bclass\s*11\b/i, /\b11th\b/i, /\bxi\b/i],
+    },
+    {
+      classLevel: '10',
+      patterns: [/\bclass\s*10\b/i, /\b10th\b/i, /\bx\b/i],
+    },
+    {
+      classLevel: '9',
+      patterns: [/\bclass\s*9\b/i, /\b9th\b/i, /\bix\b/i],
+    },
+  ];
+
+  for (const entry of classMap) {
+    if (entry.patterns.some((pattern) => pattern.test(title))) {
+      return entry.classLevel;
+    }
+  }
+
+  return '';
+}
+
+function inferSubjectFromTitle(title: string): string {
+  for (const entry of SUBJECT_PATTERNS) {
+    if (entry.patterns.some((pattern) => pattern.test(title))) {
+      return entry.subject;
+    }
+  }
+
+  return '';
+}
+
+function inferCategoryFromTitle(title: string, inferredSubject: string): string {
+  const seed = title
+    .split(/[|:-]/)
+    .map((part) => part.trim())
+    .find((part) => part.length > 3) || title;
+
+  let cleaned = seed
+    .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
+    .replace(/\bclass\s*(9|10|11|12)\b/gi, ' ')
+    .replace(/\b(9th|10th|11th|12th|ix|x|xi|xii)\b/gi, ' ')
+    .replace(/\b(lecture|chapter|ch|part|session|revision|one\s*shot|full\s*course|cbse|ncert|board|important|questions?|solutions?)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (inferredSubject) {
+    cleaned = cleaned
+      .replace(new RegExp(`\\b${inferredSubject}\\b`, 'i'), ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  if (!cleaned) {
+    return inferredSubject ? `${inferredSubject} Topic` : 'General';
+  }
+
+  return cleaned.slice(0, 80);
+}
+
+function inferMetadataFromTitle(title: string) {
+  const classLevel = inferClassLevelFromTitle(title);
+  const subject = inferSubjectFromTitle(title);
+  const category = inferCategoryFromTitle(title, subject);
+
+  return { classLevel, subject, category };
+}
+
 export default function ResourcesManagementPage() {
   const [resources, setResources] = useState<StudyResource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +249,9 @@ export default function ResourcesManagementPage() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [youtubeMetaLoading, setYoutubeMetaLoading] = useState(false);
+  const [youtubeMetaStatus, setYoutubeMetaStatus] = useState('');
+  const [lastFetchedVideoId, setLastFetchedVideoId] = useState('');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -53,6 +267,7 @@ export default function ResourcesManagementPage() {
     tags: '',
     pageCount: '',
     duration: '',
+    viewCount: '',
     isPublic: true,
     isFeatured: false
   });
@@ -74,6 +289,141 @@ export default function ResourcesManagementPage() {
   useEffect(() => {
     fetchResources();
   }, [fetchResources]);
+
+  const fetchYouTubeMetadata = useCallback(
+    async (
+      rawValue: string,
+      options?: {
+        manual?: boolean;
+      }
+    ) => {
+      const input = rawValue.trim();
+      const videoId = extractYouTubeId(input);
+
+      if (!videoId) {
+        if (options?.manual) {
+          toast.error('Please enter a valid YouTube URL or video ID');
+        }
+        return;
+      }
+
+      if (!options?.manual && videoId === lastFetchedVideoId) {
+        return;
+      }
+
+      try {
+        setYoutubeMetaLoading(true);
+        setYoutubeMetaStatus('Fetching details from YouTube...');
+
+        let result: YouTubeMetadataResponse;
+
+        try {
+          result = (await apiFetch(
+            `/resources/youtube/metadata?url=${encodeURIComponent(input)}`
+          )) as YouTubeMetadataResponse;
+        } catch {
+          const response = await fetch(
+            `/api/youtube/metadata?url=${encodeURIComponent(input)}`
+          );
+          const metadata = (await response.json()) as
+            | YouTubeMetadataResponse
+            | { error?: string };
+
+          if (!response.ok) {
+            throw new Error(
+              'error' in metadata && metadata.error
+                ? metadata.error
+                : 'Failed to fetch YouTube details'
+            );
+          }
+
+          result = metadata as YouTubeMetadataResponse;
+        }
+
+        const inferred = inferMetadataFromTitle(result.title || '');
+
+        setFormData((prev) => ({
+          ...prev,
+          resourceUrl: result.canonicalUrl || prev.resourceUrl,
+          title: result.title || prev.title,
+          description:
+            typeof result.description === 'string' && result.description.trim()
+              ? result.description.trim()
+              : prev.description,
+          thumbnailUrl: result.thumbnailUrl || prev.thumbnailUrl,
+          duration:
+            typeof result.durationSec === 'number' && result.durationSec > 0
+              ? String(result.durationSec)
+              : prev.duration,
+          viewCount:
+            typeof result.viewCount === 'number' && result.viewCount >= 0
+              ? String(result.viewCount)
+              : prev.viewCount,
+          subject: prev.subject || inferred.subject || prev.subject,
+          classLevel: prev.classLevel || inferred.classLevel || prev.classLevel,
+          category: prev.category || inferred.category || prev.category,
+          tags:
+            prev.tags || !Array.isArray(result.tags) || result.tags.length === 0
+              ? prev.tags
+              : result.tags.slice(0, 8).join(', '),
+        }));
+
+        setLastFetchedVideoId(result.videoId || videoId);
+
+        const summaryParts: string[] = [];
+        if (typeof result.durationSec === 'number' && result.durationSec > 0) {
+          summaryParts.push(`duration ${result.durationSec}s`);
+        }
+        if (typeof result.viewCount === 'number' && result.viewCount >= 0) {
+          summaryParts.push(`${result.viewCount.toLocaleString('en-IN')} views`);
+        }
+
+        setYoutubeMetaStatus(
+          summaryParts.length > 0
+            ? `YouTube details filled (${summaryParts.join(', ')}).`
+            : 'Basic details filled. Add remaining details if needed.'
+        );
+
+        if (options?.manual) {
+          toast.success('YouTube details fetched successfully');
+        }
+      } catch (error) {
+        console.error('Failed to fetch YouTube metadata', error);
+        setYoutubeMetaStatus('Could not fetch YouTube details.');
+        if (options?.manual) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Failed to fetch YouTube details'
+          );
+        }
+      } finally {
+        setYoutubeMetaLoading(false);
+      }
+    },
+    [lastFetchedVideoId]
+  );
+
+  useEffect(() => {
+    if (!showForm || activeTab !== 'video') return;
+
+    const input = formData.resourceUrl.trim();
+    const videoId = extractYouTubeId(input);
+
+    if (!videoId) {
+      setYoutubeMetaStatus('');
+      setLastFetchedVideoId('');
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      fetchYouTubeMetadata(input);
+    }, 700);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [activeTab, formData.resourceUrl, showForm, fetchYouTubeMetadata]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +455,8 @@ export default function ResourcesManagementPage() {
         const payload = {
           ...formData,
           tags: formData.tags.split(',').map(t => t.trim()).filter(t => t),
-          duration: formData.duration ? parseInt(formData.duration) : undefined
+          duration: formData.duration ? parseInt(formData.duration, 10) : undefined,
+          viewCount: formData.viewCount ? parseInt(formData.viewCount, 10) : undefined
         };
 
         await apiFetch('/resources', {
@@ -141,10 +492,14 @@ export default function ResourcesManagementPage() {
       tags: '',
       pageCount: '',
       duration: '',
+      viewCount: '',
       isPublic: true,
       isFeatured: false
     });
     setPdfFile(null);
+    setYoutubeMetaLoading(false);
+    setYoutubeMetaStatus('');
+    setLastFetchedVideoId('');
   };
 
   const handleDelete = async (id: string) => {
@@ -348,16 +703,39 @@ export default function ResourcesManagementPage() {
                   <>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">YouTube URL *</label>
-                      <input
-                        type="url"
-                        required
-                        value={formData.resourceUrl}
-                        onChange={(e) => setFormData({ ...formData, resourceUrl: e.target.value })}
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          required
+                          value={formData.resourceUrl}
+                          onChange={(e) => {
+                            setFormData({ ...formData, resourceUrl: e.target.value });
+                            setYoutubeMetaStatus('');
+                          }}
+                          placeholder="https://www.youtube.com/watch?v=..."
+                          className="flex-1 border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            fetchYouTubeMetadata(formData.resourceUrl, {
+                              manual: true,
+                            })
+                          }
+                          disabled={youtubeMetaLoading || !formData.resourceUrl.trim()}
+                          className="px-4 py-2 rounded-lg font-medium border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          {youtubeMetaLoading ? 'Fetching...' : 'Fetch Details'}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Paste a YouTube URL to auto-fill title, description, subject, class, category, duration, views, and tags.
+                      </p>
+                      {youtubeMetaStatus ? (
+                        <p className="mt-1 text-xs text-emerald-700">{youtubeMetaStatus}</p>
+                      ) : null}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Duration (seconds)</label>
                         <input
@@ -365,6 +743,17 @@ export default function ResourcesManagementPage() {
                           value={formData.duration}
                           onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                           placeholder="e.g., 600 for 10 minutes"
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">YouTube View Count</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.viewCount}
+                          onChange={(e) => setFormData({ ...formData, viewCount: e.target.value })}
+                          placeholder="Auto-filled from YouTube"
                           className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         />
                       </div>
