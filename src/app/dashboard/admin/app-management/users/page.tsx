@@ -24,14 +24,60 @@ interface User {
   createdAt?: string;
 }
 
-const CLASS_OPTIONS = ["Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12", "Dropper"];
-const BATCH_OPTIONS = ["Lakshya", "Aadharshilla", "Basic", "Commerce"];
+interface StudentBatchClassRule {
+  classValue: string;
+  classLabel: string;
+  batches: string[];
+  requiresBatch: boolean;
+}
+
+interface StudentBatchConfigResponse {
+  classes: StudentBatchClassRule[];
+  batchRules: Record<string, string[]>;
+}
+
+const FALLBACK_STUDENT_BATCH_CONFIG: StudentBatchConfigResponse = {
+  classes: [
+    { classValue: "7", classLabel: "Class 7", batches: [], requiresBatch: false },
+    { classValue: "8", classLabel: "Class 8", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
+    { classValue: "9", classLabel: "Class 9", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
+    { classValue: "10", classLabel: "Class 10", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
+    { classValue: "11", classLabel: "Class 11", batches: ["JEE", "JEE/NEET", "Advanced"], requiresBatch: true },
+    { classValue: "12", classLabel: "Class 12", batches: ["JEE"], requiresBatch: true },
+  ],
+  batchRules: {
+    "7": [],
+    "8": ["Advanced", "Basic", "JEE"],
+    "9": ["Advanced", "Basic", "JEE"],
+    "10": ["Advanced", "Basic", "JEE"],
+    "11": ["JEE", "JEE/NEET", "Advanced"],
+    "12": ["JEE"],
+  },
+};
+
+function normalizeClassValue(input?: string): string {
+  if (!input) return "";
+  const match = String(input).match(/(\d{1,2})/);
+  return match ? String(Number(match[1])) : "";
+}
+
+function formatClassLabel(input?: string): string {
+  const classValue = normalizeClassValue(input);
+  if (!classValue) return input || "-";
+  return `Class ${classValue}`;
+}
 
 export default function UsersManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<Role | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [filterClass, setFilterClass] = useState<string>("all");
+  const [filterBatch, setFilterBatch] = useState<string>("all");
+  const [studentBatchConfig, setStudentBatchConfig] =
+    useState<StudentBatchConfigResponse>(FALLBACK_STUDENT_BATCH_CONFIG);
+  const [configLoading, setConfigLoading] = useState(false);
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -51,10 +97,92 @@ export default function UsersManagementPage() {
   });
   const [newPassword, setNewPassword] = useState("");
 
+  const getClassRule = useCallback(
+    (classValue: string) =>
+      studentBatchConfig.classes.find((rule) => rule.classValue === classValue),
+    [studentBatchConfig.classes]
+  );
+
+  const getBatchOptionsForClass = useCallback(
+    (classValue: string): string[] => {
+      if (!classValue) return [];
+      return getClassRule(classValue)?.batches || [];
+    },
+    [getClassRule]
+  );
+
+  const isBatchRequiredForClass = useCallback(
+    (classValue: string): boolean => {
+      if (!classValue) return false;
+      return Boolean(getClassRule(classValue)?.requiresBatch);
+    },
+    [getClassRule]
+  );
+
+  const allBatchOptions = Array.from(
+    new Set(studentBatchConfig.classes.flatMap((rule) => rule.batches))
+  );
+
+  const availableFilterBatchOptions =
+    filterClass === "all" ? allBatchOptions : getBatchOptionsForClass(filterClass);
+
+  const createBatchOptions = getBatchOptionsForClass(createForm.classLevel);
+  const editBatchOptions = getBatchOptionsForClass(editForm.classLevel);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const loadStudentBatchConfig = async () => {
+      setConfigLoading(true);
+      try {
+        const config = (await apiFetch(
+          "/users/student-batch-config"
+        )) as StudentBatchConfigResponse;
+
+        if (Array.isArray(config?.classes) && config.classes.length > 0) {
+          setStudentBatchConfig(config);
+        }
+      } catch {
+        toast.error("Failed to load batch config, using fallback rules");
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+
+    loadStudentBatchConfig();
+  }, []);
+
+  useEffect(() => {
+    if (filterClass === "all") return;
+
+    const allowed = getBatchOptionsForClass(filterClass);
+    if (allowed.length === 0) {
+      if (filterBatch !== "all") setFilterBatch("all");
+      return;
+    }
+
+    if (filterBatch !== "all" && !allowed.includes(filterBatch)) {
+      setFilterBatch("all");
+    }
+  }, [filterClass, filterBatch, getBatchOptionsForClass]);
+
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const q = filterRole === "all" ? "" : `?role=${filterRole}`;
+      const params = new URLSearchParams();
+      if (filterRole !== "all") params.set("role", filterRole);
+      if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
+      if (filterClass !== "all") params.set("classLevel", filterClass);
+      if (filterBatch !== "all") params.set("batch", filterBatch);
+      const queryString = params.toString();
+
+      const q = queryString ? `?${queryString}` : "";
       const data = await apiFetch(`/users${q}`) as Array<Record<string, unknown>>;
       setUsers(data.map((u) => ({
         id: (u._id as string) || (u.id as string),
@@ -73,27 +201,64 @@ export default function UsersManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterRole]);
+  }, [filterRole, filterClass, filterBatch, debouncedSearchQuery]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  // Filtered users based on search
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.empCode?.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Local guard filtering for immediate UX while backend search/filter updates
+  const filteredUsers = users.filter((u) => {
+    const query = searchQuery.trim().toLowerCase();
+    const searchMatch =
+      !query ||
+      u.name.toLowerCase().includes(query) ||
+      u.email.toLowerCase().includes(query) ||
+      (u.empCode?.toLowerCase().includes(query) ?? false);
+
+    const classMatch =
+      filterClass === "all" || normalizeClassValue(u.classLevel) === filterClass;
+
+    const batchMatch =
+      filterBatch === "all" || (u.batch || "") === filterBatch;
+
+    const roleMatch = filterRole === "all" || u.role === filterRole;
+
+    return searchMatch && classMatch && batchMatch && roleMatch;
+  });
 
   // Create User
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setActionLoading(true);
     try {
+      if (createForm.role === "student") {
+        if (!createForm.classLevel) {
+          toast.error("Select class for student");
+          return;
+        }
+
+        const allowedBatches = getBatchOptionsForClass(createForm.classLevel);
+        if (isBatchRequiredForClass(createForm.classLevel) && !createForm.batch) {
+          toast.error("Select batch for selected class");
+          return;
+        }
+
+        if (createForm.batch && !allowedBatches.includes(createForm.batch)) {
+          toast.error("Selected batch is not allowed for selected class");
+          return;
+        }
+      }
+
       await adminCreateUser({
         name: createForm.name, email: createForm.email, password: createForm.password,
         role: createForm.role, empCode: createForm.empCode,
-        classLevel: createForm.role === "student" ? createForm.classLevel : undefined,
-        batch: createForm.role === "student" ? createForm.batch : undefined,
+        classLevel:
+          createForm.role === "student" && createForm.classLevel
+            ? `Class ${createForm.classLevel}`
+            : undefined,
+        batch:
+          createForm.role === "student" && isBatchRequiredForClass(createForm.classLevel)
+            ? createForm.batch
+            : undefined,
       });
       toast.success(`${createForm.name} created successfully`);
       setShowCreateModal(false);
@@ -109,9 +274,15 @@ export default function UsersManagementPage() {
   // Edit User
   const openEditModal = (user: User) => {
     setSelectedUser(user);
+    const classValue = normalizeClassValue(user.classLevel);
+    const allowedBatches = getBatchOptionsForClass(classValue);
+    const normalizedBatch = allowedBatches.includes(user.batch || "")
+      ? user.batch || ""
+      : "";
+
     setEditForm({
       name: user.name, email: user.email, role: user.role,
-      classLevel: user.classLevel || "", batch: user.batch || "",
+      classLevel: classValue, batch: normalizedBatch,
       empCode: user.empCode || "", phone: user.phone || ""
     });
     setShowEditModal(true);
@@ -122,12 +293,36 @@ export default function UsersManagementPage() {
     if (!selectedUser) return;
     setActionLoading(true);
     try {
+      if (editForm.role === "student") {
+        if (!editForm.classLevel) {
+          toast.error("Select class for student");
+          return;
+        }
+
+        const allowedBatches = getBatchOptionsForClass(editForm.classLevel);
+        if (isBatchRequiredForClass(editForm.classLevel) && !editForm.batch) {
+          toast.error("Select batch for selected class");
+          return;
+        }
+
+        if (editForm.batch && !allowedBatches.includes(editForm.batch)) {
+          toast.error("Selected batch is not allowed for selected class");
+          return;
+        }
+      }
+
       await apiFetch(`/users/${selectedUser.id}`, {
         method: "PUT",
         body: JSON.stringify({
           name: editForm.name, email: editForm.email, role: editForm.role, empCode: editForm.empCode,
-          classLevel: editForm.role === "student" ? editForm.classLevel : undefined,
-          batch: editForm.role === "student" ? editForm.batch : undefined,
+          classLevel:
+            editForm.role === "student" && editForm.classLevel
+              ? `Class ${editForm.classLevel}`
+              : undefined,
+          batch:
+            editForm.role === "student" && isBatchRequiredForClass(editForm.classLevel)
+              ? editForm.batch
+              : undefined,
         }),
       });
       toast.success("User updated successfully");
@@ -224,7 +419,7 @@ export default function UsersManagementPage() {
               </button>
             ))}
           </div>
-          <div className="flex gap-3 w-full sm:w-auto">
+          <div className="flex gap-3 w-full sm:w-auto flex-wrap">
             <input
               type="text"
               placeholder="Search users..."
@@ -232,6 +427,34 @@ export default function UsersManagementPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 sm:w-64 px-4 py-2 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             />
+            <select
+              value={filterClass}
+              onChange={(e) => {
+                setFilterClass(e.target.value);
+                setFilterBatch("all");
+              }}
+              className="px-3 py-2 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            >
+              <option value="all">All Classes</option>
+              {studentBatchConfig.classes.map((classRule) => (
+                <option key={classRule.classValue} value={classRule.classValue}>
+                  {classRule.classLabel}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filterBatch}
+              onChange={(e) => setFilterBatch(e.target.value)}
+              disabled={filterClass !== "all" && availableFilterBatchOptions.length === 0}
+              className="px-3 py-2 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              <option value="all">All Batches</option>
+              {availableFilterBatchOptions.map((batchName) => (
+                <option key={batchName} value={batchName}>
+                  {batchName}
+                </option>
+              ))}
+            </select>
             <button
               onClick={() => setShowCreateModal(true)}
               className="px-4 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 flex items-center gap-2"
@@ -241,6 +464,9 @@ export default function UsersManagementPage() {
             </button>
           </div>
         </div>
+        {configLoading && (
+          <p className="mt-2 text-xs text-slate-500">Loading central batch rules...</p>
+        )}
 
         {/* Users Table */}
         <div className="mt-6 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -287,11 +513,15 @@ export default function UsersManagementPage() {
                       <td className="px-6 py-4 text-sm text-slate-600">
                         {user.role === "student" && (
                           <div>
-                            {user.classLevel && <span className="bg-slate-100 px-2 py-0.5 rounded mr-2">{user.classLevel}</span>}
+                            {user.classLevel && <span className="bg-slate-100 px-2 py-0.5 rounded mr-2">{formatClassLabel(user.classLevel)}</span>}
                             {user.batch ? (
                               <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{user.batch}</span>
                             ) : (
-                              <span className="text-amber-600 text-xs">No batch</span>
+                              <span className="text-amber-600 text-xs">
+                                {normalizeClassValue(user.classLevel) === "7"
+                                  ? "No batch (Class 7)"
+                                  : "No batch"}
+                              </span>
                             )}
                           </div>
                         )}
@@ -350,16 +580,43 @@ export default function UsersManagementPage() {
                     <div className="grid grid-cols-2 gap-4 p-4 bg-emerald-50 rounded-lg">
                       <div>
                         <label className="block text-sm font-medium text-emerald-800 mb-1">Class</label>
-                        <select value={createForm.classLevel} onChange={(e) => setCreateForm({...createForm, classLevel: e.target.value})} className="w-full px-3 py-2 border border-emerald-200 rounded-lg">
+                        <select
+                          value={createForm.classLevel}
+                          onChange={(e) =>
+                            setCreateForm({
+                              ...createForm,
+                              classLevel: e.target.value,
+                              batch: "",
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-emerald-200 rounded-lg"
+                        >
                           <option value="">Select Class</option>
-                          {CLASS_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                          {studentBatchConfig.classes.map((classRule) => (
+                            <option key={classRule.classValue} value={classRule.classValue}>
+                              {classRule.classLabel}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-emerald-800 mb-1">Batch</label>
-                        <select value={createForm.batch} onChange={(e) => setCreateForm({...createForm, batch: e.target.value})} className="w-full px-3 py-2 border border-emerald-200 rounded-lg">
-                          <option value="">Select Batch</option>
-                          {BATCH_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                        <select
+                          value={createForm.batch}
+                          onChange={(e) => setCreateForm({ ...createForm, batch: e.target.value })}
+                          disabled={!createForm.classLevel || createBatchOptions.length === 0}
+                          className="w-full px-3 py-2 border border-emerald-200 rounded-lg disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                          <option value="">
+                            {createForm.classLevel && createBatchOptions.length === 0
+                              ? "No batch required"
+                              : "Select Batch"}
+                          </option>
+                          {createBatchOptions.map((batchName) => (
+                            <option key={batchName} value={batchName}>
+                              {batchName}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -411,16 +668,43 @@ export default function UsersManagementPage() {
                     <div className="grid grid-cols-2 gap-4 p-4 bg-emerald-50 rounded-lg">
                       <div>
                         <label className="block text-sm font-medium text-emerald-800 mb-1">Class</label>
-                        <select value={editForm.classLevel} onChange={(e) => setEditForm({...editForm, classLevel: e.target.value})} className="w-full px-3 py-2 border border-emerald-200 rounded-lg">
+                        <select
+                          value={editForm.classLevel}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              classLevel: e.target.value,
+                              batch: "",
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-emerald-200 rounded-lg"
+                        >
                           <option value="">Select Class</option>
-                          {CLASS_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                          {studentBatchConfig.classes.map((classRule) => (
+                            <option key={classRule.classValue} value={classRule.classValue}>
+                              {classRule.classLabel}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-emerald-800 mb-1">Batch {!selectedUser.batch && <span className="text-amber-600">(Not Assigned)</span>}</label>
-                        <select value={editForm.batch} onChange={(e) => setEditForm({...editForm, batch: e.target.value})} className="w-full px-3 py-2 border border-emerald-200 rounded-lg">
-                          <option value="">Select Batch</option>
-                          {BATCH_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                        <select
+                          value={editForm.batch}
+                          onChange={(e) => setEditForm({ ...editForm, batch: e.target.value })}
+                          disabled={!editForm.classLevel || editBatchOptions.length === 0}
+                          className="w-full px-3 py-2 border border-emerald-200 rounded-lg disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                          <option value="">
+                            {editForm.classLevel && editBatchOptions.length === 0
+                              ? "No batch required"
+                              : "Select Batch"}
+                          </option>
+                          {editBatchOptions.map((batchName) => (
+                            <option key={batchName} value={batchName}>
+                              {batchName}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>

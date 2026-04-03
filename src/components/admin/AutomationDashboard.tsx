@@ -46,6 +46,20 @@ interface Summary {
   failed: number;
 }
 
+interface FolderFile {
+  name: string;
+  path: string;
+  size: number;
+  type: 'epub' | 'pdf';
+}
+
+interface FolderInfo {
+  name: string;
+  path: string;
+  fileCount: number;
+  files: FolderFile[];
+}
+
 export default function AutomationDashboard() {
   const [status, setStatus] = useState<AutomationStatus | null>(null);
   const [stats, setStats] = useState<ProcessingStat[]>([]);
@@ -56,7 +70,9 @@ export default function AutomationDashboard() {
   const [showClassModal, setShowClassModal] = useState(false);
   const [processingLogs, setProcessingLogs] = useState<string[]>([]);
   const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
-  const [availableFolders, setAvailableFolders] = useState<Array<{name: string; path: string; fileCount: number}>>([]);
+  const [availableFolders, setAvailableFolders] = useState<FolderInfo[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<FolderInfo | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 
   useEffect(() => {
     // Ensure we're on client-side and token exists
@@ -169,6 +185,8 @@ export default function AutomationDashboard() {
   };
 
   const triggerNow = async () => {
+    setSelectedFolder(null);
+    setSelectedFiles([]);
     setShowClassModal(true);
   };
 
@@ -206,7 +224,7 @@ export default function AutomationDashboard() {
     }
   };
 
-  const startProcessing = async (folderName: string) => {
+  const startProcessing = async (folderName: string, files: string[] = []) => {
     try {
       const token = getToken();
       if (!token) {
@@ -214,11 +232,18 @@ export default function AutomationDashboard() {
         return;
       }
 
+      const uniqueSelectedFiles = Array.from(new Set(files.filter(Boolean)));
+
       setProcessingLogs([]);
       setProcessingStartTime(Date.now());
       
       addLog(`🚀 Starting automation for ${folderName}...`);
       addLog(`📁 Searching for folder: ${folderName}`);
+      if (uniqueSelectedFiles.length > 0) {
+        addLog(`📄 Processing ${uniqueSelectedFiles.length} selected file(s)`);
+      } else {
+        addLog('📚 No specific files selected, processing all EPUB/PDF files in folder');
+      }
 
       const res = await fetch(`${API_BASE_URL}/api/automation/trigger`, {
         method: 'POST',
@@ -226,13 +251,19 @@ export default function AutomationDashboard() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ folder: folderName })
+        body: JSON.stringify({
+          folder: folderName,
+          selectedFiles: uniqueSelectedFiles
+        })
       });
 
       const data = await res.json();
       if (data.success) {
         addLog(`✓ Processing started successfully`);
         addLog(`📂 Folder: ${data.folder}`);
+        if (Array.isArray(data.selectedFiles) && data.selectedFiles.length > 0) {
+          addLog(`📄 Selected files: ${data.selectedFiles.length}`);
+        }
         addLog(`⏱️ Started at: ${new Date().toLocaleString()}`);
         addLog(`🔄 Monitoring progress...`);
         
@@ -252,6 +283,36 @@ export default function AutomationDashboard() {
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setProcessingLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+  };
+
+  const handleFolderSelection = (folder: FolderInfo) => {
+    setSelectedFolder(folder);
+    setSelectedFiles((folder.files || []).map((file) => file.name));
+  };
+
+  const toggleFileSelection = (fileName: string) => {
+    setSelectedFiles((prev) => {
+      if (prev.includes(fileName)) {
+        return prev.filter((item) => item !== fileName);
+      }
+      return [...prev, fileName];
+    });
+  };
+
+  const selectAllFiles = () => {
+    if (!selectedFolder) return;
+    setSelectedFiles((selectedFolder.files || []).map((file) => file.name));
+  };
+
+  const clearAllFiles = () => {
+    setSelectedFiles([]);
+  };
+
+  const formatFileSize = (size: number) => {
+    if (!Number.isFinite(size) || size <= 0) return '0 B';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const startPolling = () => {
@@ -327,7 +388,6 @@ export default function AutomationDashboard() {
 
   const successRate = status ? ((status.successfulRuns / status.totalRuns) * 100).toFixed(1) : '0';
   const importRate = summary ? ((summary.totalImported / summary.totalQuestions) * 100).toFixed(1) : '0';
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -518,36 +578,106 @@ export default function AutomationDashboard() {
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className="max-w-md w-full"
+              className="max-w-2xl w-full"
             >
               <div className="bg-white rounded-lg shadow-xl p-6">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">Select Class Folder</h2>
-                <p className="text-sm text-gray-600 mb-6">Choose which class folder to process for question extraction</p>
+                <p className="text-sm text-gray-600 mb-6">Choose a class folder and select the exact EPUB/PDF files to process.</p>
 
                 {availableFolders.length > 0 ? (
-                  <div className="space-y-3">
-                    {availableFolders.map((folder) => (
-                      <button
-                        key={folder.name}
-                        onClick={() => {
-                          setShowClassModal(false);
-                          startProcessing(folder.name);
-                        }}
-                        className="w-full p-4 rounded-lg border-2 text-left transition-all border-gray-200 hover:border-emerald-600 hover:bg-emerald-50"
-                      >
-                        <div className="flex justify-between items-start">
+                  <div className="space-y-4">
+                    <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                      {availableFolders.map((folder) => {
+                        const isSelected = selectedFolder?.name === folder.name;
+
+                        return (
+                          <button
+                            key={folder.name}
+                            onClick={() => handleFolderSelection(folder)}
+                            className={`w-full p-4 rounded-lg border-2 text-left transition-all ${
+                              isSelected
+                                ? 'border-emerald-600 bg-emerald-50'
+                                : 'border-gray-200 hover:border-emerald-600 hover:bg-emerald-50'
+                            }`}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <div className="font-semibold text-gray-900">
+                                  {folder.name.replace('_', ' ').toUpperCase()}
+                                </div>
+                                <div className="text-sm text-gray-600 mt-1">
+                                  {folder.fileCount} file{folder.fileCount !== 1 ? 's' : ''} (EPUB/PDF)
+                                </div>
+                              </div>
+                              <div className="text-2xl">📚</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {selectedFolder && (
+                      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                           <div>
                             <div className="font-semibold text-gray-900">
-                              {folder.name.replace('_', ' ').toUpperCase()}
+                              {selectedFolder.name.replace('_', ' ').toUpperCase()} files
                             </div>
-                            <div className="text-sm text-gray-600 mt-1">
-                              {folder.fileCount} file{folder.fileCount !== 1 ? 's' : ''} (EPUB/PDF)
+                            <div className="text-xs text-gray-600 mt-1">
+                              {selectedFiles.length} of {selectedFolder.files.length} selected
                             </div>
                           </div>
-                          <div className="text-2xl">📚</div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={selectAllFiles}
+                              className="h-8 px-3 text-xs border-gray-300"
+                            >
+                              Select all
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={clearAllFiles}
+                              className="h-8 px-3 text-xs border-gray-300"
+                            >
+                              Clear
+                            </Button>
+                          </div>
                         </div>
-                      </button>
-                    ))}
+
+                        {selectedFolder.files.length > 0 ? (
+                          <div className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1">
+                            {selectedFolder.files.map((file) => {
+                              const checked = selectedFiles.includes(file.name);
+
+                              return (
+                                <label
+                                  key={file.path}
+                                  className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-md cursor-pointer hover:border-emerald-400"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                    checked={checked}
+                                    onChange={() => toggleFileSelection(file.name)}
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-medium text-gray-900 truncate">{file.name}</div>
+                                    <div className="text-xs text-gray-600 mt-1">
+                                      {file.type.toUpperCase()} • {formatFileSize(file.size)}
+                                    </div>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="mt-3 text-sm text-gray-600">No EPUB/PDF files available in this folder.</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
@@ -560,9 +690,20 @@ export default function AutomationDashboard() {
                   <Button 
                     onClick={() => setShowClassModal(false)} 
                     variant="outline"
-                    className="w-full border-gray-300 hover:bg-gray-50"
+                    className="w-1/2 border-gray-300 hover:bg-gray-50"
                   >
                     Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!selectedFolder) return;
+                      setShowClassModal(false);
+                      startProcessing(selectedFolder.name, selectedFiles);
+                    }}
+                    disabled={!selectedFolder || selectedFiles.length === 0}
+                    className="w-1/2 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-gray-300"
+                  >
+                    Run Selected Files
                   </Button>
                 </div>
               </div>

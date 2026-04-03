@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { adminCreateUser } from "../../lib/auth";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,11 +18,61 @@ interface User {
   empCode?: string;
 }
 
+interface StudentBatchClassRule {
+  classValue: string;
+  classLabel: string;
+  batches: string[];
+  requiresBatch: boolean;
+}
+
+interface StudentBatchConfigResponse {
+  classes: StudentBatchClassRule[];
+  batchRules: Record<string, string[]>;
+}
+
+const FALLBACK_STUDENT_BATCH_CONFIG: StudentBatchConfigResponse = {
+  classes: [
+    { classValue: "7", classLabel: "Class 7", batches: [], requiresBatch: false },
+    { classValue: "8", classLabel: "Class 8", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
+    { classValue: "9", classLabel: "Class 9", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
+    { classValue: "10", classLabel: "Class 10", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
+    { classValue: "11", classLabel: "Class 11", batches: ["JEE", "JEE/NEET", "Advanced"], requiresBatch: true },
+    { classValue: "12", classLabel: "Class 12", batches: ["JEE"], requiresBatch: true },
+  ],
+  batchRules: {
+    "7": [],
+    "8": ["Advanced", "Basic", "JEE"],
+    "9": ["Advanced", "Basic", "JEE"],
+    "10": ["Advanced", "Basic", "JEE"],
+    "11": ["JEE", "JEE/NEET", "Advanced"],
+    "12": ["JEE"],
+  },
+};
+
+function normalizeClassValue(input?: string): string {
+  if (!input) return "";
+  const match = String(input).match(/(\d{1,2})/);
+  return match ? String(Number(match[1])) : "";
+}
+
+function formatClassLabel(input?: string): string {
+  const classValue = normalizeClassValue(input);
+  if (!classValue) return input || "-";
+  return `Class ${classValue}`;
+}
+
 export default function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterRole, setFilterRole] = useState<Role | "all">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [filterClass, setFilterClass] = useState<string>("all");
+  const [filterBatch, setFilterBatch] = useState<string>("all");
+  const [studentBatchConfig, setStudentBatchConfig] =
+    useState<StudentBatchConfigResponse>(FALLBACK_STUDENT_BATCH_CONFIG);
+  const [configLoading, setConfigLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -37,11 +87,107 @@ export default function AdminUsers() {
   const [message, setMessage] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const load = React.useCallback(async () => {
+  const getClassRule = useCallback(
+    (classValue: string) =>
+      studentBatchConfig.classes.find((rule) => rule.classValue === classValue),
+    [studentBatchConfig.classes]
+  );
+
+  const getBatchOptionsForClass = useCallback(
+    (classValue: string): string[] => {
+      if (!classValue) return [];
+      return getClassRule(classValue)?.batches || [];
+    },
+    [getClassRule]
+  );
+
+  const isBatchRequiredForClass = useCallback(
+    (classValue: string): boolean => {
+      if (!classValue) return false;
+      return Boolean(getClassRule(classValue)?.requiresBatch);
+    },
+    [getClassRule]
+  );
+
+  const allBatchOptions = Array.from(
+    new Set(studentBatchConfig.classes.flatMap((rule) => rule.batches))
+  );
+
+  const availableFilterBatchOptions =
+    filterClass === "all" ? allBatchOptions : getBatchOptionsForClass(filterClass);
+
+  const createBatchOptions = getBatchOptionsForClass(form.classLevel);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const loadStudentBatchConfig = async () => {
+      setConfigLoading(true);
+      try {
+        const config = (await apiFetch(
+          "/users/student-batch-config"
+        )) as StudentBatchConfigResponse;
+
+        if (Array.isArray(config?.classes) && config.classes.length > 0) {
+          setStudentBatchConfig(config);
+        }
+      } catch {
+        toast.error("Failed to load batch config, using fallback rules");
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+
+    loadStudentBatchConfig();
+  }, []);
+
+  useEffect(() => {
+    if (filterClass === "all") return;
+
+    const allowed = getBatchOptionsForClass(filterClass);
+    if (allowed.length === 0) {
+      if (filterBatch !== "all") setFilterBatch("all");
+      return;
+    }
+
+    if (filterBatch !== "all" && !allowed.includes(filterBatch)) {
+      setFilterBatch("all");
+    }
+  }, [filterClass, filterBatch, getBatchOptionsForClass]);
+
+  useEffect(() => {
+    if (form.role !== "student") return;
+
+    const normalizedClass = normalizeClassValue(form.classLevel);
+    if (normalizedClass !== form.classLevel) {
+      setForm((prev) => ({ ...prev, classLevel: normalizedClass, batch: "" }));
+      return;
+    }
+
+    const allowedBatches = getBatchOptionsForClass(normalizedClass);
+    if (form.batch && !allowedBatches.includes(form.batch)) {
+      setForm((prev) => ({ ...prev, batch: "" }));
+    }
+  }, [form.role, form.classLevel, form.batch, getBatchOptionsForClass]);
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const q = filterRole === "all" ? "" : `?role=${filterRole}`;
+      const params = new URLSearchParams();
+      if (filterRole !== "all") params.set("role", filterRole);
+      if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
+      if (filterClass !== "all") params.set("classLevel", filterClass);
+      if (filterBatch !== "all") params.set("batch", filterBatch);
+      const queryString = params.toString();
+
+      const q = queryString ? `?${queryString}` : "";
       const data = (await apiFetch(`/users${q}`)) as Array<
         Record<string, unknown>
       >;
@@ -66,24 +212,48 @@ export default function AdminUsers() {
     } finally {
       setLoading(false);
     }
-  }, [filterRole]);
+  }, [filterRole, filterClass, filterBatch, debouncedSearchQuery]);
 
   useEffect(() => {
     load();
-  }, [filterRole, load]);
+  }, [load]);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     setMessage(null);
     setCreating(true);
     try {
+      const normalizedClass = normalizeClassValue(form.classLevel);
+
+      if (form.role === "student") {
+        if (!normalizedClass || !getClassRule(normalizedClass)) {
+          throw new Error("Please select a valid class for the student");
+        }
+
+        const allowedBatches = getBatchOptionsForClass(normalizedClass);
+
+        if (isBatchRequiredForClass(normalizedClass) && !form.batch) {
+          throw new Error("Please select a batch for the selected class");
+        }
+
+        if (form.batch && !allowedBatches.includes(form.batch)) {
+          throw new Error("Selected batch is not allowed for the selected class");
+        }
+      }
+
       await adminCreateUser({
         name: form.name,
         email: form.email,
         password: form.password,
         role: form.role,
-        classLevel: form.role === "student" ? form.classLevel : undefined,
-        batch: form.role === "student" ? form.batch : undefined,
+        classLevel:
+          form.role === "student" && normalizedClass
+            ? `Class ${normalizedClass}`
+            : undefined,
+        batch:
+          form.role === "student" && isBatchRequiredForClass(normalizedClass)
+            ? form.batch
+            : undefined,
         empCode: form.empCode,
       });
       toast.success("User Created Successfully", {
@@ -104,9 +274,7 @@ export default function AdminUsers() {
       setShowForm(false);
 
       setTimeout(() => {
-        if (message?.includes("successfully")) {
-          setMessage(null);
-        }
+        setMessage(null);
       }, 3000);
     } catch (err: unknown) {
       const errorMessage =
@@ -215,21 +383,62 @@ export default function AdminUsers() {
   async function onEditUser(u: User) {
     const name = prompt("Name", u.name) ?? u.name;
     const email = prompt("Email", u.email) ?? u.email;
-    const role = (prompt("Role (admin|teacher|student)", u.role) ??
-      u.role) as Role;
-    let classLevel = u.classLevel || "";
+    const roleInput = (prompt("Role (admin|teacher|student)", u.role) ?? u.role)
+      .trim()
+      .toLowerCase();
 
+    if (!(["admin", "teacher", "student"] as string[]).includes(roleInput)) {
+      toast.error("Invalid role. Use admin, teacher, or student.");
+      return;
+    }
+
+    const role = roleInput as Role;
+    let classLevel = normalizeClassValue(u.classLevel);
     let batch = u.batch || "";
     let empCode = u.empCode || "";
-    
-    // EmpCode should be editable for migration
-    empCode = prompt("Employee/Student Code (Required for Attendance)", empCode) ?? empCode;
-    
+
+    empCode =
+      prompt("Employee/Student Code (Required for Attendance)", empCode) ?? empCode;
+
     if (role === "student") {
-      classLevel = prompt("Class (7-12)", classLevel) ?? classLevel;
-      batch =
-        prompt("Batch (Lakshya|Aadharshilla|Basic|Commerce)", batch) ?? batch;
+      const classPrompt = prompt("Class (7-12)", classLevel) ?? classLevel;
+      const normalizedClass = normalizeClassValue(classPrompt);
+
+      if (!normalizedClass || !getClassRule(normalizedClass)) {
+        toast.error("Invalid class. Use a value between 7 and 12.");
+        return;
+      }
+
+      classLevel = normalizedClass;
+      const allowedBatches = getBatchOptionsForClass(classLevel);
+
+      if (allowedBatches.length > 0) {
+        const batchPrompt =
+          prompt(
+            `Batch (${allowedBatches.join("|")})`,
+            allowedBatches.includes(batch) ? batch : allowedBatches[0]
+          ) ?? "";
+        const selectedBatch = batchPrompt.trim();
+
+        if (!selectedBatch) {
+          toast.error("Batch is required for the selected class.");
+          return;
+        }
+
+        if (!allowedBatches.includes(selectedBatch)) {
+          toast.error("Selected batch is not allowed for the selected class.");
+          return;
+        }
+
+        batch = selectedBatch;
+      } else {
+        batch = "";
+      }
+    } else {
+      classLevel = "";
+      batch = "";
     }
+
     try {
       const resp = (await apiFetch(`/users/${u.id}`, {
         method: "PUT",
@@ -237,8 +446,11 @@ export default function AdminUsers() {
           name,
           email,
           role,
-          classLevel: role === "student" ? classLevel : undefined,
-          batch: role === "student" ? batch : undefined,
+          classLevel: role === "student" ? `Class ${classLevel}` : undefined,
+          batch:
+            role === "student" && isBatchRequiredForClass(classLevel)
+              ? batch
+              : undefined,
           empCode,
         }),
       })) as Partial<User>;
@@ -250,8 +462,10 @@ export default function AdminUsers() {
                 name,
                 email,
                 role,
-                classLevel: resp.classLevel ?? classLevel,
-                batch: resp.batch ?? batch,
+                classLevel:
+                  resp.classLevel ??
+                  (role === "student" ? `Class ${classLevel}` : ""),
+                batch: resp.batch ?? (role === "student" ? batch : ""),
                 empCode: resp.empCode ?? empCode,
               }
             : x
@@ -263,9 +477,21 @@ export default function AdminUsers() {
     }
   }
 
-  const filteredUsers = users.filter((user) =>
-    filterRole === "all" ? true : user.role === filterRole
-  );
+  const filteredUsers = users.filter((user) => {
+    const query = searchQuery.trim().toLowerCase();
+    const searchMatch =
+      !query ||
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query) ||
+      (user.empCode?.toLowerCase().includes(query) ?? false);
+
+    const roleMatch = filterRole === "all" || user.role === filterRole;
+    const classMatch =
+      filterClass === "all" || normalizeClassValue(user.classLevel) === filterClass;
+    const batchMatch = filterBatch === "all" || (user.batch || "") === filterBatch;
+
+    return searchMatch && roleMatch && classMatch && batchMatch;
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-emerald-50/30 p-4 lg:p-6">
@@ -365,62 +591,108 @@ export default function AdminUsers() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white/80 backdrop-blur-sm rounded-xl border border-white/20 shadow-sm p-4"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <span className="font-medium">Filter by role:</span>
-              <div className="flex gap-2 flex-wrap">
-                {["all", "admin", "teacher", "student"].map((role) => (
-                  <motion.button
-                    key={role}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setFilterRole(role as Role | "all")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                      filterRole === role
-                        ? "bg-emerald-600 text-white shadow-sm"
-                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                    }`}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <span className="font-medium">Filter by role:</span>
+                <div className="flex gap-2 flex-wrap">
+                  {["all", "admin", "teacher", "student"].map((role) => (
+                    <motion.button
+                      key={role}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setFilterRole(role as Role | "all")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                        filterRole === role
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      }`}
+                    >
+                      {role === "all"
+                        ? "All"
+                        : role.charAt(0).toUpperCase() + role.slice(1)}
+                      {role !== "all" && (
+                        <span className="ml-1 opacity-75">
+                          ({users.filter((u) => u.role === role).length})
+                        </span>
+                      )}
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-600">
+                  {filteredUsers.length} user
+                  {filteredUsers.length !== 1 ? "s" : ""}
+                </span>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => load()}
+                  className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                  title="Refresh"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    {role === "all"
-                      ? "All"
-                      : role.charAt(0).toUpperCase() + role.slice(1)}
-                    {role !== "all" && (
-                      <span className="ml-1 opacity-75">
-                        ({users.filter((u) => u.role === role).length})
-                      </span>
-                    )}
-                  </motion.button>
-                ))}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                </motion.button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600">
-                {filteredUsers.length} user
-                {filteredUsers.length !== 1 ? "s" : ""}
-              </span>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => load()}
-                className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
-                title="Refresh"
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                type="text"
+                placeholder="Search by name, email, or code"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200"
+              />
+              <select
+                value={filterClass}
+                onChange={(e) => {
+                  setFilterClass(e.target.value);
+                  setFilterBatch("all");
+                }}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200"
               >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              </motion.button>
+                <option value="all">All Classes</option>
+                {studentBatchConfig.classes.map((classRule) => (
+                  <option key={classRule.classValue} value={classRule.classValue}>
+                    {classRule.classLabel}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filterBatch}
+                onChange={(e) => setFilterBatch(e.target.value)}
+                disabled={
+                  filterClass !== "all" && availableFilterBatchOptions.length === 0
+                }
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200 disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                <option value="all">All Batches</option>
+                {availableFilterBatchOptions.map((batchName) => (
+                  <option key={batchName} value={batchName}>
+                    {batchName}
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {configLoading && (
+              <p className="text-xs text-slate-500">Loading central batch rules...</p>
+            )}
           </div>
         </motion.div>
 
@@ -514,9 +786,15 @@ export default function AdminUsers() {
                       </label>
                       <select
                         value={form.role}
-                        onChange={(e) =>
-                          setForm({ ...form, role: e.target.value as Role })
-                        }
+                        onChange={(e) => {
+                          const nextRole = e.target.value as Role;
+                          setForm({
+                            ...form,
+                            role: nextRole,
+                            classLevel: nextRole === "student" ? form.classLevel : "",
+                            batch: nextRole === "student" ? form.batch : "",
+                          });
+                        }}
                         className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200"
                       >
                         <option value="student">Student</option>
@@ -551,17 +829,23 @@ export default function AdminUsers() {
                         <select
                           value={form.classLevel}
                           onChange={(e) =>
-                            setForm({ ...form, classLevel: e.target.value })
+                            setForm({
+                              ...form,
+                              classLevel: e.target.value,
+                              batch: "",
+                            })
                           }
                           className="w-full px-4 py-2.5 border border-emerald-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200"
                         >
                           <option value="">Select class</option>
-                          <option value="7">Class 7</option>
-                          <option value="8">Class 8</option>
-                          <option value="9">Class 9</option>
-                          <option value="10">Class 10</option>
-                          <option value="11">Class 11</option>
-                          <option value="12">Class 12</option>
+                          {studentBatchConfig.classes.map((classRule) => (
+                            <option
+                              key={classRule.classValue}
+                              value={classRule.classValue}
+                            >
+                              {classRule.classLabel}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>
@@ -573,13 +857,19 @@ export default function AdminUsers() {
                           onChange={(e) =>
                             setForm({ ...form, batch: e.target.value })
                           }
-                          className="w-full px-4 py-2.5 border border-emerald-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200"
+                          disabled={!form.classLevel || createBatchOptions.length === 0}
+                          className="w-full px-4 py-2.5 border border-emerald-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200 disabled:bg-slate-100 disabled:text-slate-400"
                         >
-                          <option value="">Select batch</option>
-                          <option value="Lakshya">Lakshya</option>
-                          <option value="Aadharshilla">Aadharshilla</option>
-                          <option value="Basic">Basic</option>
-                          <option value="Commerce">Commerce</option>
+                          <option value="">
+                            {form.classLevel && createBatchOptions.length === 0
+                              ? "No batch required"
+                              : "Select batch"}
+                          </option>
+                          {createBatchOptions.map((batchName) => (
+                            <option key={batchName} value={batchName}>
+                              {batchName}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -702,9 +992,11 @@ export default function AdminUsers() {
                 No users found
               </h3>
               <p className="text-slate-600 mb-6">
-                {filterRole === "all"
-                  ? "Create your first user to get started"
-                  : `No ${filterRole}s found. Try a different filter.`}
+                {searchQuery || filterClass !== "all" || filterBatch !== "all"
+                  ? "Try adjusting your search or filters."
+                  : filterRole === "all"
+                    ? "Create your first user to get started"
+                    : `No ${filterRole}s found. Try a different filter.`}
               </p>
               <motion.button
                 whileHover={{ scale: 1.02 }}
@@ -769,10 +1061,12 @@ export default function AdminUsers() {
                             {user.role === "student" &&
                               (user.classLevel || user.batch) && (
                                 <div className="text-xs text-slate-500">
-                                  {user.classLevel &&
-                                    `Class ${user.classLevel}`}
+                                  {user.classLevel && formatClassLabel(user.classLevel)}
                                   {user.classLevel && user.batch && " • "}
-                                  {user.batch}
+                                  {user.batch ||
+                                    (normalizeClassValue(user.classLevel) === "7"
+                                      ? "No batch (Class 7)"
+                                      : "No batch")}
                                 </div>
                               )}
                           </div>
