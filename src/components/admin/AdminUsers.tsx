@@ -33,19 +33,19 @@ interface StudentBatchConfigResponse {
 const FALLBACK_STUDENT_BATCH_CONFIG: StudentBatchConfigResponse = {
   classes: [
     { classValue: "7", classLabel: "Class 7", batches: [], requiresBatch: false },
-    { classValue: "8", classLabel: "Class 8", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
-    { classValue: "9", classLabel: "Class 9", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
-    { classValue: "10", classLabel: "Class 10", batches: ["Advanced", "Basic", "JEE"], requiresBatch: true },
-    { classValue: "11", classLabel: "Class 11", batches: ["JEE", "JEE/NEET", "Advanced"], requiresBatch: true },
-    { classValue: "12", classLabel: "Class 12", batches: ["JEE"], requiresBatch: true },
+    { classValue: "8", classLabel: "Class 8", batches: [], requiresBatch: false },
+    { classValue: "9", classLabel: "Class 9", batches: [], requiresBatch: false },
+    { classValue: "10", classLabel: "Class 10", batches: [], requiresBatch: false },
+    { classValue: "11", classLabel: "Class 11", batches: [], requiresBatch: false },
+    { classValue: "12", classLabel: "Class 12", batches: [], requiresBatch: false },
   ],
   batchRules: {
     "7": [],
-    "8": ["Advanced", "Basic", "JEE"],
-    "9": ["Advanced", "Basic", "JEE"],
-    "10": ["Advanced", "Basic", "JEE"],
-    "11": ["JEE", "JEE/NEET", "Advanced"],
-    "12": ["JEE"],
+    "8": [],
+    "9": [],
+    "10": [],
+    "11": [],
+    "12": [],
   },
 };
 

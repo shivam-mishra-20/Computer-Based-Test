@@ -38,7 +38,6 @@ interface Batch {
   name: string;
   classLevels: string[];
   isDefault: boolean;
-  source?: "firebase" | "mongodb";
 }
 
 interface Teacher {
@@ -64,7 +63,7 @@ interface TimeSlot {
   label: string;
 }
 
-type TimeSlotView = "evening" | "all";
+type TimeSlotView = "morning" | "evening" | "all";
 
 const DAYS = [
   "Sunday",
@@ -77,13 +76,22 @@ const DAYS = [
 ];
 const CLASS_LEVELS = ["7", "8", "9", "10", "11", "12"];
 
+const DEFAULT_MORNING_TIME_SLOTS: TimeSlot[] = [
+  { start: "10:30", end: "11:30", label: "10:30 AM - 11:30 AM" },
+  { start: "11:30", end: "12:30", label: "11:30 AM - 12:30 PM" },
+  { start: "12:30", end: "13:30", label: "12:30 PM - 1:30 PM" },
+  { start: "13:30", end: "14:30", label: "1:30 PM - 2:30 PM" },
+  { start: "14:30", end: "15:30", label: "2:30 PM - 3:30 PM" },
+];
+
 const DEFAULT_EVENING_TIME_SLOTS: TimeSlot[] = [
-  { start: "14:30", end: "15:30", label: "2:30 - 3:30 PM" },
-  { start: "15:30", end: "16:30", label: "3:30 - 4:30 PM" },
-  { start: "16:30", end: "17:30", label: "4:30 - 5:30 PM" },
-  { start: "17:30", end: "18:30", label: "5:30 - 6:30 PM" },
-  { start: "18:30", end: "19:30", label: "6:30 - 7:30 PM" },
-  { start: "19:30", end: "20:30", label: "7:30 - 8:30 PM" },
+  { start: "15:30", end: "16:30", label: "3:30 PM - 4:30 PM" },
+  { start: "16:30", end: "17:30", label: "4:30 PM - 5:30 PM" },
+  { start: "17:30", end: "18:30", label: "5:30 PM - 6:30 PM" },
+  { start: "18:30", end: "19:30", label: "6:30 PM - 7:30 PM" },
+  { start: "19:30", end: "20:30", label: "7:30 PM - 8:30 PM" },
+  { start: "20:30", end: "21:30", label: "8:30 PM - 9:30 PM" },
+  { start: "21:30", end: "22:30", label: "9:30 PM - 10:30 PM" },
 ];
 
 function parseHHMMToMinutes(hhmm: string): number {
@@ -222,9 +230,10 @@ export default function ScheduleManagement() {
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      // Fetch batches from combined Firebase + MongoDB endpoint
-      const batchesData = await apiFetch('/schedule/firebase/batches');
-      setBatches(batchesData as Batch[]);
+
+      const batchesData = await apiFetch('/schedule/batches');
+      const normalizedBatches = Array.isArray(batchesData) ? (batchesData as Batch[]) : [];
+      setBatches(normalizedBatches);
 
       // Fetch teachers from MongoDB only (not Firebase)
       const teachersData = await apiFetch('/schedule/teachers');
@@ -236,24 +245,35 @@ export default function ScheduleManagement() {
         source: 'mongodb'
       })));
 
-      // Default Time Slots (Evening)
-      try {
-        const serverSlots = await apiFetch('/schedule/timeslots');
-        if (
-          Array.isArray(serverSlots) &&
-          serverSlots.every((s) => typeof s?.start === 'string' && typeof s?.end === 'string')
-        ) {
-          setTimeSlots(serverSlots as TimeSlot[]);
-        } else {
+      if (timeSlotView === 'morning') {
+        setTimeSlots(DEFAULT_MORNING_TIME_SLOTS);
+      } else if (timeSlotView === 'all') {
+        setTimeSlots(
+          generateTimeSlots({
+            start: '00:00',
+            end: '24:00',
+            stepMinutes: 30,
+            durationMinutes: 60,
+          })
+        );
+      } else {
+        try {
+          const serverSlots = await apiFetch('/schedule/timeslots');
+          if (
+            Array.isArray(serverSlots) &&
+            serverSlots.every((s) => typeof s?.start === 'string' && typeof s?.end === 'string')
+          ) {
+            setTimeSlots(serverSlots as TimeSlot[]);
+          } else {
+            setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
+          }
+        } catch {
           setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
         }
-      } catch {
-        setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
       }
 
-      if (Array.isArray(batchesData) && batchesData.length > 0) {
-        setFilterBatch(batchesData[0].name);
-      }
+      const defaultBatch = normalizedBatches.find((batch) => batch.classLevels.includes(filterClass))?.name || "";
+      setFilterBatch(defaultBatch);
     } catch (error) {
       console.error("Failed to load initial data:", error);
     } finally {
@@ -263,6 +283,7 @@ export default function ScheduleManagement() {
 
   useEffect(() => {
     loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Initial load only
 
   useEffect(() => {
@@ -276,6 +297,11 @@ export default function ScheduleManagement() {
             durationMinutes: 60,
           })
         );
+        return;
+      }
+
+      if (timeSlotView === 'morning') {
+        setTimeSlots(DEFAULT_MORNING_TIME_SLOTS);
         return;
       }
 
@@ -588,7 +614,7 @@ export default function ScheduleManagement() {
   };
 
   const getAvailableBatches = (classLevel: string) => {
-    return batches.filter((b) => b.classLevels.includes(classLevel));
+    return batches.filter((batch) => batch.classLevels.includes(classLevel));
   };
 
   const handleClassChange = (newClass: string) => {
@@ -674,7 +700,8 @@ export default function ScheduleManagement() {
               onChange={(e) => setTimeSlotView(e.target.value as TimeSlotView)}
               className="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white transition-all"
             >
-              <option value="evening">Evening (2:30 PM - 8:30 PM)</option>
+                <option value="morning">Morning (10:30 AM - 3:30 PM)</option>
+                <option value="evening">Evening (3:30 PM - 10:30 PM)</option>
               <option value="all">All Day</option>
             </select>
           </div>
@@ -717,7 +744,7 @@ export default function ScheduleManagement() {
                 )}
                 {getAvailableBatches(filterClass).map((b) => (
                   <option key={b._id} value={b.name}>
-                    {b.name} {b.source === 'firebase' ? '🔥' : ''}
+                    {b.name}
                   </option>
                 ))}
               </select>
@@ -1160,7 +1187,7 @@ export default function ScheduleManagement() {
 
       {/* Batch Management */}
       {activeTab === "batches" && (
-        <AdminBatchManagement {...({ onBatchUpdate: () => loadInitialData() } as any)} />
+        <AdminBatchManagement onBatchUpdate={loadInitialData} />
       )}
 
       {/* Modal */}

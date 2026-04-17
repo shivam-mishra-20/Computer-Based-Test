@@ -11,14 +11,17 @@ interface Batch {
   classLevels: string[];
   isDefault: boolean;
   description?: string;
-  source?: "firebase" | "mongodb";
   createdAt?: string;
   updatedAt?: string;
 }
 
+interface BatchManagementProps {
+  onBatchUpdate?: () => void;
+}
+
 const CLASS_LEVELS = ["7", "8", "9", "10", "11", "12"];
 
-export default function BatchManagement() {
+export default function BatchManagement({ onBatchUpdate }: BatchManagementProps) {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,9 +36,8 @@ export default function BatchManagement() {
   const loadBatches = async () => {
     try {
       setLoading(true);
-      // Fetch batches from Firebase (combined endpoint)
-      const data = await apiFetch("/schedule/firebase/batches");
-      setBatches(Array.isArray(data) ? data : []);
+      const batchData = await apiFetch("/schedule/batches");
+      setBatches(Array.isArray(batchData) ? (batchData as Batch[]) : []);
     } catch (error) {
       console.error("Failed to load batches:", error);
     } finally {
@@ -71,18 +73,20 @@ export default function BatchManagement() {
       setIsModalOpen(false);
       setEditingBatch(null);
       resetForm();
-      loadBatches();
+      await loadBatches();
+      onBatchUpdate?.();
     } catch (error: any) {
       alert(error.message || "Failed to save batch");
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this batch?")) return;
+  const handleDelete = async (batch: Batch) => {
+    if (!confirm(`Delete batch \"${batch.name}\"? This cannot be undone.`)) return;
     
     try {
-      await apiFetch(`/schedule/batches/${id}`, { method: "DELETE" });
-      loadBatches();
+      await apiFetch(`/schedule/batches/${batch._id}`, { method: "DELETE" });
+      await loadBatches();
+      onBatchUpdate?.();
     } catch (error: any) {
       alert(error.message || "Failed to delete batch");
     }
@@ -132,7 +136,7 @@ export default function BatchManagement() {
                 Batch Management
               </h1>
               <p className="text-slate-600">
-                Manage batches from Firebase and create new ones in MongoDB
+                Create, edit, and delete batches used across users and schedule.
               </p>
             </div>
             
@@ -151,7 +155,13 @@ export default function BatchManagement() {
             </button>
           </motion.div>
 
-          {/* Batches Grid */}
+          <div className="bg-white rounded-xl border border-indigo-200 p-4 mb-6">
+            <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Total Batches</p>
+            <p className="text-2xl font-bold text-slate-900 mt-1">{batches.length}</p>
+            <p className="text-sm text-slate-600 mt-1">All batches are fully editable and deletable.</p>
+          </div>
+
+          {/* Batch Grid */}
           {loading ? (
             <div className="flex justify-center items-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -310,33 +320,22 @@ const BatchCard = ({
 }: {
   batch: Batch;
   onEdit: (batch: Batch) => void;
-  onDelete: (id: string) => void;
+  onDelete: (batch: Batch) => void;
 }) => {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -4, boxShadow: "0 20px 40px -12px rgba(0, 0, 0, 0.15)" }}
-      className="bg-white rounded-xl border-2 border-slate-200 shadow-sm p-6 transition-all"
+      className="bg-white rounded-xl border-2 border-indigo-200 shadow-sm p-6 transition-all"
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <h3 className="text-xl font-bold text-slate-900 mb-1">{batch.name}</h3>
           <div className="flex items-center gap-2">
             {batch.isDefault && (
-              <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded">
-                DEFAULT
-              </span>
-            )}
-            {batch.source && (
-              <span
-                className={`px-2 py-1 text-xs font-semibold rounded ${
-                  batch.source === "firebase"
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-blue-100 text-blue-700"
-                }`}
-              >
-                {batch.source.toUpperCase()}
+              <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded">
+                DEFAULT FLAG
               </span>
             )}
           </div>
@@ -352,17 +351,15 @@ const BatchCard = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
-          {!batch.isDefault && (
-            <button
-              onClick={() => onDelete(batch._id)}
-              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-              title="Delete batch"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          )}
+          <button
+            onClick={() => onDelete(batch)}
+            className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+            title="Delete batch"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
         </div>
       </div>
 
