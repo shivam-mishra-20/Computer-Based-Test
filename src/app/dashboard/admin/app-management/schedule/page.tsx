@@ -27,6 +27,8 @@ interface Schedule {
   subject: string;
   classLevel: string;
   batch: string;
+  batches?: string[];
+  batchLabel?: string;
   roomNumber: number;
   teacherName?: string;
   teacherId?: string;
@@ -141,6 +143,31 @@ function generateTimeSlots(options: {
   return slots;
 }
 
+function getScheduleBatches(schedule: Partial<Schedule>): string[] {
+  if (schedule.classLevel?.trim() === "7") {
+    return [];
+  }
+
+  const multiple = Array.isArray(schedule.batches)
+    ? schedule.batches.map((batch) => batch?.trim()).filter(Boolean) as string[]
+    : [];
+
+  if (multiple.length > 0) {
+    return Array.from(new Set(multiple));
+  }
+
+  const single = schedule.batch?.trim();
+  return single ? [single] : [];
+}
+
+function getBatchDisplayLabel(schedule: Partial<Schedule>): string {
+  if (schedule.batchLabel?.trim()) {
+    return schedule.batchLabel;
+  }
+  const batches = getScheduleBatches(schedule);
+  return batches.length > 0 ? batches.join(", ") : "No batch";
+}
+
 export default function ScheduleManagement() {
   const [activeTab, setActiveTab] = useState<"regular" | "custom" | "batches" | "daily_view">(
     "regular"
@@ -174,16 +201,16 @@ export default function ScheduleManagement() {
     subject: "",
     classLevel: "11",
     batch: "",
+    batches: [] as string[],
     roomNumber: 1,
     teacherId: "",
     selectedStudents: [] as string[],
   });
 
-  // Fetch students based on selected class and batch
+  // Fetch students based on selected class and batch selection
   useEffect(() => {
     const fetchStudents = async () => {
-      // Only fetch if class or batch is selected
-      if (!formData.classLevel && !formData.batch) {
+      if (!formData.classLevel) {
           setStudents([]);
           return;
       }
@@ -191,7 +218,8 @@ export default function ScheduleManagement() {
       try {
         const params = new URLSearchParams();
         if (formData.classLevel) params.append('classLevel', formData.classLevel);
-        if (formData.batch) params.append('batch', formData.batch);
+        // For multiple selected batches, fetch by class and filter client-side.
+        if (formData.batches.length === 1) params.append('batch', formData.batches[0]);
         
         // Use the newly created endpoint that fetches from both Mongo and Firebase
         const res: unknown = await apiFetch(`/schedule/students?${params.toString()}`);
@@ -203,7 +231,7 @@ export default function ScheduleManagement() {
       }
     };
     fetchStudents();
-  }, [formData.classLevel, formData.batch]);
+  }, [formData.classLevel, formData.batches]);
 
   // Refetch teachers on leave when date changes in the form
   useEffect(() => {
@@ -342,7 +370,7 @@ export default function ScheduleManagement() {
   useEffect(() => {
     if (activeTab === "daily_view") {
        loadTimetable();
-    } else if (filterClass && filterBatch) {
+    } else if (filterClass && (activeTab === "custom" || activeTab === "regular")) {
       if (activeTab === "regular" || activeTab === "custom") {
         loadTimetable();
       }
@@ -366,9 +394,13 @@ export default function ScheduleManagement() {
         if (Array.isArray(schedules)) {
           schedules.forEach((s: Schedule) => {
              if (s.date && s.date.startsWith(dateStr)) {
+                const scheduleBatches = getScheduleBatches(s);
+                const targetBatches = scheduleBatches.length > 0 ? scheduleBatches : [""];
                 if (!grid[s.classLevel]) grid[s.classLevel] = {};
-                if (!grid[s.classLevel][s.batch]) grid[s.classLevel][s.batch] = {};
-                grid[s.classLevel][s.batch][s.startTimeSlot] = s;
+                targetBatches.forEach((batchName) => {
+                  if (!grid[s.classLevel][batchName]) grid[s.classLevel][batchName] = {};
+                  grid[s.classLevel][batchName][s.startTimeSlot] = s;
+                });
              }
           });
         }
@@ -383,9 +415,13 @@ export default function ScheduleManagement() {
           schedules.forEach((s: Schedule) => {
              // For daily view, we might include both regular (mapped to this day) and custom
              // The backend handles the mapping. We just need to place them in the grid.
+             const scheduleBatches = getScheduleBatches(s);
+             const targetBatches = scheduleBatches.length > 0 ? scheduleBatches : [""];
              if (!grid[s.classLevel]) grid[s.classLevel] = {};
-             if (!grid[s.classLevel][s.batch]) grid[s.classLevel][s.batch] = {};
-             grid[s.classLevel][s.batch][s.startTimeSlot] = s;
+             targetBatches.forEach((batchName) => {
+               if (!grid[s.classLevel][batchName]) grid[s.classLevel][batchName] = {};
+               grid[s.classLevel][batchName][s.startTimeSlot] = s;
+             });
           });
         }
         setTimetableGrid(grid);
@@ -410,7 +446,23 @@ export default function ScheduleManagement() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { ...formData };
+      const availableBatches = getAvailableBatches(formData.classLevel);
+      const normalizedBatches = availableBatches.length === 0
+        ? []
+        : Array.from(
+            new Set(formData.batches.map((batch) => batch.trim()).filter(Boolean))
+          );
+
+      if (availableBatches.length > 0 && normalizedBatches.length === 0) {
+        alert("Please select at least one batch");
+        return;
+      }
+
+      const payload = {
+        ...formData,
+        batch: normalizedBatches[0] || "",
+        batches: normalizedBatches,
+      };
 
       // Set end time based on start time
       const slotIndex = timeSlots.findIndex(
@@ -530,6 +582,7 @@ export default function ScheduleManagement() {
       subject: schedule.subject,
       classLevel: schedule.classLevel,
       batch: schedule.batch,
+      batches: getScheduleBatches(schedule),
       roomNumber: schedule.roomNumber,
       teacherId: schedule.teacherId || "",
       selectedStudents: schedule.students || [],
@@ -558,7 +611,7 @@ export default function ScheduleManagement() {
        existingSchedule = regGrid[dayOfWeek]?.[timeSlot];
     } else {
        // For Custom, grid is [classLevel][batch][timeSlot]
-       if (classLevel && batch) {
+       if (classLevel && batch !== undefined) {
          const customGrid = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
          existingSchedule = customGrid[classLevel]?.[batch]?.[timeSlot];
        }
@@ -567,6 +620,8 @@ export default function ScheduleManagement() {
     if (existingSchedule) {
       openEditModal(existingSchedule);
     } else {
+      const resolvedClassLevel = classLevel ?? filterClass;
+      const resolvedBatch = batch !== undefined ? batch : filterBatch;
       resetForm();
       setFormData((prev) => ({
         ...prev,
@@ -575,8 +630,9 @@ export default function ScheduleManagement() {
         date: customDate || "",
         startTimeSlot: timeSlot,
         endTimeSlot: timeSlots.find((t) => t.start === timeSlot)?.end || "",
-        classLevel: classLevel || filterClass,
-        batch: batch || filterBatch,
+        classLevel: resolvedClassLevel,
+        batch: resolvedBatch,
+        batches: resolvedBatch ? [resolvedBatch] : [],
       }));
       setIsModalOpen(true);
       // Fetch teachers on leave for this date
@@ -607,6 +663,7 @@ export default function ScheduleManagement() {
       subject: "",
       classLevel: filterClass,
       batch: filterBatch,
+      batches: filterBatch ? [filterBatch] : [],
       roomNumber: 1,
       teacherId: "",
       selectedStudents: [],
@@ -620,10 +677,12 @@ export default function ScheduleManagement() {
   const handleClassChange = (newClass: string) => {
     setFilterClass(newClass);
     const available = getAvailableBatches(newClass);
-    if (
-      available.length > 0 &&
-      !available.find((b) => b.name === filterBatch)
-    ) {
+    if (available.length === 0) {
+      setFilterBatch("");
+      return;
+    }
+
+    if (!available.find((b) => b.name === filterBatch)) {
       setFilterBatch(available[0].name);
     }
   };
@@ -737,10 +796,9 @@ export default function ScheduleManagement() {
                 value={filterBatch}
                 onChange={(e) => setFilterBatch(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white transition-all"
-                disabled={getAvailableBatches(filterClass).length === 0}
               >
                 {getAvailableBatches(filterClass).length === 0 && (
-                  <option value="">No batches available</option>
+                  <option value="">No batch (Class-level schedule)</option>
                 )}
                 {getAvailableBatches(filterClass).map((b) => (
                   <option key={b._id} value={b.name}>
@@ -758,6 +816,7 @@ export default function ScheduleManagement() {
                     scheduleType: "regular",
                     classLevel: filterClass,
                     batch: filterBatch,
+                    batches: filterBatch ? [filterBatch] : [],
                   }));
                   setIsModalOpen(true);
                 }}
@@ -947,14 +1006,17 @@ export default function ScheduleManagement() {
                   {/* Generate rows for every Class + Batch combination */}
                   {CLASS_LEVELS.flatMap(classLevel => {
                     const classBatches = batches.filter(b => b.classLevels.includes(classLevel));
+                    if (classBatches.length === 0) {
+                      return [{ classLevel, batchName: "" }];
+                    }
                     return classBatches.map(batch => ({ classLevel, batchName: batch.name }));
                   }).map((row) => (
-                    <tr key={`${row.classLevel}-${row.batchName}`} className="hover:bg-slate-50/50 group">
+                    <tr key={`${row.classLevel}-${row.batchName || "no-batch"}`} className="hover:bg-slate-50/50 group">
                       <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-slate-50/50 border-r border-slate-200 z-10">
                         <div className="flex flex-col">
                           <span className="font-semibold text-slate-700 text-sm">Class {row.classLevel}</span>
                           <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full w-fit mt-1">
-                            {row.batchName}
+                            {row.batchName || "No batch"}
                           </span>
                         </div>
                       </td>
@@ -977,6 +1039,9 @@ export default function ScheduleManagement() {
                               <div className="bg-white border border-l-4 border-l-emerald-500 border-slate-200 rounded p-1.5 shadow-sm h-full min-h-[60px] hover:shadow-md transition-shadow">
                                 <p className="font-semibold text-xs text-slate-800 truncate leading-tight mb-0.5" title={cell.subject}>
                                   {cell.subject}
+                                </p>
+                                <p className="text-[10px] text-slate-500 truncate" title={getBatchDisplayLabel(cell)}>
+                                  {getBatchDisplayLabel(cell)}
                                 </p>
                                 <div className="flex items-center justify-between text-[10px] text-slate-500">
                                   <span>R-{cell.roomNumber}</span>
@@ -1067,10 +1132,14 @@ export default function ScheduleManagement() {
                   
                   CLASS_LEVELS.forEach(classLevel => {
                     const classBatches = batches.filter(b => b.classLevels.includes(classLevel));
-                    classBatches.forEach(batch => {
-                      const row = [classLevel, batch.name];
+                    const exportRows = classBatches.length > 0
+                      ? classBatches.map((batch) => ({ batchName: batch.name }))
+                      : [{ batchName: "" }];
+
+                    exportRows.forEach(({ batchName }) => {
+                      const row = [classLevel, batchName || "No batch"];
                       timeSlots.forEach(slot => {
-                        const cell = customGrid[classLevel]?.[batch.name]?.[slot.start];
+                        const cell = customGrid[classLevel]?.[batchName]?.[slot.start];
                         row.push(cell ? `"${cell.subject} (${cell.teacherName || cell.teacherId || 'TBA'})"` : "");
                       });
                       csvContent += row.join(",") + "\n";
@@ -1120,14 +1189,17 @@ export default function ScheduleManagement() {
                 <tbody className="divide-y divide-slate-100">
                   {CLASS_LEVELS.flatMap(classLevel => {
                     const classBatches = batches.filter(b => b.classLevels.includes(classLevel));
+                    if (classBatches.length === 0) {
+                      return [{ classLevel, batchName: "" }];
+                    }
                     return classBatches.map(batch => ({ classLevel, batchName: batch.name }));
                   }).map((row) => (
-                    <tr key={`${row.classLevel}-${row.batchName}`} className="hover:bg-slate-50/50 group">
+                    <tr key={`${row.classLevel}-${row.batchName || "no-batch"}`} className="hover:bg-slate-50/50 group">
                       <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-slate-50/50 border-r border-slate-200 z-10">
                         <div className="flex flex-col">
                           <span className="font-semibold text-slate-700 text-sm">Class {row.classLevel}</span>
                           <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full w-fit mt-1">
-                            {row.batchName}
+                            {row.batchName || "No batch"}
                           </span>
                         </div>
                       </td>
@@ -1161,6 +1233,9 @@ export default function ScheduleManagement() {
                               <div className={`border border-l-4 ${cell.scheduleType === 'custom' ? 'border-l-amber-500 bg-amber-50' : 'border-l-emerald-500 bg-white'} border-slate-200 rounded p-1.5 shadow-sm h-full min-h-[60px] hover:shadow-md transition-shadow`}>
                                 <p className="font-semibold text-xs text-slate-800 truncate leading-tight mb-0.5" title={cell.subject}>
                                   {cell.subject}
+                                </p>
+                                <p className="text-[10px] text-slate-500 truncate" title={getBatchDisplayLabel(cell)}>
+                                  {getBatchDisplayLabel(cell)}
                                 </p>
                                 <div className="flex items-center justify-between text-[10px] text-slate-500">
                                   <span>R-{cell.roomNumber}</span>
@@ -1265,6 +1340,7 @@ export default function ScheduleManagement() {
                           ...formData,
                           classLevel: newClass,
                           batch: available.length > 0 ? available[0].name : "",
+                          batches: available.length > 0 ? [available[0].name] : [],
                         });
                       }}
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
@@ -1278,21 +1354,38 @@ export default function ScheduleManagement() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Batch
+                      Batches
                     </label>
-                    <select
-                      value={formData.batch}
-                      onChange={(e) =>
-                        setFormData({ ...formData, batch: e.target.value })
-                      }
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    >
-                      {getAvailableBatches(formData.classLevel).map((b) => (
-                        <option key={b._id} value={b.name}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
+                    {getAvailableBatches(formData.classLevel).length === 0 ? (
+                      <div className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-500 bg-gray-50">
+                        No batch for this class (class-level schedule)
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          multiple
+                          value={formData.batches}
+                          onChange={(e) => {
+                            const selected = Array.from(e.target.selectedOptions).map((option) => option.value);
+                            setFormData({
+                              ...formData,
+                              batches: selected,
+                              batch: selected[0] || "",
+                            });
+                          }}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-h-[110px]"
+                        >
+                          {getAvailableBatches(formData.classLevel).map((b) => (
+                            <option key={b._id} value={b.name}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Hold Ctrl/Cmd to select multiple batches for one slot
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1411,7 +1504,7 @@ export default function ScheduleManagement() {
                       }
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     >
-                      {Array.from({ length: 10 }, (_, i) => (
+                      {Array.from({ length: 11 }, (_, i) => (
                         <option key={i + 1} value={i + 1}>
                           Room {i + 1}
                         </option>
@@ -1483,7 +1576,11 @@ export default function ScheduleManagement() {
                       .filter((s) => {
                         const searchEl = document.getElementById("student-search");
                         const search = searchEl?.dataset.search || "";
-                        return !search || s.name.toLowerCase().includes(search);
+                        const searchMatch = !search || s.name.toLowerCase().includes(search);
+                        if (!searchMatch) return false;
+
+                        if (formData.batches.length <= 1) return true;
+                        return !!s.batch && formData.batches.includes(s.batch);
                       })
                       .map((s) => (
                         <label
@@ -1523,12 +1620,12 @@ export default function ScheduleManagement() {
                       ))}
                     {students.length === 0 && (
                       <p className="text-sm text-gray-400 text-center py-4">
-                        {formData.classLevel || formData.batch ? "No students found" : "Select Class/Batch to view students"}
+                        {formData.classLevel ? "No students found" : "Select Class to view students"}
                       </p>
                     )}
                   </div>
                   <p className="text-xs text-gray-400 mt-1">
-                    Leave empty to notify all students in the batch
+                    Leave empty to notify all students in the selected batches or class
                   </p>
                 </div>
 

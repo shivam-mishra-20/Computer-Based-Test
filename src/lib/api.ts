@@ -44,13 +44,22 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 	}
 
 		if (!res.ok) {
-				function hasMessage(obj: unknown): obj is { message: string } {
-					if (typeof obj !== 'object' || obj === null) return false;
-					const rec = obj as Record<string, unknown>;
-					return 'message' in rec && typeof rec['message'] === 'string';
-				}
+					function getErrorMessage(obj: unknown): string | null {
+						if (typeof obj !== 'object' || obj === null) return null;
+						const rec = obj as Record<string, unknown>;
+						if (typeof rec['message'] === 'string' && rec['message'].trim()) return rec['message'];
+						if (typeof rec['error'] === 'string' && rec['error'].trim()) return rec['error'];
+						if (Array.isArray(rec['errors']) && rec['errors'].length > 0) {
+							const first = rec['errors'][0];
+							if (typeof first === 'string') return first;
+							if (typeof first === 'object' && first !== null && typeof (first as Record<string, unknown>)['message'] === 'string') {
+								return String((first as Record<string, unknown>)['message']);
+							}
+						}
+						return null;
+					}
 
-			const message = hasMessage(data) ? data.message : res.statusText || 'API error';
+				const message = getErrorMessage(data) || res.statusText || 'API error';
 			console.error('[apiFetch] Error:', { status: res.status, message, data });
 			const err = new Error(message) as Error & { status?: number; data?: unknown };
 			err.status = res.status;

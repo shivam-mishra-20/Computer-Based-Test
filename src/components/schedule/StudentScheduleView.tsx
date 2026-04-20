@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import { getUser } from "@/lib/auth";
 
@@ -12,6 +12,8 @@ interface Schedule {
   subject: string;
   classLevel: string;
   batch: string;
+  batches?: string[];
+  batchLabel?: string;
   roomNumber: number;
   teacherName?: string;
   startTimeSlot: string;
@@ -32,6 +34,14 @@ interface LiveSchedule {
 }
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function getBatchLabel(schedule: Schedule): string {
+  if (schedule.batchLabel) return schedule.batchLabel;
+  if (Array.isArray(schedule.batches) && schedule.batches.length > 0) {
+    return schedule.batches.join(", ");
+  }
+  return schedule.batch || "No batch";
+}
 
 export default function StudentScheduleView() {
   const [liveSchedule, setLiveSchedule] = useState<LiveSchedule | null>(null);
@@ -141,7 +151,7 @@ export default function StudentScheduleView() {
               Class {schedule.classLevel}
             </span>
             <span className="px-3 py-1 rounded-full bg-white/50 font-medium">
-              {schedule.batch}
+              {getBatchLabel(schedule)}
             </span>
           </div>
           {schedule.scheduleType === "custom" && (
