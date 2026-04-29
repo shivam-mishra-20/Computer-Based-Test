@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import dynamic from "next/dynamic";
@@ -118,6 +118,49 @@ function to12HourLabel(hhmm: string): string {
   return `${hours12}:${String(minutes).padStart(2, "0")} ${period}`;
 }
 
+function buildTimeSlot(start: string, end: string): TimeSlot {
+  return {
+    start,
+    end,
+    label: `${to12HourLabel(start)} - ${to12HourLabel(end)}`,
+  };
+}
+
+function mergeTimeSlotCollections(
+  ...collections: Array<TimeSlot[] | undefined>
+): TimeSlot[] {
+  const slotMap = new Map<string, TimeSlot>();
+
+  collections.forEach((collection) => {
+    if (!Array.isArray(collection)) return;
+
+    collection.forEach((slot) => {
+      if (!slot?.start || !slot?.end) return;
+
+      const existing = slotMap.get(slot.start);
+      if (!existing) {
+        slotMap.set(
+          slot.start,
+          slot.label?.trim() ? slot : buildTimeSlot(slot.start, slot.end)
+        );
+        return;
+      }
+
+      if (existing.end !== slot.end) {
+        const existingDuration = parseHHMMToMinutes(existing.end) - parseHHMMToMinutes(existing.start);
+        const nextDuration = parseHHMMToMinutes(slot.end) - parseHHMMToMinutes(slot.start);
+        if (nextDuration > existingDuration) {
+          slotMap.set(slot.start, slot.label?.trim() ? slot : buildTimeSlot(slot.start, slot.end));
+        }
+      }
+    });
+  });
+
+  return Array.from(slotMap.values()).sort(
+    (a, b) => parseHHMMToMinutes(a.start) - parseHHMMToMinutes(b.start)
+  );
+}
+
 function generateTimeSlots(options: {
   start: string;
   end: string;
@@ -177,11 +220,13 @@ export default function ScheduleManagement() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [dynamicTimeSlots, setDynamicTimeSlots] = useState<TimeSlot[]>([]);
   const [timeSlotView, setTimeSlotView] = useState<TimeSlotView>("evening");
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [teachersOnLeave, setTeachersOnLeave] = useState<string[]>([]); // Teacher IDs on approved leave
+  const [allowCustomRegularTime, setAllowCustomRegularTime] = useState(false);
 
   // Filters
   const [filterClass, setFilterClass] = useState("11");
@@ -254,6 +299,17 @@ export default function ScheduleManagement() {
   // Custom: grid[classLevel][batch][timeSlot] -> Schedule
   type TimetableGrid = Record<string, Record<string, Schedule>> | Record<string, Record<string, Record<string, Schedule>>>;
   const [timetableGrid, setTimetableGrid] = useState<TimetableGrid>({});
+
+  const visibleTimeSlots = useMemo(
+    () => mergeTimeSlotCollections(timeSlots, dynamicTimeSlots),
+    [timeSlots, dynamicTimeSlots]
+  );
+
+  const getDefaultEndTime = (start: string) => {
+    const matchingSlot = visibleTimeSlots.find((slot) => slot.start === start);
+    if (matchingSlot) return matchingSlot.end;
+    return minutesToHHMM(parseHHMMToMinutes(start) + 60);
+  };
 
   const loadInitialData = async () => {
     try {
@@ -355,17 +411,18 @@ export default function ScheduleManagement() {
   useEffect(() => {
     if (!isModalOpen) return;
     if (formData.scheduleType !== 'regular') return;
-    if (!timeSlots.length) return;
+    if (allowCustomRegularTime) return;
+    if (!visibleTimeSlots.length) return;
 
-    const exists = timeSlots.some((t) => t.start === formData.startTimeSlot);
+    const exists = visibleTimeSlots.some((t) => t.start === formData.startTimeSlot);
     if (exists) return;
 
     setFormData((prev) => ({
       ...prev,
-      startTimeSlot: timeSlots[0].start,
-      endTimeSlot: timeSlots[0].end,
+      startTimeSlot: visibleTimeSlots[0].start,
+      endTimeSlot: visibleTimeSlots[0].end,
     }));
-  }, [timeSlots, isModalOpen, formData.scheduleType, formData.startTimeSlot]);
+  }, [visibleTimeSlots, isModalOpen, formData.scheduleType, formData.startTimeSlot, allowCustomRegularTime]);
 
   useEffect(() => {
     if (activeTab === "daily_view") {
@@ -381,10 +438,35 @@ export default function ScheduleManagement() {
   const loadTimetable = async () => {
     try {
       if (activeTab === "regular") {
-        const data = (await apiFetch(
-          `/schedule/timetable?classLevel=${filterClass}&batch=${filterBatch}`
-        )) as { grid?: Record<string, Record<string, Schedule>> };
-        setTimetableGrid(data?.grid || {});
+        const params = new URLSearchParams({ classLevel: filterClass });
+        if (filterBatch) {
+          params.set("batch", filterBatch);
+        }
+
+        const [data, regularSchedules] = await Promise.all([
+          apiFetch(`/schedule/timetable?${params.toString()}`),
+          apiFetch(`/schedule?scheduleType=regular&${params.toString()}`),
+        ]);
+
+        const regularData = data as {
+          grid?: Record<string, Record<string, Schedule>>;
+          timeSlots?: TimeSlot[];
+        };
+
+        setTimetableGrid(regularData.grid || {});
+
+        const scheduleSlots = Array.isArray(regularSchedules)
+          ? (regularSchedules as Schedule[])
+              .filter((s) => s.startTimeSlot && s.endTimeSlot)
+              .map((s) => buildTimeSlot(s.startTimeSlot, s.endTimeSlot))
+          : [];
+
+        setDynamicTimeSlots(
+          mergeTimeSlotCollections(
+            Array.isArray(regularData.timeSlots) ? regularData.timeSlots : [],
+            scheduleSlots
+          )
+        );
       } else if (activeTab === "custom") {
         const start = new Date(customWeekStart);
         const dateStr = start.toISOString().split('T')[0];
@@ -403,6 +485,13 @@ export default function ScheduleManagement() {
                 });
              }
           });
+
+          const customSlots = (schedules as Schedule[])
+            .filter((s) => s.startTimeSlot && s.endTimeSlot)
+            .map((s) => buildTimeSlot(s.startTimeSlot, s.endTimeSlot));
+          setDynamicTimeSlots(mergeTimeSlotCollections(customSlots));
+        } else {
+          setDynamicTimeSlots([]);
         }
         setTimetableGrid(grid);
       } else if (activeTab === "daily_view") {
@@ -423,12 +512,20 @@ export default function ScheduleManagement() {
                grid[s.classLevel][batchName][s.startTimeSlot] = s;
              });
           });
+
+          const dailySlots = (schedules as Schedule[])
+            .filter((s) => s.startTimeSlot && s.endTimeSlot)
+            .map((s) => buildTimeSlot(s.startTimeSlot, s.endTimeSlot));
+          setDynamicTimeSlots(mergeTimeSlotCollections(dailySlots));
+        } else {
+          setDynamicTimeSlots([]);
         }
         setTimetableGrid(grid);
       }
     } catch (error) {
       console.error("Failed to load timetable:", error);
       setTimetableGrid({});
+      setDynamicTimeSlots([]);
     }
   };
 
@@ -446,6 +543,19 @@ export default function ScheduleManagement() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const startMinutes = parseHHMMToMinutes(formData.startTimeSlot);
+      const endMinutes = parseHHMMToMinutes(formData.endTimeSlot);
+
+      if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) {
+        alert("Please enter a valid time slot");
+        return;
+      }
+
+      if (endMinutes <= startMinutes) {
+        alert("End time must be later than start time");
+        return;
+      }
+
       const availableBatches = getAvailableBatches(formData.classLevel);
       const normalizedBatches = availableBatches.length === 0
         ? []
@@ -464,12 +574,12 @@ export default function ScheduleManagement() {
         batches: normalizedBatches,
       };
 
-      // Set end time based on start time
-      const slotIndex = timeSlots.findIndex(
-        (t) => t.start === formData.startTimeSlot
-      );
-      if (slotIndex >= 0) {
-        payload.endTimeSlot = timeSlots[slotIndex].end;
+      // For regular schedules, preset slot mode keeps end-time aligned with selected slot.
+      if (formData.scheduleType === "regular" && !allowCustomRegularTime) {
+        const slot = visibleTimeSlots.find((t) => t.start === formData.startTimeSlot);
+        if (slot) {
+          payload.endTimeSlot = slot.end;
+        }
       }
 
       if (editingSchedule) {
@@ -486,6 +596,7 @@ export default function ScheduleManagement() {
 
       setIsModalOpen(false);
       setEditingSchedule(null);
+      setAllowCustomRegularTime(false);
       resetForm();
       loadTimetable();
       loadSchedules();
@@ -568,6 +679,13 @@ export default function ScheduleManagement() {
   };
 
   const openEditModal = (schedule: Schedule) => {
+    if (schedule.scheduleType === "regular") {
+      const matchingSlot = visibleTimeSlots.find((slot) => slot.start === schedule.startTimeSlot);
+      setAllowCustomRegularTime(!matchingSlot || matchingSlot.end !== schedule.endTimeSlot);
+    } else {
+      setAllowCustomRegularTime(false);
+    }
+
     setEditingSchedule(schedule);
     setFormData({
       title: schedule.title,
@@ -629,11 +747,13 @@ export default function ScheduleManagement() {
         dayOfWeek: activeTab === "regular" ? dayOfWeek : 1,
         date: customDate || "",
         startTimeSlot: timeSlot,
-        endTimeSlot: timeSlots.find((t) => t.start === timeSlot)?.end || "",
+        endTimeSlot: getDefaultEndTime(timeSlot),
         classLevel: resolvedClassLevel,
         batch: resolvedBatch,
         batches: resolvedBatch ? [resolvedBatch] : [],
       }));
+
+      setAllowCustomRegularTime(false);
       setIsModalOpen(true);
       // Fetch teachers on leave for this date
       if (customDate) {
@@ -652,13 +772,14 @@ export default function ScheduleManagement() {
 
 
   const resetForm = () => {
+    setAllowCustomRegularTime(false);
     setFormData({
       title: "",
       scheduleType: activeTab === "custom" ? "custom" : "regular",
       type: "class",
       dayOfWeek: 1,
-      startTimeSlot: timeSlots[0]?.start || "",
-      endTimeSlot: timeSlots[0]?.end || "",
+      startTimeSlot: visibleTimeSlots[0]?.start || "",
+      endTimeSlot: visibleTimeSlots[0]?.end || "",
       date: "",
       subject: "",
       classLevel: filterClass,
@@ -850,7 +971,7 @@ export default function ScheduleManagement() {
                     <th className="px-4 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider border-b-2 border-r border-emerald-200 w-32 sticky left-0 bg-emerald-50 z-10 shadow-sm">
                       Day / Time
                     </th>
-                    {timeSlots.map((slot) => (
+                    {visibleTimeSlots.map((slot) => (
                       <th
                         key={slot.start}
                         className="px-3 py-4 text-center text-xs font-bold text-slate-700 border-b-2 border-r border-emerald-200 min-w-[150px]"
@@ -868,7 +989,7 @@ export default function ScheduleManagement() {
                         <td className="px-4 py-4 font-bold text-sm text-slate-800 border-r-2 border-b border-slate-200 bg-slate-50 sticky left-0 z-10 shadow-sm">
                           {day}
                         </td>
-                        {timeSlots.map((slot) => {
+                        {visibleTimeSlots.map((slot) => {
                           const regGrid = timetableGrid as Record<string, Record<string, Schedule>>;
                           const cell = regGrid[dayIndex]?.[slot.start];
                           return (
@@ -992,7 +1113,7 @@ export default function ScheduleManagement() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-48 sticky left-0 bg-slate-50 z-10 border-r border-slate-200">
                       Class / Batch
                     </th>
-                    {timeSlots.map((slot) => (
+                    {visibleTimeSlots.map((slot) => (
                       <th
                         key={slot.start}
                         className="px-2 py-3 text-center text-xs font-semibold text-slate-500 border-r border-slate-200 min-w-[120px]"
@@ -1020,7 +1141,7 @@ export default function ScheduleManagement() {
                           </span>
                         </div>
                       </td>
-                      {timeSlots.map((slot) => {
+                      {visibleTimeSlots.map((slot) => {
                         // In Custom mode, timetableGrid structure is: grid[classLevel][batchName][timeSlot]
                         const customGrid = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
                         const cell = customGrid[row.classLevel]?.[row.batchName]?.[slot.start];
@@ -1060,7 +1181,7 @@ export default function ScheduleManagement() {
                   ))}
                   {batches.length === 0 && (
                     <tr>
-                      <td colSpan={timeSlots.length + 1} className="p-8 text-center text-slate-500">
+                      <td colSpan={visibleTimeSlots.length + 1} className="p-8 text-center text-slate-500">
                         No batches found. Please create batches first.
                       </td>
                     </tr>
@@ -1126,7 +1247,7 @@ export default function ScheduleManagement() {
                 try {
                   const dateStr = customWeekStart.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
                   let csvContent = "data:text/csv;charset=utf-8,";
-                  csvContent += "Class,Batch," + timeSlots.map(t => t.label).join(",") + "\n";
+                  csvContent += "Class,Batch," + visibleTimeSlots.map(t => t.label).join(",") + "\n";
                   
                   const customGrid = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
                   
@@ -1138,7 +1259,7 @@ export default function ScheduleManagement() {
 
                     exportRows.forEach(({ batchName }) => {
                       const row = [classLevel, batchName || "No batch"];
-                      timeSlots.forEach(slot => {
+                      visibleTimeSlots.forEach(slot => {
                         const cell = customGrid[classLevel]?.[batchName]?.[slot.start];
                         row.push(cell ? `"${cell.subject} (${cell.teacherName || cell.teacherId || 'TBA'})"` : "");
                       });
@@ -1176,7 +1297,7 @@ export default function ScheduleManagement() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-48 sticky left-0 bg-slate-50 z-10 border-r border-slate-200">
                       Class / Batch
                     </th>
-                    {timeSlots.map((slot) => (
+                    {visibleTimeSlots.map((slot) => (
                       <th
                         key={slot.start}
                         className="px-2 py-3 text-center text-xs font-semibold text-slate-500 border-r border-slate-200 min-w-[120px]"
@@ -1203,7 +1324,7 @@ export default function ScheduleManagement() {
                           </span>
                         </div>
                       </td>
-                      {timeSlots.map((slot) => {
+                      {visibleTimeSlots.map((slot) => {
                         const customGrid = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
                         const cell = customGrid[row.classLevel]?.[row.batchName]?.[slot.start];
                         
@@ -1391,54 +1512,115 @@ export default function ScheduleManagement() {
 
                 {/* Day/Date & Time */}
                 {formData.scheduleType === "regular" ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Day of Week
-                      </label>
-                      <select
-                        value={formData.dayOfWeek}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            dayOfWeek: Number(e.target.value),
-                          })
-                        }
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      >
-                        {DAYS.slice(1, 7).map((day, idx) => (
-                          <option key={day} value={idx + 1}>
-                            {day}
-                          </option>
-                        ))}
-                      </select>
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Day of Week
+                        </label>
+                        <select
+                          value={formData.dayOfWeek}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              dayOfWeek: Number(e.target.value),
+                            })
+                          }
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        >
+                          {DAYS.slice(1, 7).map((day, idx) => (
+                            <option key={day} value={idx + 1}>
+                              {day}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-end pb-2">
+                        <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowCustomRegularTime}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setAllowCustomRegularTime(checked);
+                              if (!checked) {
+                                const matched = visibleTimeSlots.find((slot) => slot.start === formData.startTimeSlot);
+                                const fallback = matched || visibleTimeSlots[0];
+                                if (fallback) {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    startTimeSlot: fallback.start,
+                                    endTimeSlot: fallback.end,
+                                  }));
+                                }
+                              }
+                            }}
+                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          Edit any time slot (custom)
+                        </label>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Time Slot
-                      </label>
-                      <select
-                        value={formData.startTimeSlot}
-                        onChange={(e) => {
-                          const slot = timeSlots.find(
-                            (t) => t.start === e.target.value
-                          );
-                          setFormData({
-                            ...formData,
-                            startTimeSlot: e.target.value,
-                            endTimeSlot: slot?.end || "",
-                          });
-                        }}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      >
-                        {timeSlots.map((slot) => (
-                          <option key={slot.start} value={slot.start}>
-                            {slot.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+
+                    {allowCustomRegularTime ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Start Time
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={formData.startTimeSlot}
+                            onChange={(e) =>
+                              setFormData({ ...formData, startTimeSlot: e.target.value })
+                            }
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            End Time
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={formData.endTimeSlot}
+                            onChange={(e) =>
+                              setFormData({ ...formData, endTimeSlot: e.target.value })
+                            }
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Time Slot
+                        </label>
+                        <select
+                          value={formData.startTimeSlot}
+                          onChange={(e) => {
+                            const slot = visibleTimeSlots.find(
+                              (t) => t.start === e.target.value
+                            );
+                            setFormData({
+                              ...formData,
+                              startTimeSlot: e.target.value,
+                              endTimeSlot: slot?.end || "",
+                            });
+                          }}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        >
+                          {visibleTimeSlots.map((slot) => (
+                            <option key={slot.start} value={slot.start}>
+                              {slot.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
                     <div>
