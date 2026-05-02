@@ -5,6 +5,9 @@ import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import dynamic from "next/dynamic";
+import { CalendarIcon, ClockIcon } from "lucide-react";
+
+import AdminTimeSlotsConfig from "@/components/admin/app-management/AdminTimeSlotsConfig";
 
 // Dynamically import AdminBatchManagement to avoid SSR issues
 const AdminBatchManagement = dynamic(
@@ -372,36 +375,19 @@ export default function ScheduleManagement() {
 
   useEffect(() => {
     const applyTimeSlotView = async () => {
-      if (timeSlotView === 'all') {
-        setTimeSlots(
-          generateTimeSlots({
-            start: '00:00',
-            end: '24:00',
-            stepMinutes: 30,
-            durationMinutes: 60,
-          })
-        );
-        return;
-      }
-
-      if (timeSlotView === 'morning') {
-        setTimeSlots(DEFAULT_MORNING_TIME_SLOTS);
-        return;
-      }
-
-      // Evening
       try {
-        const serverSlots = await apiFetch('/schedule/timeslots');
-        if (
-          Array.isArray(serverSlots) &&
-          serverSlots.every((s) => typeof s?.start === 'string' && typeof s?.end === 'string')
-        ) {
+        let url = '/schedule/timeslots';
+        if (timeSlotView === 'morning') url = '/schedule/timeslots?view=morning';
+        else if (timeSlotView === 'all') url = '/schedule/timeslots?view=all';
+        
+        const serverSlots = await apiFetch(url);
+        if (Array.isArray(serverSlots) && serverSlots.every((s) => typeof s?.start === 'string' && typeof s?.end === 'string')) {
           setTimeSlots(serverSlots as TimeSlot[]);
         } else {
-          setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
+          setTimeSlots(timeSlotView === 'morning' ? DEFAULT_MORNING_TIME_SLOTS : DEFAULT_EVENING_TIME_SLOTS);
         }
       } catch {
-        setTimeSlots(DEFAULT_EVENING_TIME_SLOTS);
+        setTimeSlots(timeSlotView === 'morning' ? DEFAULT_MORNING_TIME_SLOTS : DEFAULT_EVENING_TIME_SLOTS);
       }
     };
 
@@ -870,20 +856,23 @@ export default function ScheduleManagement() {
 
       {/* Time Slot Range */}
       {activeTab !== "batches" && (
-        <div className="flex flex-wrap gap-4 mb-6 p-4 bg-white rounded-xl border border-slate-200 shadow-sm items-end">
-          <div className="min-w-[220px]">
-            <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
-              Time Slots
-            </label>
-            <select
-              value={timeSlotView}
-              onChange={(e) => setTimeSlotView(e.target.value as TimeSlotView)}
-              className="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white transition-all"
-            >
-                <option value="morning">Morning (10:30 AM - 3:30 PM)</option>
-                <option value="evening">Evening (3:30 PM - 10:30 PM)</option>
-              <option value="all">All Day</option>
-            </select>
+        <div className="flex flex-wrap gap-4 mb-6 p-4 bg-white rounded-xl border border-slate-200 shadow-sm items-end justify-between">
+          <div className="flex items-end gap-4 min-w-[220px]">
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
+                Time Slots
+              </label>
+              <select
+                value={timeSlotView}
+                onChange={(e) => setTimeSlotView(e.target.value as TimeSlotView)}
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white transition-all"
+              >
+                <option value="morning">Morning Slots</option>
+                <option value="evening">Evening Slots</option>
+                <option value="all">All Slots</option>
+              </select>
+            </div>
+            <AdminTimeSlotsConfig onTimeSlotsUpdated={() => loadInitialData()} />
           </div>
         </div>
       )}
@@ -1568,29 +1557,39 @@ export default function ScheduleManagement() {
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Start Time
                           </label>
-                          <input
-                            type="time"
-                            required
-                            value={formData.startTimeSlot}
-                            onChange={(e) =>
-                              setFormData({ ...formData, startTimeSlot: e.target.value })
-                            }
-                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                          />
+                          <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                              <ClockIcon className="h-4 w-4 text-gray-400" />
+                            </div>
+                            <input
+                              type="time"
+                              required
+                              value={formData.startTimeSlot}
+                              onChange={(e) =>
+                                setFormData({ ...formData, startTimeSlot: e.target.value })
+                              }
+                              className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-gray-50/50 hover:bg-white transition-colors"
+                            />
+                          </div>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             End Time
                           </label>
-                          <input
-                            type="time"
-                            required
-                            value={formData.endTimeSlot}
-                            onChange={(e) =>
-                              setFormData({ ...formData, endTimeSlot: e.target.value })
-                            }
-                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                          />
+                          <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                              <ClockIcon className="h-4 w-4 text-gray-400" />
+                            </div>
+                            <input
+                              type="time"
+                              required
+                              value={formData.endTimeSlot}
+                              onChange={(e) =>
+                                setFormData({ ...formData, endTimeSlot: e.target.value })
+                              }
+                              className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-gray-50/50 hover:bg-white transition-colors"
+                            />
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -1627,44 +1626,59 @@ export default function ScheduleManagement() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Date
                       </label>
-                      <input
-                        type="date"
-                        required
-                        value={formData.date}
-                        onChange={(e) =>
-                          setFormData({ ...formData, date: e.target.value })
-                        }
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <CalendarIcon className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                          type="date"
+                          required
+                          value={formData.date}
+                          onChange={(e) =>
+                            setFormData({ ...formData, date: e.target.value })
+                          }
+                          className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-gray-50/50 hover:bg-white transition-colors"
+                        />
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Start Time
                         </label>
-                        <input
-                          type="time"
-                          required
-                          value={formData.startTimeSlot}
-                          onChange={(e) =>
-                            setFormData({ ...formData, startTimeSlot: e.target.value })
-                          }
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                        />
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <ClockIcon className="h-4 w-4 text-gray-400" />
+                          </div>
+                          <input
+                            type="time"
+                            required
+                            value={formData.startTimeSlot}
+                            onChange={(e) =>
+                              setFormData({ ...formData, startTimeSlot: e.target.value })
+                            }
+                            className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-gray-50/50 hover:bg-white transition-colors"
+                          />
+                        </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           End Time
                         </label>
-                        <input
-                          type="time"
-                          required
-                          value={formData.endTimeSlot}
-                          onChange={(e) =>
-                            setFormData({ ...formData, endTimeSlot: e.target.value })
-                          }
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                        />
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <ClockIcon className="h-4 w-4 text-gray-400" />
+                          </div>
+                          <input
+                            type="time"
+                            required
+                            value={formData.endTimeSlot}
+                            onChange={(e) =>
+                              setFormData({ ...formData, endTimeSlot: e.target.value })
+                            }
+                            className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-gray-50/50 hover:bg-white transition-colors"
+                          />
+                        </div>
                       </div>
                     </div>
                   </>
