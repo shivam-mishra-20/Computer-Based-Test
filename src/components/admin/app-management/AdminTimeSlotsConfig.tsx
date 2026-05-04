@@ -16,6 +16,7 @@ interface AdminTimeSlotsConfigProps {
 export default function AdminTimeSlotsConfig({ onTimeSlotsUpdated }: AdminTimeSlotsConfigProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [morningSlots, setMorningSlots] = useState<TimeSlot[]>([]);
+  const [morning2Slots, setMorning2Slots] = useState<TimeSlot[]>([]);
   const [eveningSlots, setEveningSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,11 +30,13 @@ export default function AdminTimeSlotsConfig({ onTimeSlotsUpdated }: AdminTimeSl
   const loadTimeSlots = async () => {
     setLoading(true);
     try {
-      const [mSlots, eSlots] = await Promise.all([
+      const [mSlots, m2Slots, eSlots] = await Promise.all([
         apiFetch("/schedule/timeslots?view=morning"),
+        apiFetch("/schedule/timeslots?view=morning2"),
         apiFetch("/schedule/timeslots?view=evening"),
       ]);
       setMorningSlots(Array.isArray(mSlots) ? mSlots : []);
+      setMorning2Slots(Array.isArray(m2Slots) ? m2Slots : []);
       setEveningSlots(Array.isArray(eSlots) ? eSlots : []);
     } catch (error) {
       console.error("Failed to load time slots", error);
@@ -47,7 +50,7 @@ export default function AdminTimeSlotsConfig({ onTimeSlotsUpdated }: AdminTimeSl
     try {
       await apiFetch("/schedule/timeslots", {
         method: "PUT",
-        body: JSON.stringify({ morningSlots, eveningSlots }),
+        body: JSON.stringify({ morningSlots, morning2Slots, eveningSlots }),
       });
       setIsOpen(false);
       onTimeSlotsUpdated();
@@ -60,13 +63,14 @@ export default function AdminTimeSlotsConfig({ onTimeSlotsUpdated }: AdminTimeSl
   };
 
   const updateSlot = (
-    type: "morning" | "evening",
+    type: "morning" | "morning2" | "evening",
     index: number,
     field: keyof TimeSlot,
     value: string
   ) => {
     const isMorning = type === "morning";
-    const slots = isMorning ? [...morningSlots] : [...eveningSlots];
+    const isMorning2 = type === "morning2";
+    const slots = isMorning ? [...morningSlots] : isMorning2 ? [...morning2Slots] : [...eveningSlots];
     slots[index] = { ...slots[index], [field]: value };
     
     // Auto-generate label if both start and end exist and label is empty or we just updated start/end
@@ -79,22 +83,27 @@ export default function AdminTimeSlotsConfig({ onTimeSlotsUpdated }: AdminTimeSl
     }
 
     if (isMorning) setMorningSlots(slots);
+    else if (isMorning2) setMorning2Slots(slots);
     else setEveningSlots(slots);
   };
 
-  const addSlot = (type: "morning" | "evening") => {
+  const addSlot = (type: "morning" | "morning2" | "evening") => {
     const isMorning = type === "morning";
-    const slots = isMorning ? [...morningSlots] : [...eveningSlots];
+    const isMorning2 = type === "morning2";
+    const slots = isMorning ? [...morningSlots] : isMorning2 ? [...morning2Slots] : [...eveningSlots];
     slots.push({ start: "00:00", end: "01:00", label: "12:00 AM - 1:00 AM" });
     if (isMorning) setMorningSlots(slots);
+    else if (isMorning2) setMorning2Slots(slots);
     else setEveningSlots(slots);
   };
 
-  const removeSlot = (type: "morning" | "evening", index: number) => {
+  const removeSlot = (type: "morning" | "morning2" | "evening", index: number) => {
     const isMorning = type === "morning";
-    const slots = isMorning ? [...morningSlots] : [...eveningSlots];
+    const isMorning2 = type === "morning2";
+    const slots = isMorning ? [...morningSlots] : isMorning2 ? [...morning2Slots] : [...eveningSlots];
     slots.splice(index, 1);
     if (isMorning) setMorningSlots(slots);
+    else if (isMorning2) setMorning2Slots(slots);
     else setEveningSlots(slots);
   };
 
@@ -109,7 +118,7 @@ export default function AdminTimeSlotsConfig({ onTimeSlotsUpdated }: AdminTimeSl
     return `${hours12}:${String(minutes).padStart(2, "0")} ${period}`;
   }
 
-  const renderSlotGroup = (title: string, type: "morning" | "evening", slots: TimeSlot[]) => (
+  const renderSlotGroup = (title: string, type: "morning" | "morning2" | "evening", slots: TimeSlot[]) => (
     <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
       <div className="flex justify-between items-center mb-3">
         <h3 className="font-semibold text-slate-800">{title}</h3>
@@ -204,6 +213,7 @@ export default function AdminTimeSlotsConfig({ onTimeSlotsUpdated }: AdminTimeSl
         ) : (
           <div className="py-2">
             {renderSlotGroup("Morning Slots", "morning", morningSlots)}
+            {renderSlotGroup("Morning Slot - 2", "morning2", morning2Slots)}
             {renderSlotGroup("Evening Slots", "evening", eveningSlots)}
           </div>
         )}

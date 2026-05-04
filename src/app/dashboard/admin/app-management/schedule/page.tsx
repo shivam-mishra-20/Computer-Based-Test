@@ -68,7 +68,7 @@ interface TimeSlot {
   label: string;
 }
 
-type TimeSlotView = "morning" | "evening" | "all";
+type TimeSlotView = "morning" | "morning2" | "evening" | "all";
 
 const DAYS = [
   "Sunday",
@@ -87,6 +87,13 @@ const DEFAULT_MORNING_TIME_SLOTS: TimeSlot[] = [
   { start: "12:30", end: "13:30", label: "12:30 PM - 1:30 PM" },
   { start: "13:30", end: "14:30", label: "1:30 PM - 2:30 PM" },
   { start: "14:30", end: "15:30", label: "2:30 PM - 3:30 PM" },
+];
+
+const DEFAULT_MORNING2_TIME_SLOTS: TimeSlot[] = [
+  { start: "09:00", end: "10:00", label: "9:00 AM - 10:00 AM" },
+  { start: "10:00", end: "11:00", label: "10:00 AM - 11:00 AM" },
+  { start: "11:00", end: "12:00", label: "11:00 AM - 12:00 PM" },
+  { start: "12:00", end: "13:00", label: "12:00 PM - 1:00 PM" },
 ];
 
 const DEFAULT_EVENING_TIME_SLOTS: TimeSlot[] = [
@@ -303,9 +310,15 @@ export default function ScheduleManagement() {
   type TimetableGrid = Record<string, Record<string, Schedule>> | Record<string, Record<string, Record<string, Schedule>>>;
   const [timetableGrid, setTimetableGrid] = useState<TimetableGrid>({});
 
+  const filteredDynamicTimeSlots = useMemo(() => {
+    if (timeSlotView === "all") return dynamicTimeSlots;
+    const allowedStarts = new Set(timeSlots.map((slot) => slot.start));
+    return dynamicTimeSlots.filter((slot) => allowedStarts.has(slot.start));
+  }, [dynamicTimeSlots, timeSlots, timeSlotView]);
+
   const visibleTimeSlots = useMemo(
-    () => mergeTimeSlotCollections(timeSlots, dynamicTimeSlots),
-    [timeSlots, dynamicTimeSlots]
+    () => mergeTimeSlotCollections(timeSlots, filteredDynamicTimeSlots),
+    [timeSlots, filteredDynamicTimeSlots]
   );
 
   const getDefaultEndTime = (start: string) => {
@@ -334,6 +347,8 @@ export default function ScheduleManagement() {
 
       if (timeSlotView === 'morning') {
         setTimeSlots(DEFAULT_MORNING_TIME_SLOTS);
+      } else if (timeSlotView === 'morning2') {
+        setTimeSlots(DEFAULT_MORNING2_TIME_SLOTS);
       } else if (timeSlotView === 'all') {
         setTimeSlots(
           generateTimeSlots({
@@ -378,16 +393,29 @@ export default function ScheduleManagement() {
       try {
         let url = '/schedule/timeslots';
         if (timeSlotView === 'morning') url = '/schedule/timeslots?view=morning';
+        else if (timeSlotView === 'morning2') url = '/schedule/timeslots?view=morning2';
         else if (timeSlotView === 'all') url = '/schedule/timeslots?view=all';
         
         const serverSlots = await apiFetch(url);
         if (Array.isArray(serverSlots) && serverSlots.every((s) => typeof s?.start === 'string' && typeof s?.end === 'string')) {
           setTimeSlots(serverSlots as TimeSlot[]);
         } else {
-          setTimeSlots(timeSlotView === 'morning' ? DEFAULT_MORNING_TIME_SLOTS : DEFAULT_EVENING_TIME_SLOTS);
+          const fallbackSlots =
+            timeSlotView === 'morning'
+              ? DEFAULT_MORNING_TIME_SLOTS
+              : timeSlotView === 'morning2'
+                ? DEFAULT_MORNING2_TIME_SLOTS
+                : DEFAULT_EVENING_TIME_SLOTS;
+          setTimeSlots(fallbackSlots);
         }
       } catch {
-        setTimeSlots(timeSlotView === 'morning' ? DEFAULT_MORNING_TIME_SLOTS : DEFAULT_EVENING_TIME_SLOTS);
+        const fallbackSlots =
+          timeSlotView === 'morning'
+            ? DEFAULT_MORNING_TIME_SLOTS
+            : timeSlotView === 'morning2'
+              ? DEFAULT_MORNING2_TIME_SLOTS
+              : DEFAULT_EVENING_TIME_SLOTS;
+        setTimeSlots(fallbackSlots);
       }
     };
 
@@ -868,6 +896,7 @@ export default function ScheduleManagement() {
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white transition-all"
               >
                 <option value="morning">Morning Slots</option>
+                <option value="morning2">Morning Slot - 2</option>
                 <option value="evening">Evening Slots</option>
                 <option value="all">All Slots</option>
               </select>
