@@ -53,23 +53,6 @@ const SECTION_OPTIONS = [
   "Case Study",
 ];
 
-const MODEL_OPTIONS = [
-  {
-    value: "gemini-2.0-flash-thinking-exp-01-21",
-    label: "Gemini 2.0 Flash Thinking (Most Accurate)",
-    description: "Advanced reasoning for complex math - highest accuracy",
-  },
-  {
-    value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro (Recommended)",
-    description: "Enhanced reasoning for complex problems",
-  },
-  {
-    value: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash (Fast)",
-    description: "Fast and accurate - best for simple use cases",
-  },
-];
 
 interface ImportedQuestion {
   _id: string;
@@ -108,7 +91,7 @@ interface ImportBatch {
   processingProgress: number;
   totalProcessingTime: number;
   createdAt: string;
-  ocrProvider: "google-vision" | "groq" | "gemini" | "tesseract";
+  ocrProvider: "pdf-parse" | "google-vision" | "groq" | "gemini" | "tesseract";
   error?: string;
 }
 
@@ -179,8 +162,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   // Form fields
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
-  const [ocrProvider] = useState<"google-vision">("google-vision");
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash-thinking-exp-01-21");
+  const [ocrProvider] = useState<"pdf-parse">("pdf-parse");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -319,7 +301,6 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
       formData.append("subject", subject.trim());
       formData.append("topic", topic.trim());
       formData.append("ocrProvider", ocrProvider);
-      formData.append("model", selectedModel);
 
       // Add new metadata fields for validation
       if (className.trim()) formData.append("class", className.trim());
@@ -533,8 +514,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   Smart Question Import
                 </h1>
                 <p className="text-sm text-gray-600">
-                  Powered by Google Cloud Vision API & Gemini AI for accurate
-                  question extraction
+                  Powered by local Ollama Qwen3:8b — fast, private, zero cloud cost
                 </p>
               </div>
             </div>
@@ -672,10 +652,10 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
               </div>
 
               {/* Processing Pipeline Info */}
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="mt-4 p-3 bg-violet-50 border border-violet-200 rounded-lg">
                 <div className="flex items-center gap-2">
                   <svg
-                    className="w-5 h-5 text-blue-600"
+                    className="w-5 h-5 text-violet-600"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -684,45 +664,26 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                      d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"
                     />
                   </svg>
-                  <p className="text-sm font-medium text-blue-900">
-                    Processing Pipeline:{" "}
-                    <span className="font-semibold">
-                      Google Cloud Vision API
-                    </span>{" "}
-                    → <span className="font-semibold">Vertex AI</span>
+                  <p className="text-sm font-medium text-violet-900">
+                    Local Pipeline:{" "}
+                    <span className="font-semibold">pdf-parse</span>
+                    {" → "}
+                    <span className="font-semibold">Ollama</span>
+                    {" · "}
+                    <span className="font-semibold text-violet-700">Qwen3:8b</span>
                   </p>
                 </div>
-                <p className="text-xs text-blue-700 mt-1 ml-7">
-                  Enterprise-grade OCR and AI for maximum accuracy in text
-                  extraction and mathematical notation
+                <p className="text-xs text-violet-700 mt-1 ml-7">
+                  100% local · no cloud API · low VRAM · structured JSON extraction
                 </p>
-              </div>
-
-              {/* AI Model Selection */}
-              <div className="mt-4">
-                <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-                  AI Model *
-                </label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="w-full px-3 py-2 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all bg-white"
-                >
-                  {MODEL_OPTIONS.map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  {
-                    MODEL_OPTIONS.find((m) => m.value === selectedModel)
-                      ?.description
-                  }
-                </p>
+                <div className="flex gap-2 mt-2 ml-7">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-violet-100 text-violet-800">offline</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">JSON mode</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">chunked</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">

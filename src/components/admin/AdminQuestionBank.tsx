@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { apiFetch } from "../../lib/api";
@@ -32,7 +32,134 @@ import {
   Eye,
   GraduationCap,
   Wand2,
+  X,
+  Check,
 } from "lucide-react";
+
+// ─── Professional custom filter dropdown ───────────────────────────────────
+interface FilterSelectOption { label: string; value: string; }
+interface FilterSelectProps {
+  label: string;
+  icon?: React.ReactNode;
+  value: string;
+  onChange: (v: string) => void;
+  options: FilterSelectOption[];
+  placeholder?: string;
+  searchable?: boolean;
+}
+const FilterSelect: React.FC<FilterSelectProps> = ({
+  label, icon, value, onChange, options, placeholder = "All", searchable = false,
+}) => {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // Auto-focus search when opened
+  useEffect(() => {
+    if (open && searchable) setTimeout(() => searchRef.current?.focus(), 50);
+  }, [open, searchable]);
+
+  const filtered = search
+    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  const selectedLabel = options.find(o => o.value === value)?.label ?? (value || "");
+
+  return (
+    <div ref={ref} className="relative">
+      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+        {icon}{label}
+      </p>
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setSearch(""); }}
+        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm rounded-xl border-2 transition-all font-medium text-left
+          ${open ? "border-blue-500 ring-2 ring-blue-500/20 bg-white" : "border-gray-200 bg-white hover:border-blue-300"}
+          ${value ? "text-gray-900" : "text-gray-400"}`}
+      >
+        <span className="truncate">{selectedLabel || placeholder}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          {value && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onChange(""); setOpen(false); }}
+              onKeyDown={(e) => e.key === "Enter" && (e.stopPropagation(), onChange(""), setOpen(false))}
+              className="p-0.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </span>
+          )}
+          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </div>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.97 }}
+            transition={{ duration: 0.12 }}
+            className="absolute z-50 top-full left-0 mt-1 w-full min-w-[180px] bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden"
+          >
+            {searchable && (
+              <div className="p-2 border-b border-gray-100">
+                <div className="flex items-center gap-2 px-2 py-1.5 bg-gray-50 rounded-lg">
+                  <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  <input
+                    ref={searchRef}
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search…"
+                    className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="max-h-52 overflow-y-auto py-1">
+              {/* All / reset option */}
+              <button
+                type="button"
+                onClick={() => { onChange(""); setOpen(false); }}
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-blue-50 transition-colors
+                  ${!value ? "text-blue-600 font-semibold bg-blue-50/60" : "text-gray-500"}`}
+              >
+                <span>{placeholder}</span>
+                {!value && <Check className="w-3.5 h-3.5" />}
+              </button>
+              {filtered.length === 0 && (
+                <p className="px-3 py-2 text-xs text-gray-400 italic">No results</p>
+              )}
+              {filtered.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { onChange(opt.value); setOpen(false); setSearch(""); }}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-blue-50 transition-colors
+                    ${value === opt.value ? "text-blue-700 font-semibold bg-blue-50" : "text-gray-700"}`}
+                >
+                  <span className="truncate">{opt.label}</span>
+                  {value === opt.value && <Check className="w-3.5 h-3.5 shrink-0" />}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 // Helper component to render text with LaTeX math
 const MathText: React.FC<{ text: string; className?: string }> = ({
@@ -289,12 +416,14 @@ export default function AdminQuestionBank() {
     topics: string[];
     chapters: string[];
     boards: string[];
+    sources: string[];
   }>({
     types: [],
     subjects: [],
     topics: [],
     chapters: [],
     boards: [],
+    sources: [],
   });
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -302,12 +431,24 @@ export default function AdminQuestionBank() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalQuestions, setTotalQuestions] = useState(0);
 
+  // Bulk meta update state (tracks original values when editing, for "Apply to all" prompt)
+  const [originalDraftMeta, setOriginalDraftMeta] = useState<{
+    subject?: string; topic?: string; chapter?: string; difficulty?: string; board?: string;
+  }>({});
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+
+  // Ref to abort stale question-list fetches
+  const loadAbortRef = useRef<AbortController | null>(null);
+
   const load = useCallback(async () => {
+    // Cancel any in-flight request before starting a new one
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+
     setLoading(true);
     setLoadError(null);
     try {
-      console.log(`Fetching questions from class_${selectedClass}...`);
-
       const queryParams = new URLSearchParams();
       queryParams.append("page", currentPage.toString());
       queryParams.append("limit", itemsPerPage.toString());
@@ -323,56 +464,48 @@ export default function AdminQuestionBank() {
       if (filters.hasImage) queryParams.append("hasImage", filters.hasImage);
       if (filters.hasExplanation) queryParams.append("hasExplanation", filters.hasExplanation);
 
-      // Fetch questions from class-specific collection with server-side pagination
-      const response = (await apiFetch(
-        `/ai/questions/class/${selectedClass}?${queryParams.toString()}`
-      )) as {
+      const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+      const url = `${base}/ai/questions/class/${selectedClass}?${queryParams.toString()}`;
+      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+      });
+
+      if (controller.signal.aborted) return;
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { message?: string }).message || `HTTP ${res.status}`);
+      }
+
+      const response = (await res.json()) as {
         success: boolean;
         data: {
-          questions: Partial<Question>[];
-          total: number;
-          page: number;
-          totalPages: number;
-          class: string;
+          questions: Array<{
+            _id: string; text: string; type: string;
+            subject?: string; topic?: string; difficulty?: string;
+            chapter?: string; board?: string; section?: string; marks?: number;
+            options?: Question["options"]; explanation?: string; solutionText?: string;
+            correctAnswerText?: string; assertion?: string; reason?: string;
+            diagramUrl?: string; source?: string; createdAt?: string; updatedAt?: string;
+          }>;
+          total: number; page: number; totalPages: number; class: string;
         };
       };
 
-      if (!response.success) {
-        throw new Error("Failed to fetch questions");
-      }
+      if (controller.signal.aborted) return;
+      if (!response.success) throw new Error("Failed to fetch questions");
 
-      // Define the raw API response type for class questions
-      interface ClassQuestionResponse {
-        _id: string;
-        text: string;
-        type: string;
-        subject?: string;
-        topic?: string;
-        difficulty?: string;
-        chapter?: string;
-        board?: string;
-        section?: string;
-        marks?: number;
-        options?: Question["options"];
-        explanation?: string;
-        solutionText?: string;
-        correctAnswerText?: string;
-        assertion?: string;
-        reason?: string;
-        diagramUrl?: string;
-        source?: string;
-        createdAt?: string;
-        updatedAt?: string;
-      }
-
-      // Map ClassQuestion format to our Question interface
-      const mappedQuestions: Question[] = (
-        (response.data.questions as ClassQuestionResponse[]) || []
-      ).map((q) => ({
+      const mappedQuestions: Question[] = (response.data.questions || []).map((q) => ({
         _id: q._id,
         text: q.text,
         type: q.type,
-        // Use flat fields directly from ClassQuestion model
         subject: q.subject,
         topic: q.topic,
         difficulty: q.difficulty,
@@ -380,13 +513,7 @@ export default function AdminQuestionBank() {
         board: q.board,
         section: q.section,
         marks: q.marks,
-        // Also map to nested tags for backward compatibility
-        tags: {
-          subject: q.subject,
-          topic: q.topic,
-          difficulty: q.difficulty,
-          chapter: q.chapter,
-        },
+        tags: { subject: q.subject, topic: q.topic, difficulty: q.difficulty, chapter: q.chapter },
         options: q.options,
         explanation: q.explanation || q.solutionText,
         correctAnswerText: q.correctAnswerText,
@@ -399,98 +526,113 @@ export default function AdminQuestionBank() {
         updatedAt: q.updatedAt,
       }));
 
-      console.log(
-        `Loaded ${mappedQuestions.length} questions from class_${selectedClass}`
-      );
       setQuestions(mappedQuestions);
       setTotalPages(response.data.totalPages || 1);
       setTotalQuestions(response.data.total || 0);
-
-      // Keep board options populated even if metadata endpoint doesn't provide it.
-      setFilterOptions((prev) => {
-        const boards = Array.from(
-          new Set([
-            ...prev.boards,
-            ...mappedQuestions.map((q) => q.board).filter(Boolean) as string[],
-          ])
-        ).sort((a, b) => a.localeCompare(b));
-        return { ...prev, boards };
-      });
-
-      // fetch filters only once or when class changes (optional optimization, keeping it simple here)
-       // Also fetch filter options for this class if first load or needed
-       // For now, we rely on the implementation below or separate call.
     } catch (err) {
+      if ((err as { name?: string }).name === "AbortError") return; // stale request cancelled — ignore
       console.error("Error loading questions:", err);
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to load questions";
+      const errorMessage = err instanceof Error ? err.message : "Failed to load questions";
       setLoadError(errorMessage);
       setQuestions([]);
       notify.error(errorMessage);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [selectedClass, currentPage, itemsPerPage, query, filters]);
 
-  // Load questions when dependencies change
+  // Load questions whenever load fn changes (deps: class, page, filters, query)
   useEffect(() => {
     load();
+    return () => { loadAbortRef.current?.abort(); };
   }, [load]);
 
-  // Fetch filter metadata (separately, once per class change)
+  // Fetch all subjects+boards once per class change
   useEffect(() => {
-     async function fetchFilters() {
-        try {
-          const filtersResponse = (await apiFetch(
-            `/ai/questions/class/${selectedClass}/filters`
-          )) as {
-            success: boolean;
-            data: {
-              subjects: string[];
-              chapters: string[];
-              topics: string[];
-              sections: string[];
-              boards?: string[];
-            };
-          };
-
-          if (filtersResponse.success) {
-             // We can't get all types easily without an aggregation, so we might static list or fetch from usage
-             // For now, relying on static or partially accumulated lists
-             setFilterOptions(prev => ({
-                ...prev,
-                subjects: filtersResponse.data.subjects || [],
-                topics: filtersResponse.data.topics || [],
-                chapters: filtersResponse.data.chapters || [],
-               boards: filtersResponse.data.boards || prev.boards,
-             }));
-          }
-        } catch(e) { console.error(e); }
-     }
-     fetchFilters();
+    async function fetchSubjects() {
+      try {
+        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const res = await fetch(`${base}/ai/questions/class/${selectedClass}/filters`, {
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          credentials: "include",
+        });
+        const data = (await res.json()) as { success: boolean; data: { subjects: string[]; boards: string[]; chapters: string[]; topics: string[]; sources: string[]; types: string[] } };
+        if (data.success) {
+          setFilterOptions(prev => ({
+            ...prev,
+            subjects: (data.data.subjects || []).filter(Boolean).sort(),
+            boards: (data.data.boards || []).filter(Boolean).sort(),
+            chapters: (data.data.chapters || []).filter(Boolean).sort(),
+            topics: (data.data.topics || []).filter(Boolean).sort(),
+            sources: (data.data.sources || []).filter(Boolean).sort(),
+            types: (data.data.types || []).filter(Boolean).sort(),
+          }));
+        }
+      } catch (e) { console.error("fetchSubjects error", e); }
+    }
+    fetchSubjects();
   }, [selectedClass]);
 
-  // Remove Client-side filtering effect
-  
+  // Re-fetch chapters & topics when subject filter changes (cascading dropdowns)
+  useEffect(() => {
+    async function fetchCascaded() {
+      try {
+        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const qs = filters.subject ? `?subject=${encodeURIComponent(filters.subject)}` : "";
+        const res = await fetch(`${base}/ai/questions/class/${selectedClass}/filters${qs}`, {
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          credentials: "include",
+        });
+        const data = (await res.json()) as { success: boolean; data: { chapters: string[]; topics: string[]; sources: string[]; types: string[] } };
+        if (data.success) {
+          setFilterOptions(prev => ({
+            ...prev,
+            chapters: (data.data.chapters || []).filter(Boolean).sort(),
+            topics: (data.data.topics || []).filter(Boolean).sort(),
+          }));
+        }
+      } catch (e) { console.error("fetchCascaded error", e); }
+    }
+    fetchCascaded();
+  }, [selectedClass, filters.subject]);
+
+  // Helper: update a single filter key AND reset to page 1 atomically
+  // When subject changes, also clear topic/chapter since their options will cascade
+  const setFilter = useCallback((key: keyof typeof filters, value: string) => {
+    setFilters(prev => {
+      const next = { ...prev, [key]: value };
+      if (key === "subject") { next.topic = ""; next.chapter = ""; }
+      return next;
+    });
+    setCurrentPage(1);
+  }, []);
+
   // questions IS the paginated list now
   const paginatedQuestions = questions;
 
   function onCreate() {
     setDraft(emptyDraft());
+    setOriginalDraftMeta({});
     setModalTab("basic");
     setOpen(true);
   }
 
   function onEdit(q: Question) {
-    // Ensure class is set (questions from class collections have this as the selected class)
+    const sub = q.subject || q.tags?.subject || '';
+    const top = q.topic || q.tags?.topic || '';
+    const ch = q.chapter || q.tags?.chapter || '';
+    const diff = q.difficulty || q.tags?.difficulty || 'medium';
+    const brd = q.board || '';
+    setOriginalDraftMeta({ subject: sub, topic: top, chapter: ch, difficulty: diff, board: brd });
     setDraft({
       ...q,
       class: q.class || selectedClass,
-      // Also ensure flat fields are populated from tags if needed
-      subject: q.subject || q.tags?.subject,
-      topic: q.topic || q.tags?.topic,
-      chapter: q.chapter || q.tags?.chapter,
-      difficulty: q.difficulty || q.tags?.difficulty,
+      subject: sub,
+      topic: top,
+      chapter: ch,
+      difficulty: diff,
     });
     setModalTab("basic");
     setOpen(true);
@@ -502,6 +644,28 @@ export default function AdminQuestionBank() {
     duplicated.text = `${duplicated.text} (Copy)`;
     setDraft(duplicated);
     setOpen(true);
+  }
+
+  async function bulkUpdateMeta(field: string, fromValue: string, toValue: string) {
+    if (!toValue.trim()) return;
+    const cls = draft.class || selectedClass;
+    const label = field.charAt(0).toUpperCase() + field.slice(1);
+    const fromLabel = fromValue || '(empty/unknown)';
+    if (!confirm(`Change ${label} from "${fromLabel}" → "${toValue}" for ALL matching questions in Class ${cls}?\n\nThis cannot be undone.`)) return;
+    setBulkUpdating(true);
+    try {
+      const resp = await apiFetch(`/ai/questions/class/${cls}/bulk-update-meta`, {
+        method: 'PUT',
+        body: JSON.stringify({ field, fromValue, toValue }),
+      }) as { success: boolean; data?: { updated: number } };
+      if (!resp.success) throw new Error('Bulk update failed');
+      notify.success(`Updated ${resp.data?.updated ?? 0} questions`);
+      await load();
+    } catch (e) {
+      notify.error((e as Error).message || 'Bulk update failed');
+    } finally {
+      setBulkUpdating(false);
+    }
   }
 
   async function saveDraft(e: React.FormEvent) {
@@ -917,6 +1081,7 @@ export default function AdminQuestionBank() {
       chapter: "",
     });
     setQuery("");
+    setCurrentPage(1);
   }
 
   const activeFilterCount =
@@ -964,7 +1129,7 @@ export default function AdminQuestionBank() {
                 <GraduationCap className="w-4 h-4 text-blue-600" />
                 <select
                   value={selectedClass}
-                  onChange={(e) => setSelectedClass(e.target.value)}
+                  onChange={(e) => { setSelectedClass(e.target.value); setCurrentPage(1); }}
                   className="bg-transparent font-semibold text-gray-800 focus:outline-none cursor-pointer text-sm"
                 >
                   {availableClasses.map((cls) => (
@@ -1003,7 +1168,7 @@ export default function AdminQuestionBank() {
               <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
               <input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => { setQuery(e.target.value); setCurrentPage(1); }}
                 placeholder="Search by text, subject, topic..."
                 className="w-full pl-10 sm:pl-12 pr-3 py-2.5 sm:py-3 border-2 border-gray-200 rounded-lg sm:rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white"
               />
@@ -1111,229 +1276,132 @@ export default function AdminQuestionBank() {
                 className="mt-5 pt-5 border-t border-gray-200/50"
               >
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {/* Type */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <Tag className="w-3.5 h-3.5" />
-                      Question Type
-                    </label>
-                    <select
-                      value={filters.type}
-                      onChange={(e) =>
-                        setFilters({ ...filters, type: e.target.value })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All Types</option>
-                      {filterOptions.types.map((t) => (
-                        <option key={t} value={t}>
-                          {typeLabels[t as keyof typeof typeLabels] || t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Subject */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <BookOpen className="w-3.5 h-3.5" />
-                      Subject
-                    </label>
-                    <select
-                      value={filters.subject}
-                      onChange={(e) =>
-                        setFilters({ ...filters, subject: e.target.value })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All Subjects</option>
-                      {filterOptions.subjects.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Topic */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5" />
-                      Topic
-                    </label>
-                    <select
-                      value={filters.topic}
-                      onChange={(e) =>
-                        setFilters({ ...filters, topic: e.target.value })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All Topics</option>
-                      {filterOptions.topics.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Chapter */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <BookOpen className="w-3.5 h-3.5" />
-                      Chapter
-                    </label>
-                    <select
-                      value={filters.chapter}
-                      onChange={(e) =>
-                        setFilters({ ...filters, chapter: e.target.value })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All Chapters</option>
-                      {filterOptions.chapters.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Difficulty */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <BarChart3 className="w-3.5 h-3.5" />
-                      Difficulty
-                    </label>
-                    <select
-                      value={filters.difficulty}
-                      onChange={(e) =>
-                        setFilters({ ...filters, difficulty: e.target.value })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All Difficulties</option>
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                    </select>
-                  </div>
-
-                  {/* Board */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <BookOpen className="w-3.5 h-3.5" />
-                      Board
-                    </label>
-                    <select
-                      value={filters.board}
-                      onChange={(e) =>
-                        setFilters({ ...filters, board: e.target.value })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All Boards</option>
-                      {filterOptions.boards.map((b) => (
-                        <option key={b} value={b}>
-                          {b}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Source */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <Upload className="w-3.5 h-3.5" />
-                      Source
-                    </label>
-                    <select
-                      value={filters.source}
-                      onChange={(e) =>
-                        setFilters({ ...filters, source: e.target.value })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All Sources</option>
-                      <option value="manual">Manual</option>
-                      <option value="imported">Imported</option>
-                      <option value="ai-generated">AI Generated</option>
-                    </select>
-                  </div>
-
-                  {/* Has Correct Answer */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      Correct Answer
-                    </label>
-                    <select
-                      value={filters.hasCorrectAnswer}
-                      onChange={(e) =>
-                        setFilters({
-                          ...filters,
-                          hasCorrectAnswer: e.target.value,
-                        })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All</option>
-                      <option value="yes">With Correct Answer</option>
-                      <option value="no">Without Correct Answer</option>
-                    </select>
-                  </div>
-
-                  {/* Has Image */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <ImageIcon className="w-3.5 h-3.5" />
-                      Diagrams/Images
-                    </label>
-                    <select
-                      value={filters.hasImage}
-                      onChange={(e) =>
-                        setFilters({ ...filters, hasImage: e.target.value })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All</option>
-                      <option value="yes">With Diagrams</option>
-                      <option value="no">Without Diagrams</option>
-                    </select>
-                  </div>
-
-                  {/* Has Explanation */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      Explanation
-                    </label>
-                    <select
-                      value={filters.hasExplanation}
-                      onChange={(e) =>
-                        setFilters({
-                          ...filters,
-                          hasExplanation: e.target.value,
-                        })
-                      }
-                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all bg-white font-medium"
-                    >
-                      <option value="">All</option>
-                      <option value="yes">With Explanation</option>
-                      <option value="no">Without Explanation</option>
-                    </select>
-                  </div>
+                  <FilterSelect
+                    label="Question Type"
+                    icon={<Tag className="w-3 h-3" />}
+                    value={filters.type}
+                    onChange={v => setFilter("type", v)}
+                    placeholder="All Types"
+                    searchable={filterOptions.types.length > 6}
+                    options={filterOptions.types.map(t => ({ value: t, label: typeLabels[t as keyof typeof typeLabels] || t }))}
+                  />
+                  <FilterSelect
+                    label="Subject"
+                    icon={<BookOpen className="w-3 h-3" />}
+                    value={filters.subject}
+                    onChange={v => setFilter("subject", v)}
+                    placeholder="All Subjects"
+                    searchable
+                    options={filterOptions.subjects.map(s => ({ value: s, label: s }))}
+                  />
+                  <FilterSelect
+                    label="Topic"
+                    icon={<FileText className="w-3 h-3" />}
+                    value={filters.topic}
+                    onChange={v => setFilter("topic", v)}
+                    placeholder={filters.subject ? `Topics in ${filters.subject}` : "All Topics"}
+                    searchable
+                    options={filterOptions.topics.map(t => ({ value: t, label: t }))}
+                  />
+                  <FilterSelect
+                    label="Chapter"
+                    icon={<BookOpen className="w-3 h-3" />}
+                    value={filters.chapter}
+                    onChange={v => setFilter("chapter", v)}
+                    placeholder={filters.subject ? `Chapters in ${filters.subject}` : "All Chapters"}
+                    searchable
+                    options={filterOptions.chapters.map(c => ({ value: c, label: c }))}
+                  />
+                  <FilterSelect
+                    label="Difficulty"
+                    icon={<BarChart3 className="w-3 h-3" />}
+                    value={filters.difficulty}
+                    onChange={v => setFilter("difficulty", v)}
+                    placeholder="All Difficulties"
+                    options={[
+                      { value: "easy", label: "🟢 Easy" },
+                      { value: "medium", label: "🟡 Medium" },
+                      { value: "hard", label: "🔴 Hard" },
+                    ]}
+                  />
+                  <FilterSelect
+                    label="Board"
+                    icon={<BookOpen className="w-3 h-3" />}
+                    value={filters.board}
+                    onChange={v => setFilter("board", v)}
+                    placeholder="All Boards"
+                    options={filterOptions.boards.map(b => ({ value: b, label: b }))}
+                  />
+                  <FilterSelect
+                    label="Source"
+                    icon={<Upload className="w-3 h-3" />}
+                    value={filters.source}
+                    onChange={v => setFilter("source", v)}
+                    placeholder="All Sources"
+                    options={filterOptions.sources.length > 0
+                      ? filterOptions.sources.map(s => ({ value: s, label: s }))
+                      : [
+                          { value: "Manual", label: "Manual" },
+                          { value: "Smart Import", label: "Smart Import" },
+                          { value: "AI", label: "AI" },
+                          { value: "Upload", label: "Upload" },
+                        ]
+                    }
+                  />
+                  <FilterSelect
+                    label="Correct Answer"
+                    icon={<CheckCircle className="w-3 h-3" />}
+                    value={filters.hasCorrectAnswer}
+                    onChange={v => setFilter("hasCorrectAnswer", v)}
+                    placeholder="All"
+                    options={[
+                      { value: "yes", label: "✅ With Answer" },
+                      { value: "no", label: "❌ Without Answer" },
+                    ]}
+                  />
+                  <FilterSelect
+                    label="Diagrams / Images"
+                    icon={<ImageIcon className="w-3 h-3" />}
+                    value={filters.hasImage}
+                    onChange={v => setFilter("hasImage", v)}
+                    placeholder="All"
+                    options={[
+                      { value: "yes", label: "🖼️ With Diagram" },
+                      { value: "no", label: "— Without Diagram" },
+                    ]}
+                  />
+                  <FilterSelect
+                    label="Explanation"
+                    icon={<AlertCircle className="w-3 h-3" />}
+                    value={filters.hasExplanation}
+                    onChange={v => setFilter("hasExplanation", v)}
+                    placeholder="All"
+                    options={[
+                      { value: "yes", label: "📝 With Explanation" },
+                      { value: "no", label: "— Without Explanation" },
+                    ]}
+                  />
                 </div>
 
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={clearFilters}
-                    className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-2 font-medium hover:bg-gray-100 px-4 py-2 rounded-lg transition-all"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Clear All Filters
-                  </button>
-                </div>
+                {/* Active filter chips + clear */}
+                {activeFilterCount > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-gray-400 font-medium">Active:</span>
+                    {filters.subject && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-medium">Subject: {filters.subject}<button onClick={() => setFilter("subject", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.topic && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-xs font-medium">Topic: {filters.topic}<button onClick={() => setFilter("topic", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.chapter && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-medium">Chapter: {filters.chapter}<button onClick={() => setFilter("chapter", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.type && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-xs font-medium">Type: {typeLabels[filters.type as keyof typeof typeLabels] || filters.type}<button onClick={() => setFilter("type", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.difficulty && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full text-xs font-medium">Difficulty: {filters.difficulty}<button onClick={() => setFilter("difficulty", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.board && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-full text-xs font-medium">Board: {filters.board}<button onClick={() => setFilter("board", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.source && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-pink-50 text-pink-700 border border-pink-200 rounded-full text-xs font-medium">Source: {filters.source}<button onClick={() => setFilter("source", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.hasCorrectAnswer && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-medium">Answer: {filters.hasCorrectAnswer === "yes" ? "With" : "Without"}<button onClick={() => setFilter("hasCorrectAnswer", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.hasImage && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 text-sky-700 border border-sky-200 rounded-full text-xs font-medium">Diagram: {filters.hasImage === "yes" ? "With" : "Without"}<button onClick={() => setFilter("hasImage", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.hasExplanation && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full text-xs font-medium">Explanation: {filters.hasExplanation === "yes" ? "With" : "Without"}<button onClick={() => setFilter("hasExplanation", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    <button onClick={clearFilters} className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1 hover:bg-red-50 px-2.5 py-1 rounded-full border border-red-200 transition-all">
+                      <XCircle className="w-3.5 h-3.5" /> Clear all
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -2280,6 +2348,7 @@ export default function AdminQuestionBank() {
                       ))}
                     </select>
                   </div>
+                  {/* Subject */}
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
                       <BookOpen className="w-3.5 h-3.5" />
@@ -2297,7 +2366,19 @@ export default function AdminQuestionBank() {
                       className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-medium bg-white"
                       placeholder="e.g., Physics"
                     />
+                    {draft._id && (draft.subject || '') !== (originalDraftMeta.subject || '') && (draft.subject || '').trim() && (
+                      <button
+                        type="button"
+                        disabled={bulkUpdating}
+                        onClick={() => bulkUpdateMeta('subject', originalDraftMeta.subject || '', draft.subject || '')}
+                        className="text-xs font-medium text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg px-3 py-1.5 transition-all disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        Apply &quot;{draft.subject}&quot; to all &quot;{originalDraftMeta.subject || 'empty'}&quot; questions
+                      </button>
+                    )}
                   </div>
+                  {/* Topic */}
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
                       <Tag className="w-3.5 h-3.5" />
@@ -2315,7 +2396,19 @@ export default function AdminQuestionBank() {
                       className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-medium bg-white"
                       placeholder="e.g., Mechanics"
                     />
+                    {draft._id && (draft.topic || '') !== (originalDraftMeta.topic || '') && (draft.topic || '').trim() && (
+                      <button
+                        type="button"
+                        disabled={bulkUpdating}
+                        onClick={() => bulkUpdateMeta('topic', originalDraftMeta.topic || '', draft.topic || '')}
+                        className="text-xs font-medium text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg px-3 py-1.5 transition-all disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        Apply &quot;{draft.topic}&quot; to all &quot;{originalDraftMeta.topic || 'empty'}&quot; questions
+                      </button>
+                    )}
                   </div>
+                  {/* Chapter */}
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
                       <BookOpen className="w-3.5 h-3.5" />
@@ -2333,7 +2426,19 @@ export default function AdminQuestionBank() {
                       className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-medium bg-white"
                       placeholder="e.g., Chapter 1"
                     />
+                    {draft._id && (draft.chapter || '') !== (originalDraftMeta.chapter || '') && (draft.chapter || '').trim() && (
+                      <button
+                        type="button"
+                        disabled={bulkUpdating}
+                        onClick={() => bulkUpdateMeta('chapter', originalDraftMeta.chapter || '', draft.chapter || '')}
+                        className="text-xs font-medium text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg px-3 py-1.5 transition-all disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        Apply &quot;{draft.chapter}&quot; to all &quot;{originalDraftMeta.chapter || 'empty'}&quot; questions
+                      </button>
+                    )}
                   </div>
+                  {/* Difficulty */}
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
                       <BarChart3 className="w-3.5 h-3.5" />
@@ -2356,6 +2461,17 @@ export default function AdminQuestionBank() {
                       <option value="medium">Medium</option>
                       <option value="hard">Hard</option>
                     </select>
+                    {draft._id && (draft.difficulty || 'medium') !== (originalDraftMeta.difficulty || 'medium') && (
+                      <button
+                        type="button"
+                        disabled={bulkUpdating}
+                        onClick={() => bulkUpdateMeta('difficulty', originalDraftMeta.difficulty || '', draft.difficulty || '')}
+                        className="text-xs font-medium text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg px-3 py-1.5 transition-all disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        Apply &quot;{draft.difficulty}&quot; to all &quot;{originalDraftMeta.difficulty || 'empty'}&quot; questions
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
