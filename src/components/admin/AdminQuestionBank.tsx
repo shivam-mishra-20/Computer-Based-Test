@@ -161,6 +161,97 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   );
 };
 
+// ── Diagram renderer ─────────────────────────────────────────────────────────
+
+const DiagramRenderer: React.FC<{
+  diagram?: { url?: string; svgInline?: string; alt?: string; kind?: string };
+  diagramUrl?: string;
+}> = ({ diagram, diagramUrl }) => {
+  // Rich SVG inline (vector diagram from PDF extraction)
+  if (diagram?.svgInline) {
+    return (
+      <div className="my-3 overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <div
+          className="flex justify-center"
+          dangerouslySetInnerHTML={{ __html: diagram.svgInline }}
+        />
+      </div>
+    );
+  }
+  // Rich raster URL
+  if (diagram?.url) {
+    return (
+      <div className="my-3">
+        <Image
+          src={diagram.url}
+          alt={diagram.alt || "Question diagram"}
+          width={560}
+          height={400}
+          className="max-w-full rounded-lg border border-gray-200"
+          style={{ objectFit: "contain" }}
+        />
+      </div>
+    );
+  }
+  // Legacy diagramUrl fallback
+  if (diagramUrl) {
+    return (
+      <div className="my-3">
+        <Image
+          src={diagramUrl}
+          alt="Question diagram"
+          width={400}
+          height={300}
+          className="max-w-md rounded-lg border border-gray-200"
+        />
+      </div>
+    );
+  }
+  return null;
+};
+
+// ── Table renderer ────────────────────────────────────────────────────────────
+
+const TableDataRenderer: React.FC<{
+  tableData?: { headers: string[]; rows: string[][]; html: string; caption?: string };
+}> = ({ tableData }) => {
+  if (!tableData) return null;
+  const { headers, rows, caption } = tableData;
+  return (
+    <div className="my-3 overflow-x-auto rounded-lg border border-gray-200">
+      {caption && (
+        <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-200 text-xs text-gray-600 font-medium">
+          {caption}
+        </div>
+      )}
+      <table className="min-w-full text-sm divide-y divide-gray-200">
+        {headers.length > 0 && (
+          <thead className="bg-gray-50">
+            <tr>
+              {headers.map((h, i) => (
+                <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
+                  <MathText text={h || ""} />
+                </th>
+              ))}
+            </tr>
+          </thead>
+        )}
+        <tbody className="divide-y divide-gray-100 bg-white">
+          {rows.map((row, ri) => (
+            <tr key={ri} className={ri % 2 === 0 ? "" : "bg-gray-50/50"}>
+              {row.map((cell, ci) => (
+                <td key={ci} className="px-3 py-2 text-gray-800 align-top">
+                  <MathText text={cell || ""} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 // Helper component to render text with LaTeX math
 const MathText: React.FC<{ text: string; className?: string }> = ({
   text,
@@ -282,6 +373,19 @@ interface Question {
   assertion?: string;
   reason?: string;
   diagramUrl?: string;
+  // Rich diagram and table data (from PDF extraction)
+  diagram?: {
+    url?: string;
+    svgInline?: string;
+    alt?: string;
+    kind?: 'image' | 'vector';
+  };
+  tableData?: {
+    headers: string[];
+    rows: string[][];
+    html: string;
+    caption?: string;
+  };
   class?: string;
   // Support both old and new source values
   source?:
@@ -520,6 +624,8 @@ export default function AdminQuestionBank() {
         assertion: q.assertion,
         reason: q.reason,
         diagramUrl: q.diagramUrl,
+        diagram:    (q as any).diagram,
+        tableData:  (q as any).tableData,
         class: selectedClass,
         source: q.source as Question["source"],
         createdAt: q.createdAt,
@@ -1622,6 +1728,18 @@ export default function AdminQuestionBank() {
                                   Explanation
                                 </span>
                               )}
+                              {(q.diagram || q.diagramUrl) && (
+                                <span className="inline-flex items-center gap-1 text-xs text-violet-600 whitespace-nowrap">
+                                  <ImageIcon className="w-3 h-3" />
+                                  {q.diagram?.kind === 'vector' ? 'SVG' : 'Diagram'}
+                                </span>
+                              )}
+                              {q.tableData && (
+                                <span className="inline-flex items-center gap-1 text-xs text-teal-600 whitespace-nowrap">
+                                  <FileText className="w-3 h-3" />
+                                  Table
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -1758,18 +1876,21 @@ export default function AdminQuestionBank() {
                                     </div>
                                   )}
 
-                                  {q.diagramUrl && (
+                                  {(q.diagram || q.diagramUrl) && (
                                     <div>
                                       <div className="text-xs font-semibold text-gray-600 uppercase mb-1">
-                                        Diagram/Image
+                                        Diagram/Figure
                                       </div>
-                                      <Image
-                                        src={q.diagramUrl}
-                                        alt="Question diagram"
-                                        width={400}
-                                        height={300}
-                                        className="max-w-md rounded-lg border border-gray-200"
-                                      />
+                                      <DiagramRenderer diagram={q.diagram} diagramUrl={q.diagramUrl} />
+                                    </div>
+                                  )}
+
+                                  {q.tableData && (
+                                    <div>
+                                      <div className="text-xs font-semibold text-gray-600 uppercase mb-1">
+                                        Associated Table
+                                      </div>
+                                      <TableDataRenderer tableData={q.tableData} />
                                     </div>
                                   )}
 

@@ -8,6 +8,7 @@ import dynamic from "next/dynamic";
 import { CalendarIcon, ClockIcon } from "lucide-react";
 
 import AdminTimeSlotsConfig from "@/components/admin/app-management/AdminTimeSlotsConfig";
+import { toast } from "sonner";
 
 // Dynamically import AdminBatchManagement to avoid SSR issues
 const AdminBatchManagement = dynamic(
@@ -237,6 +238,8 @@ export default function ScheduleManagement() {
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [teachersOnLeave, setTeachersOnLeave] = useState<string[]>([]); // Teacher IDs on approved leave
   const [allowCustomRegularTime, setAllowCustomRegularTime] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
 
   // Filters
   const [filterClass, setFilterClass] = useState("11");
@@ -313,8 +316,18 @@ export default function ScheduleManagement() {
   const filteredDynamicTimeSlots = useMemo(() => {
     if (timeSlotView === "all") return dynamicTimeSlots;
     const allowedStarts = new Set(timeSlots.map((slot) => slot.start));
-    return dynamicTimeSlots.filter((slot) => allowedStarts.has(slot.start));
-  }, [dynamicTimeSlots, timeSlots, timeSlotView]);
+    return dynamicTimeSlots.filter((slot) => {
+      // On the regular tab always show occupied slots so existing classes are never hidden
+      if (activeTab === "regular") {
+        const grid = timetableGrid as Record<string, Record<string, Schedule>>;
+        const isOccupied = Object.values(grid).some(
+          (daySlots) => daySlots[slot.start] != null
+        );
+        if (isOccupied) return true;
+      }
+      return allowedStarts.has(slot.start);
+    });
+  }, [dynamicTimeSlots, timeSlots, timeSlotView, activeTab, timetableGrid]);
 
   const visibleTimeSlots = useMemo(
     () => mergeTimeSlotCollections(timeSlots, filteredDynamicTimeSlots),
@@ -465,19 +478,24 @@ export default function ScheduleManagement() {
         const regularData = data as {
           grid?: Record<string, Record<string, Schedule>>;
           timeSlots?: TimeSlot[];
+          scheduleTimeSlots?: TimeSlot[];
         };
 
         setTimetableGrid(regularData.grid || {});
 
+        // scheduleTimeSlots = actual slots used by schedules in the grid (from backend)
+        // Also derive from the list endpoint as a fallback
         const scheduleSlots = Array.isArray(regularSchedules)
           ? (regularSchedules as Schedule[])
               .filter((s) => s.startTimeSlot && s.endTimeSlot)
               .map((s) => buildTimeSlot(s.startTimeSlot, s.endTimeSlot))
           : [];
 
+        // Always include occupied slots so classes are never hidden by view filter
         setDynamicTimeSlots(
           mergeTimeSlotCollections(
             Array.isArray(regularData.timeSlots) ? regularData.timeSlots : [],
+            Array.isArray(regularData.scheduleTimeSlots) ? regularData.scheduleTimeSlots : [],
             scheduleSlots
           )
         );
@@ -556,78 +574,92 @@ export default function ScheduleManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const startMinutes = parseHHMMToMinutes(formData.startTimeSlot);
-      const endMinutes = parseHHMMToMinutes(formData.endTimeSlot);
+    setFormError("");
 
-      if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) {
-        alert("Please enter a valid time slot");
-        return;
-      }
+    const startMinutes = parseHHMMToMinutes(formData.startTimeSlot);
+    const endMinutes = parseHHMMToMinutes(formData.endTimeSlot);
 
-      if (endMinutes <= startMinutes) {
-        alert("End time must be later than start time");
-        return;
-      }
+    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) {
+      setFormError("Please enter a valid time slot.");
+      return;
+    }
 
-      const availableBatches = getAvailableBatches(formData.classLevel);
-      const normalizedBatches = availableBatches.length === 0
+    if (endMinutes <= startMinutes) {
+      setFormError("End time must be later than start time.");
+      return;
+    }
+
+    const availableBatches = getAvailableBatches(formData.classLevel);
+    const normalizedBatches =
+      availableBatches.length === 0
         ? []
         : Array.from(
-            new Set(formData.batches.map((batch) => batch.trim()).filter(Boolean))
+            new Set(formData.batches.map((b) => b.trim()).filter(Boolean))
           );
 
-      if (availableBatches.length > 0 && normalizedBatches.length === 0) {
-        alert("Please select at least one batch");
-        return;
-      }
+    if (availableBatches.length > 0 && normalizedBatches.length === 0) {
+      setFormError("Please select at least one batch.");
+      return;
+    }
 
-      const payload = {
-        ...formData,
-        batch: normalizedBatches[0] || "",
-        batches: normalizedBatches,
-      };
+    const payload = {
+      ...formData,
+      batch: normalizedBatches[0] || "",
+      batches: normalizedBatches,
+    };
 
-      // For regular schedules, preset slot mode keeps end-time aligned with selected slot.
-      if (formData.scheduleType === "regular" && !allowCustomRegularTime) {
-        const slot = visibleTimeSlots.find((t) => t.start === formData.startTimeSlot);
-        if (slot) {
-          payload.endTimeSlot = slot.end;
-        }
-      }
+    if (formData.scheduleType === "regular" && !allowCustomRegularTime) {
+      const slot = visibleTimeSlots.find((t) => t.start === formData.startTimeSlot);
+      if (slot) payload.endTimeSlot = slot.end;
+    }
 
+    setSubmitting(true);
+    try {
       if (editingSchedule) {
         await apiFetch(`/schedule/${editingSchedule._id}`, {
           method: "PUT",
           body: JSON.stringify(payload),
         });
+        toast.success("Schedule updated successfully");
       } else {
         await apiFetch("/schedule", {
           method: "POST",
           body: JSON.stringify(payload),
         });
+        toast.success(
+          formData.scheduleType === "regular"
+            ? "Regular class added to timetable"
+            : "Custom class scheduled"
+        );
       }
 
       setIsModalOpen(false);
       setEditingSchedule(null);
       setAllowCustomRegularTime(false);
+      setFormError("");
       resetForm();
       loadTimetable();
       loadSchedules();
     } catch (error) {
-      alert((error as Error).message || "Failed to save schedule");
+      setFormError((error as Error).message || "Failed to save schedule. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this schedule?")) return;
+    if (!confirm("Delete this schedule? This cannot be undone.")) return;
     try {
       await apiFetch(`/schedule/${id}`, { method: "DELETE" });
+      toast.success("Schedule deleted");
+      setIsModalOpen(false);
+      setEditingSchedule(null);
+      setFormError("");
+      resetForm();
       loadTimetable();
       loadSchedules();
     } catch (error) {
-      console.error(error);
-      alert("Failed to delete schedule");
+      toast.error((error as Error).message || "Failed to delete schedule");
     }
   };
 
@@ -700,6 +732,7 @@ export default function ScheduleManagement() {
       setAllowCustomRegularTime(false);
     }
 
+    setFormError("");
     setEditingSchedule(schedule);
     setFormData({
       title: schedule.title,
@@ -768,6 +801,7 @@ export default function ScheduleManagement() {
       }));
 
       setAllowCustomRegularTime(false);
+      setFormError("");
       setIsModalOpen(true);
       // Fetch teachers on leave for this date
       if (customDate) {
@@ -819,6 +853,227 @@ export default function ScheduleManagement() {
 
     if (!available.find((b) => b.name === filterBatch)) {
       setFilterBatch(available[0].name);
+    }
+  };
+
+  const exportToExcel = async () => {
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const { saveAs } = await import("file-saver");
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "Abhigyan Gurukul";
+      wb.created = new Date();
+
+      const C_EMERALD      = "FF059669";
+      const C_EMERALD_LITE = "FFD1FAE5";
+      const C_EMERALD_PALE = "FFF0FDF4";
+      const C_EMERALD_DEEP = "FF065F46";
+      const C_WHITE        = "FFFFFFFF";
+      const C_TEXT_DARK    = "FF1E293B";
+      const C_TEXT_MED     = "FF475569";
+      const C_TEXT_LIGHT   = "FF94A3B8";
+
+      type XBorders = import("exceljs").Borders;
+      type XFill    = import("exceljs").Fill;
+
+      const borderThin: Partial<XBorders> = {
+        top:    { style: "thin", color: { argb: "FFE2E8F0" } },
+        left:   { style: "thin", color: { argb: "FFE2E8F0" } },
+        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+        right:  { style: "thin", color: { argb: "FFE2E8F0" } },
+      };
+
+      const solidFill = (argb: string): XFill =>
+        ({ type: "pattern", pattern: "solid", fgColor: { argb } } as XFill);
+
+      if (activeTab === "regular") {
+        const ws = wb.addWorksheet("Weekly Timetable", {
+          pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+        });
+
+        const regGrid = timetableGrid as Record<string, Record<string, Schedule>>;
+        const numCols   = visibleTimeSlots.length + 1;
+        const DAYS_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+        // ── Title rows ──────────────────────────────────────────────────────────
+        const addMergedTitle = (
+          text: string,
+          rowIdx: number,
+          height: number,
+          fontSize: number,
+          bold: boolean,
+          italic = false
+        ) => {
+          ws.addRow([text]);
+          ws.mergeCells(rowIdx, 1, rowIdx, numCols);
+          const cell = ws.getCell(rowIdx, 1);
+          cell.font      = { bold, italic, size: fontSize, color: { argb: C_WHITE }, name: "Calibri" };
+          cell.fill      = solidFill(C_EMERALD);
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+          ws.getRow(rowIdx).height = height;
+        };
+
+        addMergedTitle("ABHIGYAN GURUKUL", 1, 42, 20, true);
+        addMergedTitle("WEEKLY CLASS TIMETABLE", 2, 26, 13, true);
+        const filterLabel = `Class ${filterClass}${filterBatch ? "  |  Batch: " + filterBatch : ""}  |  Generated: ${new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`;
+        addMergedTitle(filterLabel, 3, 20, 10, false, true);
+
+        // Spacer
+        ws.addRow([]);
+        ws.getRow(4).height = 6;
+
+        // ── Column headers ───────────────────────────────────────────────────────
+        const hdrRow = ws.addRow(["Day / Time", ...visibleTimeSlots.map((s) => s.label)]);
+        hdrRow.height = 36;
+        hdrRow.eachCell({ includeEmpty: true }, (cell, col) => {
+          cell.font      = { bold: true, size: 10, color: { argb: C_TEXT_DARK }, name: "Calibri" };
+          cell.fill      = solidFill(C_EMERALD_LITE);
+          cell.alignment = { horizontal: col === 1 ? "left" : "center", vertical: "middle", wrapText: true };
+          cell.border    = borderThin;
+        });
+
+        ws.getColumn(1).width = 14;
+        visibleTimeSlots.forEach((_, i) => { ws.getColumn(i + 2).width = 28; });
+
+        // ── Data rows ─────────────────────────────────────────────────────────────
+        DAYS_WEEK.forEach((day, idx) => {
+          const dayIndex = idx + 1;
+          const dataRow  = ws.addRow([day, ...visibleTimeSlots.map(() => "")]);
+          dataRow.height = 60;
+
+          dataRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            cell.border = borderThin;
+            if (colNumber === 1) {
+              cell.font      = { bold: true, size: 10, color: { argb: C_TEXT_DARK } };
+              cell.fill      = solidFill(C_EMERALD_PALE);
+              cell.alignment = { horizontal: "left", vertical: "middle" };
+            } else {
+              const slotStart = visibleTimeSlots[colNumber - 2]?.start;
+              const sch = regGrid[dayIndex]?.[slotStart];
+              if (sch) {
+                cell.value = {
+                  richText: [
+                    { text: sch.subject + "\n",               font: { bold: true, size: 11, color: { argb: C_EMERALD_DEEP } } },
+                    { text: (sch.teacherName || "Teacher TBA") + "\n", font: { size: 9, color: { argb: C_TEXT_MED } } },
+                    { text: "Room " + sch.roomNumber,         font: { size: 9, color: { argb: C_TEXT_LIGHT }, italic: true } },
+                  ],
+                };
+                cell.fill      = solidFill(C_EMERALD_PALE);
+                cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+              } else {
+                cell.value     = "";
+                cell.fill      = solidFill(C_WHITE);
+                cell.alignment = { horizontal: "center", vertical: "middle" };
+              }
+            }
+          });
+        });
+
+        const buf  = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        saveAs(blob, `Timetable_Class${filterClass}${filterBatch ? "_" + filterBatch.replace(/\s+/g, "_") : ""}.xlsx`);
+
+      } else {
+        // ── Custom / Daily View ────────────────────────────────────────────────
+        const isDaily   = activeTab === "daily_view";
+        const sheetName = isDaily ? "Daily View" : "Custom Schedule";
+        const ws = wb.addWorksheet(sheetName, {
+          pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+        });
+
+        const customGrid = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
+        const numCols    = visibleTimeSlots.length + 1;
+        const dateLabel  = customWeekStart.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+        const addMergedRow = (
+          text: string,
+          rowIdx: number,
+          height: number,
+          fontSize: number,
+          bold: boolean,
+          italic = false
+        ) => {
+          ws.addRow([text]);
+          ws.mergeCells(rowIdx, 1, rowIdx, numCols);
+          const cell = ws.getCell(rowIdx, 1);
+          cell.font      = { bold, italic, size: fontSize, color: { argb: C_WHITE }, name: "Calibri" };
+          cell.fill      = solidFill(C_EMERALD);
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+          ws.getRow(rowIdx).height = height;
+        };
+
+        addMergedRow(isDaily ? "INSTITUTE DAILY SCHEDULE" : "CUSTOM SCHEDULE", 1, 40, 18, true);
+        addMergedRow("ABHIGYAN GURUKUL  |  " + dateLabel, 2, 26, 11, true);
+        addMergedRow(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 3, 18, 9, false, true);
+
+        ws.addRow([]);
+        ws.getRow(4).height = 6;
+
+        // Headers
+        const hdrRow = ws.addRow(["Class / Batch", ...visibleTimeSlots.map((s) => s.label)]);
+        hdrRow.height = 34;
+        hdrRow.eachCell({ includeEmpty: true }, (cell, col) => {
+          cell.font      = { bold: true, size: 10, color: { argb: C_TEXT_DARK }, name: "Calibri" };
+          cell.fill      = solidFill(C_EMERALD_LITE);
+          cell.alignment = { horizontal: col === 1 ? "left" : "center", vertical: "middle", wrapText: true };
+          cell.border    = borderThin;
+        });
+
+        ws.getColumn(1).width = 24;
+        visibleTimeSlots.forEach((_, i) => { ws.getColumn(i + 2).width = 26; });
+
+        // Data
+        const allRows = CLASS_LEVELS.flatMap((classLevel) => {
+          const cls = batches.filter((b) => b.classLevels.includes(classLevel));
+          return cls.length === 0
+            ? [{ classLevel, batchName: "" }]
+            : cls.map((b) => ({ classLevel, batchName: b.name }));
+        });
+
+        allRows.forEach(({ classLevel, batchName }) => {
+          const rowLabel = `Class ${classLevel}${batchName ? " — " + batchName : ""}`;
+          const dataRow  = ws.addRow([rowLabel, ...visibleTimeSlots.map(() => "")]);
+          dataRow.height = 56;
+
+          dataRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            cell.border = borderThin;
+            if (colNumber === 1) {
+              cell.font      = { bold: true, size: 10, color: { argb: C_TEXT_DARK } };
+              cell.fill      = solidFill(C_EMERALD_PALE);
+              cell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+            } else {
+              const slotStart = visibleTimeSlots[colNumber - 2]?.start;
+              const sch = customGrid[classLevel]?.[batchName]?.[slotStart];
+              if (sch) {
+                cell.value = {
+                  richText: [
+                    { text: sch.subject + "\n",               font: { bold: true, size: 11, color: { argb: C_EMERALD_DEEP } } },
+                    { text: (sch.teacherName || "TBA") + "\n",font: { size: 9, color: { argb: C_TEXT_MED } } },
+                    { text: "Room " + sch.roomNumber,         font: { size: 9, color: { argb: C_TEXT_LIGHT }, italic: true } },
+                  ],
+                };
+                cell.fill      = solidFill(C_EMERALD_PALE);
+                cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+              } else {
+                cell.value     = "";
+                cell.fill      = solidFill(C_WHITE);
+                cell.alignment = { horizontal: "center", vertical: "middle" };
+              }
+            }
+          });
+        });
+
+        const dateStr = customWeekStart.toISOString().split("T")[0];
+        const buf     = await wb.xlsx.writeBuffer();
+        const blob    = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        saveAs(blob, `Schedule_${isDaily ? "DailyView" : "Custom"}_${dateStr}.xlsx`);
+      }
+
+      toast.success("Schedule exported successfully");
+    } catch (e) {
+      console.error("Export failed:", e);
+      toast.error("Export failed. Please try again.");
     }
   };
 
@@ -946,7 +1201,17 @@ export default function ScheduleManagement() {
                 ))}
               </select>
             </div>
-            <div className="ml-auto flex items-end">
+            <div className="ml-auto flex items-end gap-3">
+              <button
+                onClick={exportToExcel}
+                className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm hover:shadow-md transition-all duration-200"
+                title="Export schedule as Excel"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Export Excel
+              </button>
               <button
                 onClick={() => {
                   resetForm();
@@ -1104,23 +1369,35 @@ export default function ScheduleManagement() {
               </button>
             </div>
 
-            <button
-              onClick={() => {
-                resetForm();
-                setFormData(prev => ({ 
-                  ...prev, 
-                  scheduleType: 'custom',
-                  date: customWeekStart.toISOString().split('T')[0]
-                }));
-                setIsModalOpen(true);
-              }}
-              className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg shadow-amber-500/30 hover:shadow-xl transition-all duration-200 hover:scale-105 w-full sm:w-auto justify-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Add Schedule
-            </button>
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <button
+                onClick={exportToExcel}
+                className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm hover:shadow-md transition-all duration-200"
+                title="Export schedule as Excel"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Export Excel
+              </button>
+              <button
+                onClick={() => {
+                  resetForm();
+                  setFormData(prev => ({
+                    ...prev,
+                    scheduleType: 'custom',
+                    date: customWeekStart.toISOString().split('T')[0]
+                  }));
+                  setIsModalOpen(true);
+                }}
+                className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg shadow-amber-500/30 hover:shadow-xl transition-all duration-200 hover:scale-105 w-full sm:w-auto justify-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Add Schedule
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
@@ -1260,49 +1537,14 @@ export default function ScheduleManagement() {
             </div>
 
             <button
-              onClick={() => {
-                // Generate CSV
-                try {
-                  const dateStr = customWeekStart.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-                  let csvContent = "data:text/csv;charset=utf-8,";
-                  csvContent += "Class,Batch," + visibleTimeSlots.map(t => t.label).join(",") + "\n";
-                  
-                  const customGrid = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
-                  
-                  CLASS_LEVELS.forEach(classLevel => {
-                    const classBatches = batches.filter(b => b.classLevels.includes(classLevel));
-                    const exportRows = classBatches.length > 0
-                      ? classBatches.map((batch) => ({ batchName: batch.name }))
-                      : [{ batchName: "" }];
-
-                    exportRows.forEach(({ batchName }) => {
-                      const row = [classLevel, batchName || "No batch"];
-                      visibleTimeSlots.forEach(slot => {
-                        const cell = customGrid[classLevel]?.[batchName]?.[slot.start];
-                        row.push(cell ? `"${cell.subject} (${cell.teacherName || cell.teacherId || 'TBA'})"` : "");
-                      });
-                      csvContent += row.join(",") + "\n";
-                    });
-                  });
-
-                  const encodedUri = encodeURI(csvContent);
-                  const link = document.createElement("a");
-                  link.setAttribute("href", encodedUri);
-                  link.setAttribute("download", `schedule_${dateStr}.csv`);
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                } catch(e) {
-                  console.error(e);
-                  alert("Failed to export schedule");
-                }
-              }}
-              className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm"
+              onClick={exportToExcel}
+              className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm hover:shadow-md transition-all duration-200"
+              title="Export as professional Excel file"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
               </svg>
-              Export CSV
+              Export Excel
             </button>
           </div>
 
@@ -1412,7 +1654,7 @@ export default function ScheduleManagement() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => { if (!submitting) setIsModalOpen(false); }}
               className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             />
             <motion.div
@@ -1431,6 +1673,15 @@ export default function ScheduleManagement() {
                 onSubmit={handleSubmit}
                 className="p-6 space-y-4 max-h-[70vh] overflow-y-auto"
               >
+                {/* Inline error banner */}
+                {formError && (
+                  <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                    <svg className="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-sm text-red-700 font-medium">{formError}</p>
+                  </div>
+                )}
                 {/* Title & Subject */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1500,30 +1751,37 @@ export default function ScheduleManagement() {
                         No batch for this class (class-level schedule)
                       </div>
                     ) : (
-                      <>
-                        <select
-                          multiple
-                          value={formData.batches}
-                          onChange={(e) => {
-                            const selected = Array.from(e.target.selectedOptions).map((option) => option.value);
-                            setFormData({
-                              ...formData,
-                              batches: selected,
-                              batch: selected[0] || "",
-                            });
-                          }}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-h-[110px]"
-                        >
-                          {getAvailableBatches(formData.classLevel).map((b) => (
-                            <option key={b._id} value={b.name}>
-                              {b.name}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-gray-400 mt-1">
-                          Hold Ctrl/Cmd to select multiple batches for one slot
-                        </p>
-                      </>
+                      <div className="border border-gray-200 rounded-lg overflow-hidden divide-y divide-gray-100 max-h-[160px] overflow-y-auto">
+                        {getAvailableBatches(formData.classLevel).map((b) => {
+                          const checked = formData.batches.includes(b.name);
+                          return (
+                            <label
+                              key={b._id}
+                              className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${checked ? "bg-emerald-50" : "hover:bg-gray-50"}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  const next = checked
+                                    ? formData.batches.filter((n) => n !== b.name)
+                                    : [...formData.batches, b.name];
+                                  setFormData({ ...formData, batches: next, batch: next[0] || "" });
+                                }}
+                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <span className={`text-sm font-medium ${checked ? "text-emerald-700" : "text-gray-700"}`}>
+                                {b.name}
+                              </span>
+                              {checked && (
+                                <svg className="w-4 h-4 text-emerald-500 ml-auto" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1858,25 +2116,38 @@ export default function ScheduleManagement() {
                 <div className="pt-4 flex gap-3">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50"
+                    disabled={submitting}
+                    onClick={() => { if (!submitting) setIsModalOpen(false); }}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </button>
                   {editingSchedule && (
                     <button
                       type="button"
+                      disabled={submitting}
                       onClick={() => handleDelete(editingSchedule._id)}
-                      className="px-4 py-2.5 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100"
+                      className="px-4 py-2.5 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Delete
                     </button>
                   )}
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 shadow-lg shadow-emerald-500/25"
+                    disabled={submitting}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 shadow-lg shadow-emerald-500/25 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    Save
+                    {submitting ? (
+                      <>
+                        <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        {editingSchedule ? "Saving..." : "Creating..."}
+                      </>
+                    ) : (
+                      editingSchedule ? "Save Changes" : "Create Schedule"
+                    )}
                   </button>
                 </div>
               </form>

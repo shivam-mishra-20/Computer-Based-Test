@@ -94,6 +94,7 @@ export default function AutomationDashboard() {
   const [selectedFolder, setSelectedFolder] = useState<FolderInfo | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [aiProvider, setAiProvider] = useState<'ollama' | 'gemini'>('ollama');
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const connectSSE = useCallback((token: string) => {
@@ -213,7 +214,7 @@ export default function AutomationDashboard() {
     } catch { setError('Failed to stop automation'); }
   };
 
-  const startProcessing = async (folderName: string, files: string[] = [], provider: 'ollama' | 'gemini' = 'ollama') => {
+  const startProcessing = async (folderName: string, files: string[] = [], provider: 'ollama' | 'gemini' = 'ollama', gModel?: string) => {
     try {
       const token = getToken();
       const uniqueFiles = Array.from(new Set(files.filter(Boolean)));
@@ -225,7 +226,7 @@ export default function AutomationDashboard() {
       const res = await fetch(`${API_BASE_URL}/api/automation/trigger`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: folderName, selectedFiles: uniqueFiles, aiProvider: provider }),
+        body: JSON.stringify({ folder: folderName, selectedFiles: uniqueFiles, aiProvider: provider, geminiModel: gModel }),
       });
 
       const data = await res.json();
@@ -235,7 +236,7 @@ export default function AutomationDashboard() {
         if (Array.isArray(data.selectedFiles) && data.selectedFiles.length > 0) {
           addLog(`Selected files: ${data.selectedFiles.length}`);
         }
-        addLog(provider === 'gemini' ? `AI: Google Gemini ${process.env.NEXT_PUBLIC_GEMINI_MODEL || 'gemini-2.0-flash'} (cloud)` : `AI: Ollama Qwen3:8b (local, JSON mode)`);
+        addLog(provider === 'gemini' ? `AI: Google Gemini ${gModel || 'gemini-2.5-flash'} (cloud)` : `AI: Ollama Qwen3:8b (local, JSON mode)`);
         startPolling();
       } else {
         addLog(`Failed to start: ${data.message}`);
@@ -657,10 +658,38 @@ export default function AutomationDashboard() {
                       <span className={`w-2 h-2 rounded-full shrink-0 ${aiProvider === 'gemini' ? 'bg-blue-500' : 'bg-gray-300'}`} />
                       <div>
                         <div className="text-sm font-semibold text-gray-900">Gemini (Cloud)</div>
-                        <div className="text-xs text-gray-500">gemini-2.0-flash · Google API</div>
+                        <div className="text-xs text-gray-500">{geminiModel} · Google API</div>
                       </div>
                     </button>
                   </div>
+
+                  {/* Gemini model selector — visible only when Gemini is selected */}
+                  {aiProvider === 'gemini' && (
+                    <div className="px-3 pb-3">
+                      <p className="text-xs text-gray-500 mb-1.5 font-medium">Gemini Model</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {[
+                          { id: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash',  tag: 'fast · low cost' },
+                          { id: 'gemini-2.5-pro',        label: 'Gemini 2.5 Pro',    tag: 'best quality' },
+                          { id: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash',  tag: 'stable' },
+                          { id: 'gemini-1.5-pro',        label: 'Gemini 1.5 Pro',    tag: 'legacy' },
+                        ].map(m => (
+                          <button
+                            key={m.id}
+                            onClick={() => setGeminiModel(m.id)}
+                            className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-all text-xs ${
+                              geminiModel === m.id
+                                ? 'border-blue-500 bg-blue-50 text-blue-800'
+                                : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50 text-gray-700'
+                            }`}
+                          >
+                            <span className="font-semibold">{m.label}</span>
+                            <span className={`text-[10px] mt-0.5 ${geminiModel === m.id ? 'text-blue-500' : 'text-gray-400'}`}>{m.tag}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {availableFolders.length > 0 ? (
@@ -779,7 +808,7 @@ export default function AutomationDashboard() {
                   onClick={() => {
                     if (!selectedFolder) return;
                     setShowModal(false);
-                    startProcessing(selectedFolder.name, selectedFiles, aiProvider);
+                    startProcessing(selectedFolder.name, selectedFiles, aiProvider, aiProvider === 'gemini' ? geminiModel : undefined);
                   }}
                   disabled={!selectedFolder || selectedFiles.length === 0}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40"
