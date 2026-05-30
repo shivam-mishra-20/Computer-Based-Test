@@ -124,11 +124,19 @@ export default function CoursesListPage() {
           >
             <option value="">All Subjects</option>
             <option value="Physics">Physics</option>
+            <option value="Science">Science</option>
             <option value="Chemistry">Chemistry</option>
             <option value="Mathematics">Mathematics</option>
             <option value="Biology">Biology</option>
             <option value="English">English</option>
             <option value="Hindi">Hindi</option>
+            <option value="Accounts">Accounts</option>
+            <option value="Economics">Economics</option>
+            <option value="Business Studies">Business Studies</option>
+            <option value="History">History</option>
+            <option value="Geography">Geography</option>
+            <option value="Civics">Civics</option>
+
           </select>
           <select
             value={filterStatus}
@@ -151,15 +159,26 @@ export default function CoursesListPage() {
               Clear filters
             </button>
           )}
-          <button
-            onClick={() => router.push("/dashboard/admin/app-management/courses/new")}
-            className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition flex items-center gap-2 whitespace-nowrap"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Course
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => router.push("/dashboard/admin/app-management/courses/import-playlist")}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 transition flex items-center gap-2 whitespace-nowrap"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+              </svg>
+              Import Playlist
+            </button>
+            <button
+              onClick={() => router.push("/dashboard/admin/app-management/courses/new")}
+              className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition flex items-center gap-2 whitespace-nowrap"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Course
+            </button>
+          </div>
         </div>
 
         {/* Stats */}

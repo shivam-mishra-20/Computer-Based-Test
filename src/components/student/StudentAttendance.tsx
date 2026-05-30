@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
-import { getUser } from '@/lib/auth';
 import { FaCalendarAlt, FaClock, FaChevronLeft, FaChevronRight, FaFilter } from 'react-icons/fa';
 
 interface AttendanceEntry {
@@ -31,14 +30,12 @@ export default function StudentAttendance() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceEntry[]>([]);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear] = useState(new Date().getFullYear());
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [studentSort, setStudentSort] = useState<'latest' | 'oldest'>('latest');
   const recordsPerPage = 10;
   
-  const user = getUser();
-
   useEffect(() => {
     const loadAttendance = async () => {
       try {

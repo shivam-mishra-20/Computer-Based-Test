@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
 import Protected from "../Protected";
@@ -826,11 +827,14 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                           {/* Diagram Image */}
                           {currentQuestion?.diagramUrl && (
                             <div className="mt-3">
-                              <img
+                              <Image
                                 src={currentQuestion.diagramUrl}
                                 alt="Diagram"
+                                width={384}
+                                height={192}
                                 className="max-w-sm h-auto max-h-48 object-contain rounded"
                                 referrerPolicy="no-referrer"
+                                sizes="(max-width: 768px) 100vw, 384px"
                               />
                             </div>
                           )}

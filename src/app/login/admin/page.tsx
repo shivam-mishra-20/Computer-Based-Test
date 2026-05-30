@@ -154,9 +154,10 @@ export default function AdminLoginPage() {
           className="mt-6 text-center text-xs text-slate-500"
           variants={itemVariants}
         >
-          <p>© 2025 Abhigyan Gurukul Exam Portal</p>
+          <p>© 2026 Abhigyan Gurukull Exam Portal</p>
         </motion.div>
       </motion.div>
     </main>
   );
 }
+

@@ -213,9 +213,10 @@ export default function LoginPage() {
           variants={itemVariants}
           transition={{ delay: 0.5 }}
         >
-          <p>© 2025 Abhigyan Gurukul Exam Portal</p>
+          <p>© 2026 Abhigyan Gurukull Exam Portal</p>
         </motion.div>
       </motion.div>
     </main>
   );
 }
+

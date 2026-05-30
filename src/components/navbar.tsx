@@ -414,7 +414,7 @@ export default function Navbar() {
             <div className="relative overflow-hidden rounded-xl w-12 h-12 flex items-center justify-center bg-gradient-to-br from-green-600 to-emerald-700 shadow-lg shadow-green-500/25 transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl group-hover:shadow-green-500/35">
               <Image
                 src="/logo.png"
-                alt="Abhigyan Gurukul"
+                alt="Abhigyan Gurukull"
                 width={48}
                 height={48}
                 className="object-cover rounded-xl"
@@ -422,7 +422,7 @@ export default function Navbar() {
             </div>
             <div className="flex flex-col">
               <span className="font-bold text-lg hidden sm:block bg-gradient-to-r from-gray-900 to-green-800 bg-clip-text text-transparent">
-                Abhigyan Gurukul
+                Abhigyan Gurukull
               </span>
               <span className="text-xs text-gray-600 hidden sm:block font-medium">
                 Tree of Knowledge
@@ -564,3 +564,4 @@ export default function Navbar() {
     </nav>
   );
 }
+

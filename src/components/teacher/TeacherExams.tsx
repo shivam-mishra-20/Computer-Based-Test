@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
@@ -34,7 +35,7 @@ export default function TeacherExams() {
   const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [editingExam, setEditingExam] = useState<Exam | null>(null);
+  const [editingExam] = useState<Exam | null>(null);
   const [sectionDrafts, setSectionDrafts] = useState<ExamSectionDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [classLevel, setClassLevel] = useState<string>("");
@@ -1632,11 +1633,13 @@ const QuestionPicker: React.FC<QuestionPickerProps> = ({
                     
                     {/* Diagram if present */}
                     {question.diagramUrl && (
-                      <img
+                      <Image
                         src={question.diagramUrl.startsWith("http") ? question.diagramUrl : `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}${question.diagramUrl}`}
                         alt="Diagram"
+                        width={200}
+                        height={140}
                         className="mt-2 max-w-[200px] h-auto rounded border"
-                        loading="lazy"
+                        sizes="200px"
                       />
                     )}
                     

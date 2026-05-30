@@ -146,7 +146,7 @@ export default function Home() {
               <div className="h-24 w-24 rounded-full overflow-hidden bg-gradient-to-br from-white to-gray-50 shadow-lg ring-4 ring-white/50">
                 <Image
                   src="/logo.png"
-                  alt="Abhigyan Gurukul Logo"
+                  alt="Abhigyan Gurukull Logo"
                   width={96}
                   height={96}
                   className="h-full w-full object-cover rounded-full"
@@ -160,7 +160,7 @@ export default function Home() {
                 className="text-3xl md:text-4xl font-bold mb-3 bg-gradient-to-r from-gray-800 via-green-700 to-emerald-600 bg-clip-text text-transparent leading-tight"
                 variants={itemVariants}
               >
-                Abhigyan Gurukul
+                Abhigyan Gurukull
                 <br />
                 <span className="text-2xl md:text-3xl">Exam Portal</span>
               </motion.h1>
@@ -336,10 +336,11 @@ export default function Home() {
             whileHover={{ scale: 1.05 }}
             transition={{ type: "spring", stiffness: 400, damping: 17 }}
           >
-            © 2025 Abhigyan Gurukul Exam Portal | All Rights Reserved
+            © 2026 Abhigyan Gurukull Exam Portal | All Rights Reserved
           </motion.p>
         </motion.footer>
       </motion.div>
     </main>
   );
 }
+

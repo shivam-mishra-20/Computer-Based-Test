@@ -385,7 +385,7 @@ export default function CreateExamFlow() {
                   type="text"
                   value={examTitle}
                   onChange={(e) => setExamTitle(e.target.value)}
-                  placeholder="e.g., Mid-Term Exam 2025"
+                  placeholder="e.g., Mid-Term Exam 2026"
                   className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base transition-all"
                   required
                 />

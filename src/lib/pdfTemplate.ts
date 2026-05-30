@@ -190,9 +190,9 @@ export function renderPaperHtml(
     </style>
   </head>
   <body>
-  <div class="watermark">ABHIGYAN GURUKUL</div>
+  <div class="watermark">Abhigyan Gurukull</div>
     <div class="container">
-      <div class="first-page-heading">Abhigyan Gurukul</div>
+      <div class="first-page-heading">Abhigyan Gurukull</div>
       ${paper.examTitle ? `<h1>${escapeHtml(paper.examTitle)}</h1>` : ""}
       ${paper.subject ? `<div class="subject">Subject: ${escapeHtml(paper.subject)}</div>` : ""}
       ${(paper.totalMarks || paper.durationMins) ? `<div class="subject">${paper.totalMarks ? `Total Marks: ${escapeHtml(paper.totalMarks)}` : ''}${paper.totalMarks && paper.durationMins ? ' | ' : ''}${paper.durationMins ? `Time: ${escapeHtml(paper.durationMins)} mins` : ''}</div>` : ''}
@@ -234,3 +234,4 @@ export function renderPaperHtml(
   </body>
   </html>`;
 }
+

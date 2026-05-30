@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
 
@@ -334,11 +335,14 @@ export default function TeacherDoubts() {
                     <p className="text-sm font-medium text-gray-500 mb-2">Attached Images</p>
                     <div className="grid grid-cols-2 gap-2">
                       {selectedDoubt.images.map((img, i) => (
-                        <img
+                        <Image
                           key={i}
                           src={img}
                           alt={`Attachment ${i + 1}`}
+                          width={320}
+                          height={160}
                           className="rounded-lg border border-gray-200 w-full h-40 object-cover"
+                          sizes="(max-width: 768px) 100vw, 50vw"
                         />
                       ))}
                     </div>

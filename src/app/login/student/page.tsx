@@ -154,9 +154,10 @@ export default function StudentLoginPage() {
           className="mt-6 text-center text-xs text-blue-500/70"
           variants={itemVariants}
         >
-          <p>© 2025 Abhigyan Gurukul Exam Portal</p>
+          <p>© 2026 Abhigyan Gurukull Exam Portal</p>
         </motion.div>
       </motion.div>
     </main>
   );
 }
+

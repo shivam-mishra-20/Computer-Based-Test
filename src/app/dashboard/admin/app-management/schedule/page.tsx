@@ -862,7 +862,7 @@ export default function ScheduleManagement() {
       const { saveAs } = await import("file-saver");
 
       const wb = new ExcelJS.Workbook();
-      wb.creator = "Abhigyan Gurukul";
+      wb.creator = "Abhigyan Gurukull";
       wb.created = new Date();
 
       const C_EMERALD      = "FF059669";
@@ -914,7 +914,7 @@ export default function ScheduleManagement() {
           ws.getRow(rowIdx).height = height;
         };
 
-        addMergedTitle("ABHIGYAN GURUKUL", 1, 42, 20, true);
+        addMergedTitle("Abhigyan Gurukull", 1, 42, 20, true);
         addMergedTitle("WEEKLY CLASS TIMETABLE", 2, 26, 13, true);
         const filterLabel = `Class ${filterClass}${filterBatch ? "  |  Batch: " + filterBatch : ""}  |  Generated: ${new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`;
         addMergedTitle(filterLabel, 3, 20, 10, false, true);
@@ -1004,7 +1004,7 @@ export default function ScheduleManagement() {
         };
 
         addMergedRow(isDaily ? "INSTITUTE DAILY SCHEDULE" : "CUSTOM SCHEDULE", 1, 40, 18, true);
-        addMergedRow("ABHIGYAN GURUKUL  |  " + dateLabel, 2, 26, 11, true);
+        addMergedRow("Abhigyan Gurukull  |  " + dateLabel, 2, 26, 11, true);
         addMergedRow(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 3, 18, 9, false, true);
 
         ws.addRow([]);
@@ -2159,4 +2159,5 @@ export default function ScheduleManagement() {
   );
 }
 // ... (loadInitialData is unchanged)
+
 
