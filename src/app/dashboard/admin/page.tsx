@@ -28,6 +28,7 @@ const TABS = [
   "papers",
   "smart-import",
   "automation",
+  "questml",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -44,6 +45,7 @@ const tabLabels: Record<Tab, string> = {
   papers: "Question Papers",
   "smart-import": "Smart Import",
   automation: "EPUB Automation",
+  questml: "QuestMl Ingest",
 };
 
 // Get icon for each tab
@@ -214,6 +216,23 @@ const getTabIcon = (tab: Tab) => {
           />
         </svg>
       );
+    case "questml":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M13 10V3L4 14h7v7l9-11h-7z"
+          />
+        </svg>
+      );
   }
 };
 
@@ -290,6 +309,13 @@ export default function AdminDashboardPage() {
         { ssr: false }
       );
       content = <AutomationDashboard />;
+      break;
+    case "questml":
+      const QuestMlDashboard = dynamic(
+        () => import('@/components/admin/QuestMlDashboard'),
+        { ssr: false }
+      );
+      content = <QuestMlDashboard />;
       break;
   }
 
