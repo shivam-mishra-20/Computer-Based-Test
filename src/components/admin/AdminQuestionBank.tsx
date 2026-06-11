@@ -372,6 +372,14 @@ interface Question {
   correctAnswerText?: string;
   assertion?: string;
   reason?: string;
+  assertionIsTrue?: boolean;
+  reasonIsTrue?: boolean;
+  reasonExplainsAssertion?: boolean;
+  integerAnswer?: number;
+  isPYQ?: boolean;
+  pyqYear?: number;
+  pyqExam?: string;
+  pyqShift?: string;
   diagramUrl?: string;
   // Rich diagram and table data (from PDF extraction)
   diagram?: {
@@ -389,23 +397,27 @@ interface Question {
   class?: string;
   // Support both old and new source values
   source?:
-    | "Manual"
-    | "Smart Import"
-    | "AI"
-    | "Upload"
-    | "manual"
-    | "imported"
-    | "ai-generated";
+  | "Manual"
+  | "Smart Import"
+  | "AI"
+  | "Upload"
+  | "manual"
+  | "imported"
+  | "ai-generated";
   createdAt?: string;
   updatedAt?: string;
 }
 
 type Draft = Omit<Question, "_id"> & { _id?: string };
 
-const emptyDraft = (): Draft => ({
+const emptyDraft = (sticky?: Partial<Draft>): Draft => ({
   text: "",
-  type: "mcq",
-  tags: { subject: "", topic: "", difficulty: "medium", chapter: "" },
+  type: sticky?.type ?? "mcq",
+  tags: { subject: sticky?.subject ?? "", topic: sticky?.topic ?? "", difficulty: sticky?.difficulty ?? "medium", chapter: sticky?.chapter ?? "" },
+  subject: sticky?.subject ?? "",
+  topic: sticky?.topic ?? "",
+  chapter: sticky?.chapter ?? "",
+  difficulty: sticky?.difficulty ?? "medium",
   options: [
     { text: "", isCorrect: false },
     { text: "", isCorrect: false },
@@ -414,12 +426,17 @@ const emptyDraft = (): Draft => ({
   ],
   explanation: "",
   correctAnswerText: "",
+  integerAnswer: undefined,
   diagramUrl: "",
-  class: "",
-  board: "",
-  section: "",
-  marks: undefined,
-  source: "Manual",
+  class: sticky?.class ?? "",
+  board: sticky?.board ?? "",
+  section: sticky?.section ?? "",
+  marks: sticky?.marks ?? undefined,
+  source: sticky?.source ?? "Manual",
+  isPYQ: false,
+  pyqYear: undefined,
+  pyqExam: "",
+  pyqShift: "",
 });
 
 const difficultyColors = {
@@ -489,6 +506,9 @@ export default function AdminQuestionBank() {
     hasImage: "",
     hasExplanation: "",
     chapter: "",
+    isPYQ: "",
+    pyqYear: "",
+    pyqExam: "",
   });
 
   // AI Solve state
@@ -521,6 +541,8 @@ export default function AdminQuestionBank() {
     chapters: string[];
     boards: string[];
     sources: string[];
+    pyqYears: string[];
+    pyqExams: string[];
   }>({
     types: [],
     subjects: [],
@@ -528,6 +550,8 @@ export default function AdminQuestionBank() {
     chapters: [],
     boards: [],
     sources: [],
+    pyqYears: [],
+    pyqExams: [],
   });
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -540,6 +564,10 @@ export default function AdminQuestionBank() {
     subject?: string; topic?: string; chapter?: string; difficulty?: string; board?: string;
   }>({});
   const [bulkUpdating, setBulkUpdating] = useState(false);
+
+  // Sticky metadata — persists across new-question opens for rapid batch entry
+  const [stickyMeta, setStickyMeta] = useState<Partial<Draft>>({});
+  const addAnotherRef = useRef(false);
 
   // Ref to abort stale question-list fetches
   const loadAbortRef = useRef<AbortController | null>(null);
@@ -567,6 +595,9 @@ export default function AdminQuestionBank() {
       if (filters.hasCorrectAnswer) queryParams.append("hasCorrectAnswer", filters.hasCorrectAnswer);
       if (filters.hasImage) queryParams.append("hasImage", filters.hasImage);
       if (filters.hasExplanation) queryParams.append("hasExplanation", filters.hasExplanation);
+      if (filters.isPYQ) queryParams.append("isPYQ", filters.isPYQ);
+      if (filters.pyqYear) queryParams.append("pyqYear", filters.pyqYear);
+      if (filters.pyqExam) queryParams.append("pyqExam", filters.pyqExam);
 
       const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
       const url = `${base}/ai/questions/class/${selectedClass}?${queryParams.toString()}`;
@@ -596,8 +627,10 @@ export default function AdminQuestionBank() {
             subject?: string; topic?: string; difficulty?: string;
             chapter?: string; board?: string; section?: string; marks?: number;
             options?: Question["options"]; explanation?: string; solutionText?: string;
-            correctAnswerText?: string; assertion?: string; reason?: string;
+            correctAnswerText?: string; integerAnswer?: number; assertion?: string; reason?: string;
+            assertionIsTrue?: boolean; reasonIsTrue?: boolean; reasonExplainsAssertion?: boolean;
             diagramUrl?: string; source?: string; createdAt?: string; updatedAt?: string;
+            isPYQ?: boolean; pyqYear?: number; pyqExam?: string; pyqShift?: string;
           }>;
           total: number; page: number; totalPages: number; class: string;
         };
@@ -621,11 +654,19 @@ export default function AdminQuestionBank() {
         options: q.options,
         explanation: q.explanation || q.solutionText,
         correctAnswerText: q.correctAnswerText,
+        integerAnswer: q.integerAnswer,
         assertion: q.assertion,
         reason: q.reason,
+        assertionIsTrue: q.assertionIsTrue,
+        reasonIsTrue: q.reasonIsTrue,
+        reasonExplainsAssertion: q.reasonExplainsAssertion,
+        isPYQ: q.isPYQ,
+        pyqYear: q.pyqYear,
+        pyqExam: q.pyqExam,
+        pyqShift: q.pyqShift,
         diagramUrl: q.diagramUrl,
-        diagram:    (q as Record<string, unknown>).diagram as Question["diagram"],
-        tableData:  (q as Record<string, unknown>).tableData as Question["tableData"],
+        diagram: (q as Record<string, unknown>).diagram as Question["diagram"],
+        tableData: (q as Record<string, unknown>).tableData as Question["tableData"],
         class: selectedClass,
         source: q.source as Question["source"],
         createdAt: q.createdAt,
@@ -663,7 +704,7 @@ export default function AdminQuestionBank() {
           headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           credentials: "include",
         });
-        const data = (await res.json()) as { success: boolean; data: { subjects: string[]; boards: string[]; chapters: string[]; topics: string[]; sources: string[]; types: string[] } };
+        const data = (await res.json()) as { success: boolean; data: { subjects: string[]; boards: string[]; chapters: string[]; topics: string[]; sources: string[]; types: string[]; pyqYears?: number[]; pyqExams?: string[] } };
         if (data.success) {
           setFilterOptions(prev => ({
             ...prev,
@@ -673,6 +714,8 @@ export default function AdminQuestionBank() {
             topics: (data.data.topics || []).filter(Boolean).sort(),
             sources: (data.data.sources || []).filter(Boolean).sort(),
             types: (data.data.types || []).filter(Boolean).sort(),
+            pyqYears: (data.data.pyqYears || []).map(String),
+            pyqExams: (data.data.pyqExams || []).filter(Boolean).sort(),
           }));
         }
       } catch (e) { console.error("fetchSubjects error", e); }
@@ -719,7 +762,8 @@ export default function AdminQuestionBank() {
   const paginatedQuestions = questions;
 
   function onCreate() {
-    setDraft(emptyDraft());
+    addAnotherRef.current = false;
+    setDraft(emptyDraft(stickyMeta));
     setOriginalDraftMeta({});
     setModalTab("basic");
     setOpen(true);
@@ -739,6 +783,10 @@ export default function AdminQuestionBank() {
       topic: top,
       chapter: ch,
       difficulty: diff,
+      isPYQ: q.isPYQ ?? false,
+      pyqYear: q.pyqYear,
+      pyqExam: q.pyqExam ?? "",
+      pyqShift: q.pyqShift ?? "",
     });
     setModalTab("basic");
     setOpen(true);
@@ -802,9 +850,8 @@ export default function AdminQuestionBank() {
           const resp = await fetch(`${base}/uploads/image`, {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${
-                localStorage.getItem("accessToken") || ""
-              }`,
+              Authorization: `Bearer ${localStorage.getItem("accessToken") || ""
+                }`,
             },
             body: formData,
           });
@@ -820,11 +867,18 @@ export default function AdminQuestionBank() {
         }
       }
 
+      // Map FE source values → canonical BE enum values
+      const sourceMap: Record<string, string> = {
+        manual: 'Manual', Manual: 'Manual',
+        imported: 'Smart Import', 'Smart Import': 'Smart Import',
+        'ai-generated': 'AI', AI: 'AI',
+        Upload: 'Upload',
+      };
+
       const payload = {
         ...draft,
         diagramUrl,
-        // Include metadata fields
-        class: draft.class || selectedClass, // Use selected class if not set
+        class: draft.class || selectedClass,
         board: draft.board || undefined,
         section: draft.section || undefined,
         marks: draft.marks || undefined,
@@ -832,26 +886,35 @@ export default function AdminQuestionBank() {
         topic: draft.topic || draft.tags?.topic,
         chapter: draft.chapter || draft.tags?.chapter,
         difficulty: draft.difficulty || draft.tags?.difficulty,
+        source: sourceMap[draft.source || 'Manual'] || 'Manual',
+        integerAnswer: draft.integerAnswer,
+        isPYQ: draft.isPYQ ?? false,
+        pyqYear: draft.isPYQ ? draft.pyqYear : undefined,
+        pyqExam: draft.isPYQ ? (draft.pyqExam || undefined) : undefined,
+        pyqShift: draft.isPYQ ? (draft.pyqShift || undefined) : undefined,
       };
 
       const questionClass = draft.class || selectedClass;
 
+      // Capture meta for sticky reuse
+      const newSticky: Partial<Draft> = {
+        subject: payload.subject, topic: payload.topic, chapter: payload.chapter,
+        difficulty: payload.difficulty, board: payload.board, class: payload.class,
+        marks: payload.marks, section: payload.section, source: payload.source as Draft['source'],
+      };
+
       if (draft._id) {
-        // Use class-based update endpoint
         const response = (await apiFetch(
           `/ai/questions/class/${questionClass}/${draft._id}`,
-          {
-            method: "PUT",
-            body: JSON.stringify(payload),
-          }
+          { method: "PUT", body: JSON.stringify(payload) }
         )) as { success: boolean };
 
-        if (!response.success) {
-          throw new Error("Failed to update question");
-        }
+        if (!response.success) throw new Error("Failed to update question");
         notify.success("Question updated");
+        setStickyMeta(newSticky);
+        setOpen(false);
+        await load();
       } else {
-        // Use save-questions endpoint for new questions
         const response = (await apiFetch(`/ai/save-questions`, {
           method: "POST",
           body: JSON.stringify({ questions: [payload] }),
@@ -860,10 +923,23 @@ export default function AdminQuestionBank() {
         if (!response.success || response.data.saved === 0) {
           throw new Error("Failed to create question");
         }
-        notify.success("Question created");
+
+        setStickyMeta(newSticky);
+
+        if (addAnotherRef.current) {
+          // Stay open with sticky meta pre-filled, clear text only
+          setDraft(emptyDraft(newSticky));
+          setOriginalDraftMeta({});
+          setModalTab("basic");
+          notify.success("Question saved — ready for next one");
+        } else {
+          notify.success("Question created");
+          setOpen(false);
+          await load();
+        }
+        addAnotherRef.current = false;
+        await load();
       }
-      setOpen(false);
-      await load();
     } catch (e) {
       notify.error((e as Error).message || "Save failed");
     } finally {
@@ -1031,8 +1107,8 @@ export default function AdminQuestionBank() {
                   : undefined,
               correctAnswerText:
                 typeof ai?.correctOptionIndex === "number" &&
-                original.options &&
-                original.options[ai.correctOptionIndex]
+                  original.options &&
+                  original.options[ai.correctOptionIndex]
                   ? original.options[ai.correctOptionIndex].text
                   : undefined,
               explanation: ai?.explanation ?? "",
@@ -1185,6 +1261,9 @@ export default function AdminQuestionBank() {
       hasImage: "",
       hasExplanation: "",
       chapter: "",
+      isPYQ: "",
+      pyqYear: "",
+      pyqExam: "",
     });
     setQuery("");
     setCurrentPage(1);
@@ -1199,6 +1278,19 @@ export default function AdminQuestionBank() {
     }
     return !!q.correctAnswerText;
   }
+
+  // Ctrl+Enter to save while modal is open
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        saveDraft(e as unknown as React.FormEvent);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, saveDraft]);
 
   return (
     <motion.div
@@ -1286,21 +1378,19 @@ export default function AdminQuestionBank() {
                 whileHover={{ scale: 1.03, y: -1 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => setShowFilters(!showFilters)}
-                className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl border-2 text-sm font-semibold flex items-center gap-1.5 sm:gap-2 transition-all shadow-sm ${
-                  showFilters
+                className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl border-2 text-sm font-semibold flex items-center gap-1.5 sm:gap-2 transition-all shadow-sm ${showFilters
                     ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-lg shadow-blue-500/30"
                     : "bg-white text-gray-700 border-gray-200 hover:border-blue-400 hover:shadow-md"
-                }`}
+                  }`}
               >
                 <Filter className="w-4 h-4" />
                 <span className="hidden xs:inline">Filters</span>
                 {activeFilterCount > 0 && (
                   <span
-                    className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                      showFilters
+                    className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${showFilters
                         ? "bg-white/20 text-white"
                         : "bg-blue-100 text-blue-700"
-                    }`}
+                      }`}
                   >
                     {activeFilterCount}
                   </span>
@@ -1447,11 +1537,11 @@ export default function AdminQuestionBank() {
                     options={filterOptions.sources.length > 0
                       ? filterOptions.sources.map(s => ({ value: s, label: s }))
                       : [
-                          { value: "Manual", label: "Manual" },
-                          { value: "Smart Import", label: "Smart Import" },
-                          { value: "AI", label: "AI" },
-                          { value: "Upload", label: "Upload" },
-                        ]
+                        { value: "Manual", label: "Manual" },
+                        { value: "Smart Import", label: "Smart Import" },
+                        { value: "AI", label: "AI" },
+                        { value: "Upload", label: "Upload" },
+                      ]
                     }
                   />
                   <FilterSelect
@@ -1487,6 +1577,41 @@ export default function AdminQuestionBank() {
                       { value: "no", label: "— Without Explanation" },
                     ]}
                   />
+                  <FilterSelect
+                    label="PYQ"
+                    icon={<GraduationCap className="w-3 h-3" />}
+                    value={filters.isPYQ}
+                    onChange={v => {
+                      setFilter("isPYQ", v);
+                      if (!v) { setFilter("pyqYear", ""); setFilter("pyqExam", ""); }
+                    }}
+                    placeholder="All Questions"
+                    options={[{ value: "true", label: "⭐ Previous Year Questions" }]}
+                  />
+                  <FilterSelect
+                    label="PYQ Year"
+                    icon={<GraduationCap className="w-3 h-3" />}
+                    value={filters.pyqYear}
+                    onChange={v => { setFilter("pyqYear", v); if (v) setFilter("isPYQ", "true"); }}
+                    placeholder="Any Year"
+                    searchable
+                    options={filterOptions.pyqYears.length > 0
+                      ? filterOptions.pyqYears.map(y => ({ value: y, label: y }))
+                      : Array.from({ length: new Date().getFullYear() - 1989 }, (_, i) => String(new Date().getFullYear() - i)).map(y => ({ value: y, label: y }))
+                    }
+                  />
+                  <FilterSelect
+                    label="PYQ Exam"
+                    icon={<GraduationCap className="w-3 h-3" />}
+                    value={filters.pyqExam}
+                    onChange={v => { setFilter("pyqExam", v); if (v) setFilter("isPYQ", "true"); }}
+                    placeholder="Any Exam"
+                    searchable
+                    options={filterOptions.pyqExams.length > 0
+                      ? filterOptions.pyqExams.map(e => ({ value: e, label: e }))
+                      : ["JEE Main","JEE Advanced","NEET","CBSE Board","ICSE Board","Olympiad"].map(e => ({ value: e, label: e }))
+                    }
+                  />
                 </div>
 
                 {/* Active filter chips + clear */}
@@ -1503,6 +1628,9 @@ export default function AdminQuestionBank() {
                     {filters.hasCorrectAnswer && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-medium">Answer: {filters.hasCorrectAnswer === "yes" ? "With" : "Without"}<button onClick={() => setFilter("hasCorrectAnswer", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
                     {filters.hasImage && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 text-sky-700 border border-sky-200 rounded-full text-xs font-medium">Diagram: {filters.hasImage === "yes" ? "With" : "Without"}<button onClick={() => setFilter("hasImage", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
                     {filters.hasExplanation && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full text-xs font-medium">Explanation: {filters.hasExplanation === "yes" ? "With" : "Without"}<button onClick={() => setFilter("hasExplanation", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.isPYQ && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-medium">⭐ PYQ Only<button onClick={() => { setFilter("isPYQ", ""); setFilter("pyqYear", ""); setFilter("pyqExam", ""); }}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.pyqYear && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-medium">Year: {filters.pyqYear}<button onClick={() => setFilter("pyqYear", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
+                    {filters.pyqExam && <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-medium">{filters.pyqExam}<button onClick={() => setFilter("pyqExam", "")}><X className="w-3 h-3 ml-0.5" /></button></span>}
                     <button onClick={clearFilters} className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1 hover:bg-red-50 px-2.5 py-1 rounded-full border border-red-200 transition-all">
                       <XCircle className="w-3.5 h-3.5" /> Clear all
                     </button>
@@ -1679,12 +1807,11 @@ export default function AdminQuestionBank() {
                           </td>
                           <td className="px-6 py-4 hidden lg:table-cell">
                             <span
-                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${
-                                sourceColors[
-                                  (q.source ||
-                                    "manual") as keyof typeof sourceColors
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${sourceColors[
+                                (q.source ||
+                                  "manual") as keyof typeof sourceColors
                                 ]
-                              }`}
+                                }`}
                             >
                               {q.source === "ai-generated" && (
                                 <Sparkles className="w-3 h-3 mr-1" />
@@ -1701,13 +1828,12 @@ export default function AdminQuestionBank() {
                           <td className="px-6 py-4">
                             <div className="flex flex-col gap-1">
                               <span
-                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${
-                                  difficultyColors[
-                                    (q.tags
-                                      ?.difficulty as keyof typeof difficultyColors) ||
-                                      "medium"
+                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border whitespace-nowrap ${difficultyColors[
+                                  (q.tags
+                                    ?.difficulty as keyof typeof difficultyColors) ||
+                                  "medium"
                                   ]
-                                }`}
+                                  }`}
                               >
                                 {q.tags?.difficulty || "medium"}
                               </span>
@@ -1834,11 +1960,10 @@ export default function AdminQuestionBank() {
                                         {q.options.map((opt, idx) => (
                                           <div
                                             key={idx}
-                                            className={`p-2 rounded-lg border ${
-                                              opt.isCorrect
+                                            className={`p-2 rounded-lg border ${opt.isCorrect
                                                 ? "border-green-300 bg-green-50"
                                                 : "border-gray-200"
-                                            }`}
+                                              }`}
                                           >
                                             <div className="flex items-start gap-2">
                                               {opt.isCorrect && (
@@ -1898,8 +2023,8 @@ export default function AdminQuestionBank() {
                                     Created:{" "}
                                     {q.createdAt
                                       ? new Date(
-                                          q.createdAt
-                                        ).toLocaleDateString()
+                                        q.createdAt
+                                      ).toLocaleDateString()
                                       : "N/A"}
                                     {q.updatedAt && (
                                       <>
@@ -2026,11 +2151,10 @@ export default function AdminQuestionBank() {
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
                           onClick={() => setCurrentPage(pageNum)}
-                          className={`min-w-[36px] h-9 rounded-lg text-sm font-medium transition-all ${
-                            currentPage === pageNum
+                          className={`min-w-[36px] h-9 rounded-lg text-sm font-medium transition-all ${currentPage === pageNum
                               ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30"
                               : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-blue-300"
-                          }`}
+                            }`}
                         >
                           {pageNum}
                         </motion.button>
@@ -2177,11 +2301,10 @@ export default function AdminQuestionBank() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className={`border-2 rounded-xl p-3 md:p-4 transition-all ${
-                    data.selected
+                  className={`border-2 rounded-xl p-3 md:p-4 transition-all ${data.selected
                       ? "border-purple-500 bg-purple-50/30"
                       : "border-gray-200 bg-white"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-start gap-2 md:gap-4">
                     <div className="pt-1 flex-shrink-0">
@@ -2207,13 +2330,12 @@ export default function AdminQuestionBank() {
                             {data.original.type}
                           </span>
                           <span
-                            className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                              data.aiResult.confidence === "high"
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium ${data.aiResult.confidence === "high"
                                 ? "bg-green-100 text-green-700"
                                 : data.aiResult.confidence === "medium"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : "bg-red-100 text-red-700"
-                            }`}
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : "bg-red-100 text-red-700"
+                              }`}
                           >
                             {data.aiResult.confidence} confidence
                           </span>
@@ -2224,17 +2346,16 @@ export default function AdminQuestionBank() {
 
                         {/* MCQ Options Display */}
                         {data.original.options &&
-                        data.original.options.length > 0 &&
-                        data.aiResult.correctOptionIndex !== undefined ? (
+                          data.original.options.length > 0 &&
+                          data.aiResult.correctOptionIndex !== undefined ? (
                           <div className="space-y-2">
                             {data.original.options.map((opt, optIdx) => (
                               <div
                                 key={optIdx}
-                                className={`p-2 md:p-3 rounded-lg text-xs md:text-sm border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 ${
-                                  optIdx === data.aiResult.correctOptionIndex
+                                className={`p-2 md:p-3 rounded-lg text-xs md:text-sm border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 ${optIdx === data.aiResult.correctOptionIndex
                                     ? "bg-green-100 border-green-300 text-green-800 font-medium"
                                     : "bg-gray-50 border-gray-200 text-gray-600"
-                                }`}
+                                  }`}
                               >
                                 <div className="flex items-start gap-2 min-w-0">
                                   <span className="w-5 h-5 md:w-6 md:h-6 rounded-full bg-white flex items-center justify-center text-xs border font-bold flex-shrink-0">
@@ -2246,13 +2367,13 @@ export default function AdminQuestionBank() {
                                 </div>
                                 {optIdx ===
                                   data.aiResult.correctOptionIndex && (
-                                  <span className="flex items-center gap-1 text-xs bg-green-200 px-2 py-1 rounded-full text-green-800 whitespace-nowrap flex-shrink-0 self-start sm:self-auto">
-                                    <Sparkles className="w-3 h-3" />
-                                    <span className="hidden sm:inline">
-                                      AI Choice
+                                    <span className="flex items-center gap-1 text-xs bg-green-200 px-2 py-1 rounded-full text-green-800 whitespace-nowrap flex-shrink-0 self-start sm:self-auto">
+                                      <Sparkles className="w-3 h-3" />
+                                      <span className="hidden sm:inline">
+                                        AI Choice
+                                      </span>
                                     </span>
-                                  </span>
-                                )}
+                                  )}
                               </div>
                             ))}
                           </div>
@@ -2318,39 +2439,46 @@ export default function AdminQuestionBank() {
         onOpenChange={setOpen}
         wide
         footer={
-          <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200 flex-wrap gap-2">
             <div className="text-xs text-gray-500">
-              {draft._id ? `Editing question ID: ${draft._id}` : "New question"}
+              {draft._id ? `Editing ID: ${draft._id}` : "New question • Ctrl+Enter to save"}
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2 flex-wrap">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setOpen(false)}
-                className="px-6 py-2.5 rounded-xl border-2 border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:border-gray-400 transition-all"
+                className="px-5 py-2.5 rounded-xl border-2 border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:border-gray-400 transition-all"
                 disabled={saving}
                 type="button"
               >
                 Cancel
               </motion.button>
+              {!draft._id && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={(e) => { addAnotherRef.current = true; saveDraft(e as unknown as React.FormEvent); }}
+                  disabled={saving}
+                  className="px-5 py-2.5 rounded-xl border-2 border-emerald-500 text-emerald-700 bg-emerald-50 text-sm font-semibold hover:bg-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  type="button"
+                  title="Save and open a new question with the same metadata pre-filled"
+                >
+                  <Plus className="w-4 h-4" />
+                  Save &amp; Add Another
+                </motion.button>
+              )}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={saveDraft}
                 disabled={saving}
-                className="px-8 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-blue-500/30"
+                className="px-7 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-blue-500/30"
                 type="button"
               >
                 {saving ? (
                   <>
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{
-                        duration: 1,
-                        repeat: Infinity,
-                        ease: "linear",
-                      }}
-                    >
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
                       <RefreshCw className="w-4 h-4" />
                     </motion.div>
                     Saving...
@@ -2372,11 +2500,10 @@ export default function AdminQuestionBank() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setModalTab("basic")}
-            className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-              modalTab === "basic"
+            className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${modalTab === "basic"
                 ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md"
                 : "text-gray-600 hover:bg-gray-100"
-            }`}
+              }`}
             type="button"
           >
             <FileText className="w-4 h-4" />
@@ -2386,11 +2513,10 @@ export default function AdminQuestionBank() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setModalTab("options")}
-            className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-              modalTab === "options"
+            className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${modalTab === "options"
                 ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md"
                 : "text-gray-600 hover:bg-gray-100"
-            }`}
+              }`}
             type="button"
           >
             <CheckCircle className="w-4 h-4" />
@@ -2400,11 +2526,10 @@ export default function AdminQuestionBank() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setModalTab("advanced")}
-            className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
-              modalTab === "advanced"
+            className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${modalTab === "advanced"
                 ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md"
                 : "text-gray-600 hover:bg-gray-100"
-            }`}
+              }`}
             type="button"
           >
             <Sparkles className="w-4 h-4" />
@@ -2600,21 +2725,15 @@ export default function AdminQuestionBank() {
                       Source
                     </label>
                     <select
-                      value={draft.source || "manual"}
+                      value={draft.source || "Manual"}
                       onChange={(e) =>
-                        setDraft({
-                          ...draft,
-                          source: e.target.value as
-                            | "manual"
-                            | "imported"
-                            | "ai-generated",
-                        })
+                        setDraft({ ...draft, source: e.target.value as Draft['source'] })
                       }
                       className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-medium bg-white"
                     >
-                      <option value="manual">Manual</option>
-                      <option value="imported">Imported</option>
-                      <option value="ai-generated">AI Generated</option>
+                      <option value="Manual">Manual</option>
+                      <option value="Smart Import">Smart Import</option>
+                      <option value="AI">AI Generated</option>
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -2700,18 +2819,73 @@ export default function AdminQuestionBank() {
                       max="20"
                       value={draft.marks || ""}
                       onChange={(e) =>
-                        setDraft({
-                          ...draft,
-                          marks: e.target.value
-                            ? Number(e.target.value)
-                            : undefined,
-                        })
+                        setDraft({ ...draft, marks: e.target.value ? Number(e.target.value) : undefined })
                       }
                       className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-medium bg-white"
                       placeholder="e.g., 1"
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* PYQ Section */}
+              <div className="border border-amber-200 rounded-xl overflow-hidden">
+                <label className="flex items-center gap-3 px-4 py-3 bg-amber-50 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!draft.isPYQ}
+                    onChange={(e) => setDraft({ ...draft, isPYQ: e.target.checked, pyqYear: e.target.checked ? (draft.pyqYear ?? new Date().getFullYear()) : undefined })}
+                    className="w-4 h-4 accent-amber-600 rounded"
+                  />
+                  <span className="text-sm font-semibold text-amber-800">This is a Previous Year Question (PYQ)</span>
+                </label>
+                {draft.isPYQ && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 py-4 bg-white border-t border-amber-100">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">Exam</label>
+                      <select
+                        value={draft.pyqExam || ""}
+                        onChange={(e) => setDraft({ ...draft, pyqExam: e.target.value })}
+                        className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 font-medium bg-white"
+                      >
+                        <option value="">Select Exam</option>
+                        <option value="JEE Main">JEE Main</option>
+                        <option value="JEE Advanced">JEE Advanced</option>
+                        <option value="NEET">NEET</option>
+                        <option value="CBSE Board">CBSE Board</option>
+                        <option value="ICSE Board">ICSE Board</option>
+                        <option value="Olympiad">Olympiad</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">Year</label>
+                      <select
+                        value={draft.pyqYear ?? ""}
+                        onChange={(e) => setDraft({ ...draft, pyqYear: e.target.value ? Number(e.target.value) : undefined })}
+                        className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 font-medium bg-white"
+                      >
+                        <option value="">Select Year</option>
+                        {Array.from({ length: new Date().getFullYear() - 1989 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">Shift / Paper</label>
+                      <select
+                        value={draft.pyqShift || ""}
+                        onChange={(e) => setDraft({ ...draft, pyqShift: e.target.value })}
+                        className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 font-medium bg-white"
+                      >
+                        <option value="">Any / Single Paper</option>
+                        <option value="Morning Shift">Morning Shift</option>
+                        <option value="Afternoon Shift">Afternoon Shift</option>
+                        <option value="Paper 1">Paper 1</option>
+                        <option value="Paper 2">Paper 2</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -2728,132 +2902,188 @@ export default function AdminQuestionBank() {
               {(draft.type === "mcq" ||
                 draft.type === "mcq-single" ||
                 draft.type === "mcq-multi") && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-blue-600" />
-                      Answer Options
-                      <span className="text-red-500">*</span>
-                    </label>
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      type="button"
-                      onClick={() =>
-                        setDraft((d) => ({
-                          ...d,
-                          options: [
-                            ...(d.options || []),
-                            { text: "", isCorrect: false },
-                          ],
-                        }))
-                      }
-                      className="px-4 py-2 rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold hover:from-green-700 hover:to-emerald-700 transition-all flex items-center gap-2 shadow-md"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add Option
-                    </motion.button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3">
-                    {draft.options?.map((o, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                        className={`relative border-2 rounded-xl p-4 transition-all shadow-sm ${
-                          o.isCorrect
-                            ? "border-green-500 bg-gradient-to-br from-green-50 to-emerald-50 shadow-green-500/20"
-                            : "border-gray-200 bg-white hover:border-blue-300 hover:shadow-md"
-                        }`}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-blue-600" />
+                        Answer Options
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        type="button"
+                        onClick={() =>
+                          setDraft((d) => ({
+                            ...d,
+                            options: [
+                              ...(d.options || []),
+                              { text: "", isCorrect: false },
+                            ],
+                          }))
+                        }
+                        className="px-4 py-2 rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold hover:from-green-700 hover:to-emerald-700 transition-all flex items-center gap-2 shadow-md"
                       >
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center font-bold text-sm text-gray-700">
-                            {String.fromCharCode(65 + i)}
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <input
-                              value={o.text}
-                              onChange={(e) =>
-                                updateOption(i, { text: e.target.value })
-                              }
-                              placeholder={`Enter option ${String.fromCharCode(
-                                65 + i
-                              )}`}
-                              className="w-full text-sm bg-transparent outline-none placeholder-gray-400 font-medium border-b border-gray-200 pb-2 focus:border-blue-500"
-                            />
-                            {/* MathText Preview */}
-                            {o.text && o.text.includes("$") && (
-                              <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2 border border-gray-100">
-                                <span className="text-gray-400 mr-1">
-                                  Preview:
-                                </span>
-                                <MathText
-                                  text={o.text}
-                                  className="text-gray-700"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-200">
-                          <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            type="button"
-                            onClick={() => setCorrect(i)}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-sm ${
-                              o.isCorrect
-                                ? "bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-green-500/30"
-                                : "border-2 border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600 bg-white"
+                        <Plus className="w-4 h-4" />
+                        Add Option
+                      </motion.button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3">
+                      {draft.options?.map((o, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                          className={`relative border-2 rounded-xl p-4 transition-all shadow-sm ${o.isCorrect
+                              ? "border-green-500 bg-gradient-to-br from-green-50 to-emerald-50 shadow-green-500/20"
+                              : "border-gray-200 bg-white hover:border-blue-300 hover:shadow-md"
                             }`}
-                          >
-                            {o.isCorrect ? (
-                              <CheckCircle className="w-4 h-4" />
-                            ) : (
-                              <Circle className="w-4 h-4" />
-                            )}
-                            {o.isCorrect ? "Correct Answer" : "Mark as Correct"}
-                          </motion.button>
-                          {draft.options && draft.options.length > 2 && (
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center font-bold text-sm text-gray-700">
+                              {String.fromCharCode(65 + i)}
+                            </div>
+                            <div className="flex-1 space-y-2">
+                              <input
+                                value={o.text}
+                                onChange={(e) =>
+                                  updateOption(i, { text: e.target.value })
+                                }
+                                placeholder={`Enter option ${String.fromCharCode(
+                                  65 + i
+                                )}`}
+                                className="w-full text-sm bg-transparent outline-none placeholder-gray-400 font-medium border-b border-gray-200 pb-2 focus:border-blue-500"
+                              />
+                              {/* MathText Preview */}
+                              {o.text && o.text.includes("$") && (
+                                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2 border border-gray-100">
+                                  <span className="text-gray-400 mr-1">
+                                    Preview:
+                                  </span>
+                                  <MathText
+                                    text={o.text}
+                                    className="text-gray-700"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-200">
                             <motion.button
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
                               type="button"
-                              onClick={() =>
-                                setDraft((d) => ({
-                                  ...d,
-                                  options: d.options?.filter(
-                                    (_, idx) => idx !== i
-                                  ),
-                                }))
-                              }
-                              className="px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 text-xs font-semibold transition-all flex items-center gap-1"
+                              onClick={() => setCorrect(i)}
+                              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-sm ${o.isCorrect
+                                  ? "bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-green-500/30"
+                                  : "border-2 border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600 bg-white"
+                                }`}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              Remove
+                              {o.isCorrect ? (
+                                <CheckCircle className="w-4 h-4" />
+                              ) : (
+                                <Circle className="w-4 h-4" />
+                              )}
+                              {o.isCorrect ? "Correct Answer" : "Mark as Correct"}
                             </motion.button>
-                          )}
-                        </div>
-                      </motion.div>
-                    ))}
+                            {draft.options && draft.options.length > 2 && (
+                              <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                type="button"
+                                onClick={() =>
+                                  setDraft((d) => ({
+                                    ...d,
+                                    options: d.options?.filter(
+                                      (_, idx) => idx !== i
+                                    ),
+                                  }))
+                                }
+                                className="px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 text-xs font-semibold transition-all flex items-center gap-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Remove
+                              </motion.button>
+                            )}
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {/* True/False — dedicated radio buttons */}
+              {draft.type === "truefalse" && (
+                <div className="space-y-3">
+                  <label className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    Correct Answer <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-4">
+                    {["True", "False"].map(val => {
+                      const isSelected = draft.options?.find(o => o.text === val)?.isCorrect === true ||
+                        (!draft.options?.length && draft.correctAnswerText === val);
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setDraft({
+                            ...draft,
+                            options: [
+                              { text: "True", isCorrect: val === "True" },
+                              { text: "False", isCorrect: val === "False" },
+                            ],
+                            correctAnswerText: val,
+                          })}
+                          className={`flex-1 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
+                            isSelected
+                              ? val === "True"
+                                ? "border-green-500 bg-green-50 text-green-700 shadow-md shadow-green-500/20"
+                                : "border-red-500 bg-red-50 text-red-700 shadow-md shadow-red-500/20"
+                              : "border-gray-200 text-gray-700 hover:border-gray-400 bg-white"
+                          }`}
+                        >
+                          {val === "True" ? "✓ True" : "✗ False"}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Correct Answer Text (for non-MCQ) */}
-              {!["mcq", "mcq-single", "mcq-multi"].includes(draft.type) && (
+              {/* Integer type — numeric input */}
+              {draft.type === "integer" && (
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-gray-800 flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 text-green-600" />
-                    Correct Answer
-                    <span className="text-red-500">*</span>
+                    Integer Answer <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={draft.integerAnswer ?? ""}
+                    onChange={(e) => setDraft({
+                      ...draft,
+                      integerAnswer: e.target.value !== "" ? Number(e.target.value) : undefined,
+                      correctAnswerText: e.target.value,
+                    })}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500 transition-all bg-green-50/30 text-center"
+                    placeholder="0"
+                  />
+                  <p className="text-xs text-gray-500">Enter a non-negative integer (e.g., 0–9999)</p>
+                </div>
+              )}
+
+              {/* Correct Answer Text (for subjective / fill / short / long) */}
+              {!["mcq", "mcq-single", "mcq-multi", "assertionreason", "truefalse", "integer"].includes(draft.type) && (
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    Correct Answer <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     value={draft.correctAnswerText || ""}
-                    onChange={(e) =>
-                      setDraft({ ...draft, correctAnswerText: e.target.value })
-                    }
+                    onChange={(e) => setDraft({ ...draft, correctAnswerText: e.target.value })}
                     className="w-full border-2 border-gray-200 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500 transition-all resize-none font-medium bg-green-50/30"
                     rows={4}
                     placeholder="Enter the correct answer..."
@@ -2865,140 +3095,77 @@ export default function AdminQuestionBank() {
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-blue-600" />
-                    Assertion & Reason
+                    Assertion &amp; Reason
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-semibold text-gray-700">
-                        Assertion (A)
-                      </label>
+                      <label className="text-sm font-semibold text-gray-700">Assertion (A)</label>
                       <textarea
                         value={draft.assertion || ""}
-                        onChange={(e) =>
-                          setDraft({ ...draft, assertion: e.target.value })
-                        }
+                        onChange={(e) => setDraft({ ...draft, assertion: e.target.value })}
                         className="w-full border-2 border-gray-200 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all resize-none font-medium"
                         rows={4}
                         placeholder="Enter assertion statement..."
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-semibold text-gray-700">
-                        Reason (R)
-                      </label>
+                      <label className="text-sm font-semibold text-gray-700">Reason (R)</label>
                       <textarea
                         value={draft.reason || ""}
-                        onChange={(e) =>
-                          setDraft({ ...draft, reason: e.target.value })
-                        }
+                        onChange={(e) => setDraft({ ...draft, reason: e.target.value })}
                         className="w-full border-2 border-gray-200 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all resize-none font-medium"
                         rows={4}
                         placeholder="Enter reason statement..."
                       />
                     </div>
                   </div>
+
+                  {/* Standard 4-option A-R answer panel */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
+                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">Correct Answer Code</p>
+                    {[
+                      { code: "a", label: "Both A and R are true; R is the correct explanation of A", isTrue: true, rTrue: true, explains: true },
+                      { code: "b", label: "Both A and R are true; but R is NOT the correct explanation of A", isTrue: true, rTrue: true, explains: false },
+                      { code: "c", label: "A is true, R is false", isTrue: true, rTrue: false, explains: false },
+                      { code: "d", label: "A is false, R is true", isTrue: false, rTrue: true, explains: false },
+                    ].map(opt => {
+                      const selected =
+                        draft.assertionIsTrue === opt.isTrue &&
+                        draft.reasonIsTrue === opt.rTrue &&
+                        (draft.reasonExplainsAssertion ?? false) === opt.explains;
+                      return (
+                        <label key={opt.code} className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border-2 transition-all ${selected ? "border-blue-500 bg-white" : "border-transparent hover:bg-blue-100/60"}`}>
+                          <input
+                            type="radio"
+                            name="ar-code"
+                            checked={selected}
+                            onChange={() => setDraft({
+                              ...draft,
+                              assertionIsTrue: opt.isTrue,
+                              reasonIsTrue: opt.rTrue,
+                              reasonExplainsAssertion: opt.explains,
+                              options: [
+                                { text: "(a) Both A and R true; R explains A", isCorrect: opt.code === "a" },
+                                { text: "(b) Both A and R true; R does NOT explain A", isCorrect: opt.code === "b" },
+                                { text: "(c) A true, R false", isCorrect: opt.code === "c" },
+                                { text: "(d) A false, R true", isCorrect: opt.code === "d" },
+                              ],
+                              correctAnswerText: `(${opt.code})`,
+                            })}
+                            className="mt-0.5 accent-blue-600"
+                          />
+                          <span className="text-sm text-gray-800"><span className="font-bold">({opt.code})</span> {opt.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              {/* Diagram Upload Section */}
-              <div className="space-y-4 border-t border-gray-100 pt-6 mt-6">
-                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-purple-600" />
-                  Diagram / Image
-                </h3>
-
-                {/* Current/Preview Image */}
-                {(draft.diagramUrl || pendingDiagramFile) && (
-                  <div className="relative rounded-xl overflow-hidden border-2 border-gray-200 bg-gray-50">
-                    {pendingDiagramFile ? (
-                      <Image
-                        src={URL.createObjectURL(pendingDiagramFile)}
-                        alt="Pending diagram"
-                        width={400}
-                        height={300}
-                        className="w-full h-48 object-contain"
-                      />
-                    ) : draft.diagramUrl ? (
-                      <Image
-                        src={
-                          draft.diagramUrl.startsWith("http")
-                            ? draft.diagramUrl
-                            : `${
-                                process.env.NEXT_PUBLIC_API_BASE_URL ||
-                                "http://localhost:5000"
-                              }${draft.diagramUrl}`
-                        }
-                        alt="Question diagram"
-                        width={400}
-                        height={300}
-                        className="w-full h-48 object-contain"
-                      />
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPendingDiagramFile(null);
-                        setDraft({ ...draft, diagramUrl: undefined });
-                      }}
-                      className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                    >
-                      <XCircle className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-
-                {/* File Input */}
-                <div className="flex items-center gap-3">
-                  <label className="flex-1 cursor-pointer">
-                    <div className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-all text-gray-600 hover:text-purple-600">
-                      <Upload className="w-5 h-5" />
-                      <span className="text-sm font-medium">
-                        {pendingDiagramFile
-                          ? pendingDiagramFile.name
-                          : "Upload Diagram Image"}
-                      </span>
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setPendingDiagramFile(file);
-                        }
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {/* OR Manual URL Input */}
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500">
-                    Or enter image URL directly:
-                  </label>
-                  <input
-                    type="text"
-                    value={draft.diagramUrl || ""}
-                    onChange={(e) => {
-                      setPendingDiagramFile(null);
-                      setDraft({
-                        ...draft,
-                        diagramUrl: e.target.value || undefined,
-                      });
-                    }}
-                    placeholder="https://example.com/image.png"
-                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500 transition-all font-medium bg-white"
-                  />
-                </div>
-
-                {uploadingDiagram && (
-                  <div className="flex items-center gap-2 text-purple-600 text-sm">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Uploading diagram...</span>
-                  </div>
-                )}
-              </div>
+              {/* Diagram hint — moved to Advanced tab */}
+              <p className="text-xs text-gray-400 italic mt-4">
+                To add a diagram or image, switch to the <strong>Advanced</strong> tab.
+              </p>
             </motion.div>
           )}
 

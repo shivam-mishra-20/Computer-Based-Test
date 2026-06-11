@@ -411,7 +411,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                   disabled={disabled}
                   className="mt-1 w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500"
                 />
-                <span className="text-slate-700 leading-relaxed">
+                <span className="text-slate-700 leading-relaxed min-w-0 flex-1 break-words">
                   <MathText text={opt.text} inline />
                 </span>
               </motion.label>
@@ -457,7 +457,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                   disabled={disabled}
                   className="mt-1 w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
                 />
-                <span className="text-slate-700 leading-relaxed">
+                <span className="text-slate-700 leading-relaxed min-w-0 flex-1 break-words">
                   <MathText text={opt.text} inline />
                 </span>
               </motion.label>
@@ -675,7 +675,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
 
           {/* Main Content */}
           <div className="flex-1 lg:overflow-y-auto">
-            <div className="max-w-4xl mx-auto p-4 lg:p-8">
+            <div className="max-w-7xl mx-auto p-2 lg:p-4">
               {!view && !error && (
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -817,11 +817,15 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="p-6 lg:p-8 space-y-6">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
+                        {/* min-w-0: without it, a flex item refuses to shrink
+                            below its content's intrinsic width, so a wide math
+                            formula expands this column past the card and the
+                            card's overflow-hidden clips it. */}
+                        <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-slate-500 mb-2">
                             Question {index + 1}
                           </div>
-                          <div className="text-lg text-slate-900 leading-relaxed whitespace-pre-wrap">
+                          <div className="text-lg text-slate-900 leading-relaxed whitespace-pre-wrap break-words">
                             <MathText text={currentQuestion?.text || ""} />
                           </div>
                           {/* Diagram Image */}
@@ -832,9 +836,9 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                                 alt="Diagram"
                                 width={384}
                                 height={192}
-                                className="max-w-sm h-auto max-h-48 object-contain rounded"
+                                className="max-w-full h-auto max-h-48 object-contain rounded"
                                 referrerPolicy="no-referrer"
-                                sizes="(max-width: 768px) 100vw, 384px"
+                                sizes="(max-width: 790px) 100vw, 384px"
                               />
                             </div>
                           )}

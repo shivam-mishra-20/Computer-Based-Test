@@ -500,7 +500,7 @@ export default function QuestMlDashboard() {
               )}
               {aiProvider !== 'none' && !classifyHealth && (
                 <p className="text-xs text-amber-600 mt-2">
-                  ⚠ Set <code>CLASSIFICATION_ENABLED=true</code> and <code>CLASSIFICATION_PROVIDER={aiProvider}</code> in QuestMl's .env, then restart the engine.
+                  ⚠ Set <code>CLASSIFICATION_ENABLED=true</code> and <code>CLASSIFICATION_PROVIDER={aiProvider}</code> in QuestMl&apos;s .env, then restart the engine.
                 </p>
               )}
             </div>

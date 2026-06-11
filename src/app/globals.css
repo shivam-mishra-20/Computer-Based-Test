@@ -27,3 +27,11 @@ body {
 .divider { border-color: var(--beige-sand); }
 .muted { color: #6b6b6b; }
 
+/* Allow long inline KaTeX math to wrap instead of overflowing/clipping.
+   KaTeX ships `.katex { white-space: nowrap }`, which makes a whole formula
+   one unbreakable line. Letting the outer element wrap while keeping each
+   `.base` chunk atomic preserves layout but enables line breaks between
+   chunks, so full questions stay visible inside exam/question cards. */
+.katex { white-space: normal; }
+.katex .base { white-space: nowrap; }
+

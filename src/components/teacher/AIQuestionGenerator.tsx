@@ -43,11 +43,21 @@ const BOARD_OPTIONS = [
   "CBSE",
   "ICSE",
   "GSEB",
+  "MH Board",
+  "UP Board",
+  "Bihar Board",
+  "IB",
+  "Cambridge",
   "JEE",
   "NEET",
   "Olympiad",
   "Scholarships",
 ];
+
+const PYQ_EXAMS = ["JEE Main", "JEE Advanced", "NEET", "CBSE Board", "ICSE Board", "Olympiad"];
+const PYQ_SHIFTS = ["Morning Shift", "Afternoon Shift", "Paper 1", "Paper 2"];
+const CURRENT_YEAR = new Date().getFullYear();
+const PYQ_YEARS = Array.from({ length: CURRENT_YEAR - 1989 }, (_, i) => CURRENT_YEAR - i);
 
 const SECTION_OPTIONS = [
   "Objective",
@@ -88,10 +98,18 @@ interface GeneratedQuestion {
   integerAnswer?: number;
   assertion?: string;
   reason?: string;
+  assertionIsTrue?: boolean;
+  reasonIsTrue?: boolean;
+  reasonExplainsAssertion?: boolean;
+  explanation?: string;
   difficulty?: string;
   confidence?: number;
   needsReview?: boolean;
   diagramUrl?: string;
+  isPYQ?: boolean;
+  pyqYear?: number;
+  pyqExam?: string;
+  pyqShift?: string;
 }
 
 type QuestionOption = { text: string; isCorrect: boolean };
@@ -132,7 +150,7 @@ function SelectMenu({
   const selected = options.find((opt) => opt.value === value);
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative" style={{ isolation: "isolate" }}>
       <button
         type="button"
         disabled={disabled}
@@ -146,7 +164,7 @@ function SelectMenu({
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-2 w-full max-h-56 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+        <div className="absolute z-[200] mt-2 w-full min-w-max max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl">
           {options.map((opt) => (
             <button
               key={opt.value}
@@ -155,7 +173,7 @@ function SelectMenu({
                 onChange(opt.value);
                 setOpen(false);
               }}
-              className={`w-full px-4 py-2 text-left text-sm hover:bg-indigo-50 ${
+              className={`w-full px-4 py-2.5 text-left text-sm hover:bg-indigo-50 ${
                 opt.value === value
                   ? "bg-indigo-50 text-indigo-700 font-medium"
                   : "text-gray-700"
@@ -236,8 +254,24 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
     { text: "", isCorrect: false },
   ]);
   const [manualCorrectAnswerText, setManualCorrectAnswerText] = useState("");
+  const [manualAssertionText, setManualAssertionText] = useState("");
+  const [manualReasonText, setManualReasonText] = useState("");
+  const [manualArCode, setManualArCode] = useState<"a"|"b"|"c"|"d"|"">("");
+  const [manualExplanation, setManualExplanation] = useState("");
   const [manualDiagramFile, setManualDiagramFile] = useState<File | null>(null);
   const [manualDiagramPreview, setManualDiagramPreview] = useState("");
+
+  // Global PYQ default (Question Details section)
+  const [isPYQ, setIsPYQ] = useState(false);
+  const [pyqYear, setPyqYear] = useState<number|"">(CURRENT_YEAR);
+  const [pyqExam, setPyqExam] = useState("");
+  const [pyqShift, setPyqShift] = useState("");
+
+  // Per-question PYQ override (Compose section) — syncs from global when global toggles
+  const [manualIsPYQ, setManualIsPYQ] = useState(false);
+  const [manualPyqYear, setManualPyqYear] = useState<number|"">(CURRENT_YEAR);
+  const [manualPyqExam, setManualPyqExam] = useState("");
+  const [manualPyqShift, setManualPyqShift] = useState("");
   const [manualQuestions, setManualQuestions] = useState<GeneratedQuestion[]>([]);
   const [uploadingDiagram, setUploadingDiagram] = useState(false);
   const [uploadingQuestionDiagramId, setUploadingQuestionDiagramId] =
@@ -327,9 +361,19 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
       { text: "", isCorrect: false },
     ]);
     setManualCorrectAnswerText("");
+    setManualAssertionText("");
+    setManualReasonText("");
+    setManualArCode("");
+    setManualExplanation("");
     setManualDiagramFile(null);
     setManualDiagramPreview("");
-  }, []);
+    // Keep PYQ synced to global defaults after each queue
+    setManualIsPYQ(isPYQ);
+    setManualPyqYear(isPYQ ? pyqYear : CURRENT_YEAR);
+    setManualPyqExam(isPYQ ? pyqExam : "");
+    setManualPyqShift(isPYQ ? pyqShift : "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPYQ, pyqYear, pyqExam, pyqShift]);
 
   // Reset all form data including localStorage
   const resetAllForm = useCallback(() => {
@@ -392,6 +436,17 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
       setSection(autoSection);
     }
   }, [manualQuestionType, inputMode]);
+
+  // Sync per-question PYQ from global toggle
+  useEffect(() => {
+    setManualIsPYQ(isPYQ);
+    if (isPYQ) {
+      setManualPyqYear(pyqYear);
+      setManualPyqExam(pyqExam);
+      setManualPyqShift(pyqShift);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPYQ]);
 
   const handleManualDiagramInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
@@ -550,37 +605,31 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
   };
 
   const validateManualDraft = (): string | null => {
-    if (!manualQuestionText.trim()) {
-      return "Question text is required";
-    }
+    if (!manualQuestionText.trim()) return "Question text is required";
 
     if (manualQuestionType === "mcq") {
       const validOptions = manualOptions.filter((opt) => opt.text.trim());
-      if (validOptions.length < 2) {
-        return "Please provide at least two options for MCQ";
-      }
-      if (!manualOptions.some((opt) => opt.isCorrect && opt.text.trim())) {
-        return "Please mark one correct option for MCQ";
-      }
+      if (validOptions.length < 2) return "Please provide at least two options for MCQ";
+      if (!manualOptions.some((opt) => opt.isCorrect && opt.text.trim())) return "Please mark one correct option for MCQ";
     }
 
-    if (manualQuestionType === "truefalse" && !manualCorrectAnswerText) {
-      return "Please mark the correct answer (True/False)";
+    if (manualQuestionType === "truefalse" && !manualCorrectAnswerText)
+      return "Please select True or False";
+
+    if (manualQuestionType === "assertionreason") {
+      if (!manualAssertionText.trim()) return "Assertion (A) text is required";
+      if (!manualReasonText.trim()) return "Reason (R) text is required";
+      if (!manualArCode) return "Please select the correct answer code (a/b/c/d)";
     }
 
-    if (
-      manualQuestionType !== "mcq" &&
-      manualQuestionType !== "truefalse" &&
-      !manualCorrectAnswerText.trim()
-    ) {
+    if (manualQuestionType === "integer") {
+      if (!manualCorrectAnswerText.trim()) return "Integer answer is required";
+      if (Number.isNaN(Number(manualCorrectAnswerText.trim()))) return "Integer answer must be a valid number";
+    }
+
+    if (!["mcq", "truefalse", "assertionreason", "integer"].includes(manualQuestionType) &&
+        !manualCorrectAnswerText.trim()) {
       return "Please provide the correct answer";
-    }
-
-    if (
-      manualQuestionType === "integer" &&
-      Number.isNaN(Number(manualCorrectAnswerText.trim()))
-    ) {
-      return "Integer answer must be a valid number";
     }
 
     return null;
@@ -638,7 +687,7 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
     return "medium";
   };
 
-  const handleAddManualQuestion = async () => {
+  const handleAddManualQuestion = useCallback(async () => {
     setError(null);
     setSuccess(null);
 
@@ -678,6 +727,16 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
         .toString(36)
         .slice(2, 8)}`;
 
+      // Build AR fields from code selection
+      const arCodeMap: Record<string, { assertionIsTrue: boolean; reasonIsTrue: boolean; reasonExplainsAssertion: boolean }> = {
+        a: { assertionIsTrue: true,  reasonIsTrue: true,  reasonExplainsAssertion: true  },
+        b: { assertionIsTrue: true,  reasonIsTrue: true,  reasonExplainsAssertion: false },
+        c: { assertionIsTrue: true,  reasonIsTrue: false, reasonExplainsAssertion: false },
+        d: { assertionIsTrue: false, reasonIsTrue: true,  reasonExplainsAssertion: false },
+      };
+      const arFields = manualQuestionType === "assertionreason" && manualArCode
+        ? arCodeMap[manualArCode] : {};
+
       const newQuestion: GeneratedQuestion = {
         _id: questionId,
         questionNumber: manualQuestions.length + 1,
@@ -685,16 +744,31 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
         type: manualQuestionType,
         status: "approved",
         difficulty,
-        options: normalizedOptions,
+        options: manualQuestionType === "assertionreason" ? [
+          { text: "(a) Both A and R true; R explains A",      isCorrect: manualArCode === "a" },
+          { text: "(b) Both A and R true; R does NOT explain A", isCorrect: manualArCode === "b" },
+          { text: "(c) A true, R false",                      isCorrect: manualArCode === "c" },
+          { text: "(d) A false, R true",                      isCorrect: manualArCode === "d" },
+        ] : normalizedOptions,
         correctAnswerText:
           manualQuestionType === "mcq"
             ? normalizedOptions?.find((opt) => opt.isCorrect)?.text
+            : manualQuestionType === "assertionreason"
+            ? `(${manualArCode})`
             : manualCorrectAnswerText.trim() || undefined,
         integerAnswer:
           manualQuestionType === "integer"
             ? Number(manualCorrectAnswerText.trim())
             : undefined,
+        assertion: manualQuestionType === "assertionreason" ? manualAssertionText.trim() : undefined,
+        reason:    manualQuestionType === "assertionreason" ? manualReasonText.trim()    : undefined,
+        ...arFields,
+        explanation: manualExplanation.trim() || undefined,
         diagramUrl,
+        isPYQ: manualIsPYQ || undefined,
+        pyqYear: manualIsPYQ && manualPyqYear ? Number(manualPyqYear) : undefined,
+        pyqExam: manualIsPYQ && manualPyqExam ? manualPyqExam : undefined,
+        pyqShift: manualIsPYQ && manualPyqShift ? manualPyqShift : undefined,
       };
 
       setManualQuestions((prev) => [...prev, newQuestion]);
@@ -705,7 +779,12 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
     } finally {
       setUploadingDiagram(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualQuestionText, manualQuestionType, manualOptions, manualCorrectAnswerText,
+      manualAssertionText, manualReasonText, manualArCode, manualExplanation,
+      manualDiagramFile, manualQuestions, difficulty,
+      manualIsPYQ, manualPyqYear, manualPyqExam, manualPyqShift,
+      resetManualComposer]);
 
   const removeManualQuestion = (id: string) => {
     setManualQuestions((prev) =>
@@ -851,7 +930,15 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
             : q.integerAnswer,
         assertion: q.assertion,
         reason: q.reason,
+        assertionIsTrue: q.assertionIsTrue,
+        reasonIsTrue: q.reasonIsTrue,
+        reasonExplainsAssertion: q.reasonExplainsAssertion,
+        explanation: q.explanation,
         diagramUrl: q.diagramUrl,
+        isPYQ: q.isPYQ ?? false,
+        pyqYear: q.pyqYear,
+        pyqExam: q.pyqExam,
+        pyqShift: q.pyqShift,
       }));
 
       const result = (await apiFetch("/ai/save-questions", {
@@ -961,6 +1048,19 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
     }, 4000);
     return () => clearTimeout(timer);
   }, [error, success]);
+
+  // Ctrl+Enter to queue the current question when in text mode
+  useEffect(() => {
+    if (inputMode !== "text") return;
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        void handleAddManualQuestion();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [inputMode, handleAddManualQuestion]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6">
@@ -1252,38 +1352,110 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                 </div>
               )}
 
+              {/* True / False */}
               {manualQuestionType === "truefalse" && (
                 <div className="bg-white p-6 rounded-lg border-2 border-blue-200">
-                  <label className="block text-sm font-semibold text-gray-700 mb-4">
-                    Select Correct Answer
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-4">Select Correct Answer</label>
                   <div className="grid grid-cols-2 gap-4">
-                    {[
-                      { value: "True", color: "green", icon: "✓" },
-                      { value: "False", color: "red", icon: "✗" },
-                    ].map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setManualCorrectAnswerText(option.value)}
-                        className={`p-4 rounded-lg border-2 font-semibold transition-all ${
-                          manualCorrectAnswerText === option.value
-                            ? `border-${option.color}-500 bg-${option.color}-50 text-${option.color}-700`
-                            : `border-gray-200 bg-white text-gray-600 hover:border-gray-300`
-                        }`}
+                    {[{ value: "True", icon: "✓", sel: "border-green-500 bg-green-50 text-green-700", idle: "border-gray-200 bg-white text-gray-600 hover:border-green-300" },
+                      { value: "False", icon: "✗", sel: "border-red-500 bg-red-50 text-red-700", idle: "border-gray-200 bg-white text-gray-600 hover:border-red-300" }
+                    ].map((opt) => (
+                      <button key={opt.value} type="button"
+                        onClick={() => setManualCorrectAnswerText(opt.value)}
+                        className={`p-4 rounded-lg border-2 font-semibold transition-all ${manualCorrectAnswerText === opt.value ? opt.sel : opt.idle}`}
                       >
-                        <span className="text-2xl block mb-2">{option.icon}</span>
-                        {option.value}
+                        <span className="text-2xl block mb-2">{opt.icon}</span>{opt.value}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              {manualQuestionType !== "mcq" && manualQuestionType !== "truefalse" && (
+              {/* Integer type */}
+              {manualQuestionType === "integer" && (
+                <div className="bg-white p-6 rounded-lg border-2 border-emerald-200">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Integer Answer <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={manualCorrectAnswerText}
+                    onChange={(e) => setManualCorrectAnswerText(e.target.value)}
+                    placeholder="e.g. 42"
+                    className="w-40 px-4 py-3 text-2xl font-bold text-center border-2 border-emerald-300 rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 bg-emerald-50"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">Enter a non-negative integer (JEE-style: 0–9999)</p>
+                </div>
+              )}
+
+              {/* Assertion-Reason */}
+              {manualQuestionType === "assertionreason" && (
+                <div className="bg-white p-6 rounded-lg border-2 border-violet-200 space-y-4">
+                  <h4 className="text-sm font-bold text-gray-800">Assertion &amp; Reason</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Assertion (A) <span className="text-red-500">*</span></label>
+                      <textarea
+                        value={manualAssertionText}
+                        onChange={(e) => setManualAssertionText(e.target.value)}
+                        rows={3}
+                        placeholder="Enter assertion statement..."
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-400 focus:border-violet-400 resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Reason (R) <span className="text-red-500">*</span></label>
+                      <textarea
+                        value={manualReasonText}
+                        onChange={(e) => setManualReasonText(e.target.value)}
+                        rows={3}
+                        placeholder="Enter reason statement..."
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-violet-400 focus:border-violet-400 resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 4 standard CBSE codes */}
+                  <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-2">
+                    <p className="text-xs font-bold text-violet-700 uppercase tracking-wide mb-3">
+                      Select Correct Answer Code <span className="text-red-500">*</span>
+                    </p>
+                    {([
+                      { code: "a" as const, label: "Both A and R are true; R is the correct explanation of A" },
+                      { code: "b" as const, label: "Both A and R are true; but R is NOT the correct explanation of A" },
+                      { code: "c" as const, label: "A is true, R is false" },
+                      { code: "d" as const, label: "A is false, R is true" },
+                    ]).map((opt) => (
+                      <label key={opt.code}
+                        className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border-2 transition-all ${
+                          manualArCode === opt.code ? "border-violet-500 bg-white shadow-sm" : "border-transparent hover:bg-violet-100/60"
+                        }`}
+                      >
+                        <input type="radio" name="ar-code-compose" value={opt.code}
+                          checked={manualArCode === opt.code}
+                          onChange={() => {
+                            setManualArCode(opt.code);
+                            setManualCorrectAnswerText(`(${opt.code})`);
+                          }}
+                          className="mt-0.5 accent-violet-600 w-4 h-4"
+                        />
+                        <span className="text-sm text-gray-800">
+                          <span className="font-bold">({opt.code})</span> {opt.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Generic correct answer (fill / short / long / subjective) */}
+              {!["mcq", "truefalse", "assertionreason", "integer"].includes(manualQuestionType) && (
                 <div className="bg-white p-6 rounded-lg border-2 border-purple-200">
                   <label className="block text-sm font-semibold text-gray-700 mb-4">
-                    Correct Answer
+                    Correct Answer <span className="text-red-500">*</span>
+                    {manualQuestionType === "fill" && <span className="ml-2 text-xs font-normal text-gray-400">(the exact word/phrase in the blank)</span>}
+                    {manualQuestionType === "short" && <span className="ml-2 text-xs font-normal text-gray-400">(concise — 1-3 lines)</span>}
+                    {manualQuestionType === "long" && <span className="ml-2 text-xs font-normal text-gray-400">(detailed — 4+ lines)</span>}
                   </label>
                   <EquationEditor
                     value={manualCorrectAnswerText}
@@ -1292,7 +1464,7 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                     placeholder="Enter the correct answer..."
                     showPreview={false}
                     showHelp={false}
-                    rows={manualQuestionType === "long" ? 4 : 2}
+                    rows={manualQuestionType === "long" ? 5 : 2}
                   />
                   {!!manualCorrectAnswerText.trim() && (
                     <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200">
@@ -1302,11 +1474,77 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                   )}
                 </div>
               )}
+
+              {/* Optional explanation — for all types */}
+              <div className="bg-white p-4 rounded-lg border border-gray-200">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Explanation <span className="text-xs font-normal text-gray-400">(optional)</span>
+                </label>
+                <EquationEditor
+                  value={manualExplanation}
+                  onChange={setManualExplanation}
+                  label=""
+                  placeholder="Why is this the correct answer? (helps students learn)"
+                  showPreview={false}
+                  showHelp={false}
+                  rows={2}
+                />
+              </div>
+
+              {/* Per-question PYQ fields */}
+              <div className="border border-amber-200 rounded-xl overflow-visible">
+                <label className="flex items-center gap-3 px-4 py-3 bg-amber-50 cursor-pointer select-none rounded-t-xl">
+                  <input
+                    type="checkbox"
+                    checked={manualIsPYQ}
+                    onChange={(e) => {
+                      setManualIsPYQ(e.target.checked);
+                      if (e.target.checked && !manualPyqYear) setManualPyqYear(CURRENT_YEAR);
+                    }}
+                    className="w-4 h-4 accent-amber-600 rounded"
+                  />
+                  <span className="text-sm font-semibold text-amber-800">⭐ This question is a Previous Year Question</span>
+                  {!manualIsPYQ && isPYQ && (
+                    <span className="ml-auto text-xs text-amber-600 italic">Global PYQ mode is ON — override per question here</span>
+                  )}
+                </label>
+                {manualIsPYQ && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 py-4 bg-white border-t border-amber-100 rounded-b-xl">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Exam</label>
+                      <SelectMenu
+                        value={manualPyqExam}
+                        onChange={setManualPyqExam}
+                        placeholder="Select Exam"
+                        options={PYQ_EXAMS.map((e) => ({ value: e, label: e }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Year <span className="text-amber-600 font-bold">← set per question</span></label>
+                      <SelectMenu
+                        value={manualPyqYear ? String(manualPyqYear) : ""}
+                        onChange={(v) => setManualPyqYear(v ? Number(v) : "")}
+                        placeholder="Select Year"
+                        options={PYQ_YEARS.map((y) => ({ value: String(y), label: String(y) }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Shift / Paper</label>
+                      <SelectMenu
+                        value={manualPyqShift}
+                        onChange={setManualPyqShift}
+                        placeholder="Any / Single"
+                        options={PYQ_SHIFTS.map((s) => ({ value: s, label: s }))}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
               </div>
 
               {/* Action Buttons */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg border-2 border-blue-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 justify-between">
-                <div className="flex-1 flex gap-2 flex-wrap sm:flex-nowrap">
+                <div className="flex-1 flex gap-2 flex-wrap sm:flex-nowrap items-center">
                   <button
                     type="button"
                     onClick={handleAddManualQuestion}
@@ -1315,11 +1553,15 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
                   >
                     {uploadingDiagram ? "⏳ Uploading..." : "✓ Queue Question"}
                   </button>
+                  <span className="hidden sm:inline text-xs text-gray-400 font-medium">Ctrl+Enter</span>
+                  {isPYQ && (
+                    <span className="text-xs px-2.5 py-1 bg-amber-100 text-amber-700 border border-amber-300 rounded-full font-semibold">
+                      ⭐ PYQ {pyqExam && `· ${pyqExam}`}{pyqYear && ` · ${pyqYear}`}
+                    </span>
+                  )}
                 </div>
                 <div className="text-center sm:text-right">
-                  <p className="text-sm font-bold text-gray-700">
-                    Questions Added
-                  </p>
+                  <p className="text-sm font-bold text-gray-700">Questions Added</p>
                   <p className="text-2xl font-bold text-indigo-600">
                     {manualQuestions.length}<span className="text-gray-500 text-lg">/10</span>
                   </p>
@@ -1744,31 +1986,66 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
               />
             </div>
 
+            {/* PYQ toggle — spans full row */}
+            <div className="sm:col-span-2 lg:col-span-3 border border-amber-200 rounded-xl overflow-hidden">
+              <label className="flex items-center gap-3 px-4 py-3 bg-amber-50 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isPYQ}
+                  onChange={(e) => {
+                    setIsPYQ(e.target.checked);
+                    if (e.target.checked && !pyqYear) setPyqYear(CURRENT_YEAR);
+                  }}
+                  className="w-4 h-4 accent-amber-600 rounded"
+                />
+                <span className="text-sm font-semibold text-amber-800">⭐ These are Previous Year Questions (PYQ)</span>
+              </label>
+              {isPYQ && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-4 py-4 bg-white border-t border-amber-100">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Exam</label>
+                    <SelectMenu
+                      value={pyqExam}
+                      onChange={setPyqExam}
+                      placeholder="Select Exam"
+                      options={PYQ_EXAMS.map((e) => ({ value: e, label: e }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Year</label>
+                    <SelectMenu
+                      value={pyqYear ? String(pyqYear) : ""}
+                      onChange={(v) => setPyqYear(v ? Number(v) : "")}
+                      placeholder="Select Year"
+                      options={PYQ_YEARS.map((y) => ({ value: String(y), label: String(y) }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Shift / Paper</label>
+                    <SelectMenu
+                      value={pyqShift}
+                      onChange={setPyqShift}
+                      placeholder="Any / Single"
+                      options={PYQ_SHIFTS.map((s) => ({ value: s, label: s }))}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* AI Model */}
             <div className="md:col-span-2 lg:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-               
-              </label>
-              {inputMode === "text" ? (
-                <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
-                  
-                </div>
-              ) : (
+              {inputMode !== "text" && (
                 <>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">AI Model</label>
                   <SelectMenu
                     value={selectedModel}
                     onChange={setSelectedModel}
                     placeholder="Select AI Model"
-                    options={MODEL_OPTIONS.map((model) => ({
-                      value: model.value,
-                      label: model.label,
-                    }))}
+                    options={MODEL_OPTIONS.map((model) => ({ value: model.value, label: model.label }))}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    {
-                      MODEL_OPTIONS.find((m) => m.value === selectedModel)
-                        ?.description
-                    }
+                    {MODEL_OPTIONS.find((m) => m.value === selectedModel)?.description}
                   </p>
                 </>
               )}

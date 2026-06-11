@@ -89,15 +89,18 @@ export function MathText({
           parts.push(
             <div
               key={`math-${index}`}
-              className="my-2"
+              className="my-2 max-w-full overflow-x-auto"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
         } else {
+          // Plain inline span (NOT inline-block): inline-block creates one
+          // unbreakable box, so long formulas overflow and get clipped by
+          // the question card. In normal inline flow the browser can wrap
+          // between KaTeX's top-level chunks.
           parts.push(
             <span
               key={`math-${index}`}
-              className="inline-block"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
@@ -134,8 +137,12 @@ export function MathText({
     return <>{parts}</>;
   }, [text]);
   
-  if (inline) return <span className="inline-flex items-baseline gap-0.5">{content}</span>;
-  return <div className="flex flex-wrap items-baseline gap-0.5">{content}</div>;
+  // Normal flow (no flex): flex rows treat each math/text part as an atomic
+  // item, which prevents mid-text wrapping and clips long formulas inside
+  // overflow-hidden cards. overflow-x-auto is the safety net for formulas
+  // too long to wrap at all.
+  if (inline) return <span className="break-words">{content}</span>;
+  return <div className="max-w-full overflow-x-auto break-words">{content}</div>;
 }
 
 export default MathText;

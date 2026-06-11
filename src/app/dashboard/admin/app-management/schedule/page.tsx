@@ -865,212 +865,598 @@ export default function ScheduleManagement() {
       wb.creator = "Abhigyan Gurukull";
       wb.created = new Date();
 
-      const C_EMERALD      = "FF059669";
-      const C_EMERALD_LITE = "FFD1FAE5";
-      const C_EMERALD_PALE = "FFF0FDF4";
-      const C_EMERALD_DEEP = "FF065F46";
-      const C_WHITE        = "FFFFFFFF";
-      const C_TEXT_DARK    = "FF1E293B";
-      const C_TEXT_MED     = "FF475569";
-      const C_TEXT_LIGHT   = "FF94A3B8";
+      // ── Shared color system ──────────────────────────────────────────────────
+      const C_NAVY        = "FF0F172A"; // Deep navy – primary brand
+      const C_NAVY_MID    = "FF1E293B";
+      const C_EMERALD     = "FF059669";
+      const C_EMERALD_BRT = "FF10B981";
+      const C_MINT        = "FFD1FAE5";
+      const C_WHITE       = "FFFFFFFF";
+      const C_OFF_WHITE   = "FFF8FAFC";
+      const C_GRAY_LIGHT  = "FFF1F5F9";
+      const C_GRAY_MID    = "FFE2E8F0";
+      const C_GRAY_DARK   = "FFCBD5E1";
+      const C_TEXT_MED    = "FF475569";
+      const C_TEXT_LIGHT  = "FF94A3B8";
+      const C_GOLD        = "FFFBBF24";
+      const C_AMBER       = "FFD97706";
+
+      // Legacy aliases used by regular-schedule branch
+      const C_BRAND       = C_NAVY;
+      const C_BRAND_MID   = C_EMERALD;
+      const C_BRAND_LITE  = C_MINT;
+      const C_GRAY_BG     = C_OFF_WHITE;
+      const C_TEXT_DARK   = C_NAVY_MID;
+      const C_BORDER      = C_GRAY_MID;
+      const C_BORDER_MID  = C_GRAY_DARK;
+
+      // ── Per-class palette (6 distinct professional colors) ────────────────────
+      type Cp = { dark: string; mid: string; light: string; pale: string };
+      const CP: Record<string, Cp> = {
+        "7":  { dark: "FF1E40AF", mid: "FF3B82F6", light: "FF93C5FD", pale: "FFEFF6FF" }, // Cobalt
+        "8":  { dark: "FF4C1D95", mid: "FF8B5CF6", light: "FFC4B5FD", pale: "FFF5F3FF" }, // Violet
+        "9":  { dark: "FF064E3B", mid: "FF059669", light: "FF6EE7B7", pale: "FFF0FDF4" }, // Emerald
+        "10": { dark: "FF92400E", mid: "FFF59E0B", light: "FFFCD34D", pale: "FFFEF9C3" }, // Amber
+        "11": { dark: "FF9D174D", mid: "FFEC4899", light: "FFF9A8D4", pale: "FFFDF2F8" }, // Pink
+        "12": { dark: "FF134E4A", mid: "FF14B8A6", light: "FF5EEAD4", pale: "FFF0FDFA" }, // Teal
+      };
+
+      // ── Per-day color bands (Regular schedule) ──────────────────────────────
+      const DAY_COLORS: Record<number, { bg: string; accent: string; hdr: string }> = {
+        1: { hdr: "FFBFDBFE", bg: "FFDBEAFE", accent: "FF1D4ED8" }, // Mon – Blue
+        2: { hdr: "FFDDD6FE", bg: "FFEDE9FE", accent: "FF6D28D9" }, // Tue – Purple
+        3: { hdr: "FFA7F3D0", bg: "FFD1FAE5", accent: "FF059669" }, // Wed – Green
+        4: { hdr: "FFFDE68A", bg: "FFFEF3C7", accent: "FFB45309" }, // Thu – Amber
+        5: { hdr: "FFFBCFE8", bg: "FFFCE7F3", accent: "FFBE185D" }, // Fri – Pink
+        6: { hdr: "FFA5F3FC", bg: "FFCFFAFE", accent: "FF0E7490" }, // Sat – Cyan
+      };
+
+      // ── Per-class color palettes (Custom / Daily view) ───────────────────────
+      const CLASS_COLORS: Record<string, { hdr: string; cellBg: string; accent: string }> = {
+        "7":  { hdr: "FF93C5FD", cellBg: "FFEFF6FF", accent: "FF1D4ED8" }, // Blue
+        "8":  { hdr: "FFC4B5FD", cellBg: "FFF5F3FF", accent: "FF6D28D9" }, // Purple
+        "9":  { hdr: "FF6EE7B7", cellBg: "FFF0FDF4", accent: "FF065F46" }, // Green
+        "10": { hdr: "FFFBBF24", cellBg: "FFFEFCE8", accent: "FFB45309" }, // Amber
+        "11": { hdr: "FFF9A8D4", cellBg: "FFFFF1F2", accent: "FFBE185D" }, // Pink
+        "12": { hdr: "FF67E8F9", cellBg: "FFF0FDFF", accent: "FF0E7490" }, // Cyan
+      };
 
       type XBorders = import("exceljs").Borders;
       type XFill    = import("exceljs").Fill;
 
-      const borderThin: Partial<XBorders> = {
-        top:    { style: "thin", color: { argb: "FFE2E8F0" } },
-        left:   { style: "thin", color: { argb: "FFE2E8F0" } },
-        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
-        right:  { style: "thin", color: { argb: "FFE2E8F0" } },
-      };
-
       const solidFill = (argb: string): XFill =>
         ({ type: "pattern", pattern: "solid", fgColor: { argb } } as XFill);
 
+      const thinBorder = (argb = C_BORDER): Partial<XBorders> => ({
+        top: { style: "thin", color: { argb } }, left: { style: "thin", color: { argb } },
+        bottom: { style: "thin", color: { argb } }, right: { style: "thin", color: { argb } },
+      });
+
+      const mediumBorder = (argb = C_BORDER_MID): Partial<XBorders> => ({
+        top: { style: "medium", color: { argb } }, left: { style: "medium", color: { argb } },
+        bottom: { style: "medium", color: { argb } }, right: { style: "medium", color: { argb } },
+      });
+
+      // ── Helper: add a full-width merged title row ────────────────────────────
+      const addBanner = (
+        ws: import("exceljs").Worksheet,
+        text: string,
+        rowIdx: number,
+        height: number,
+        opts: { size: number; bold?: boolean; italic?: boolean; fill: string; color?: string }
+      ) => {
+        ws.addRow([text]);
+        ws.mergeCells(rowIdx, 1, rowIdx, ws.columnCount || 1);
+        const cell = ws.getCell(rowIdx, 1);
+        cell.font      = { bold: opts.bold, italic: opts.italic, size: opts.size, color: { argb: opts.color ?? C_WHITE }, name: "Calibri" };
+        cell.fill      = solidFill(opts.fill);
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        ws.getRow(rowIdx).height = height;
+      };
+
+      // ── Helper: footer row ───────────────────────────────────────────────────
+      const addFooter = (ws: import("exceljs").Worksheet, rowIdx: number) => {
+        ws.addRow([`© Abhigyan Gurukull  |  Confidential — For Internal Use Only  |  ${new Date().toLocaleDateString("en-IN")}`]);
+        ws.mergeCells(rowIdx, 1, rowIdx, ws.columnCount || 1);
+        const cell = ws.getCell(rowIdx, 1);
+        cell.font      = { italic: true, size: 8, color: { argb: C_TEXT_LIGHT }, name: "Calibri" };
+        cell.fill      = solidFill(C_GRAY_BG);
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        ws.getRow(rowIdx).height = 20;
+      };
+
       if (activeTab === "regular") {
+        // ════════════════════════════════════════════════════════════════════════
+        // REGULAR SCHEDULE – Weekly Timetable (days as rows, time slots as cols)
+        // ════════════════════════════════════════════════════════════════════════
         const ws = wb.addWorksheet("Weekly Timetable", {
           pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+          views: [{ state: "frozen", xSplit: 1, ySplit: 5 }],
         });
 
         const regGrid = timetableGrid as Record<string, Record<string, Schedule>>;
-        const numCols   = visibleTimeSlots.length + 1;
         const DAYS_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const numCols   = visibleTimeSlots.length + 1;
 
-        // ── Title rows ──────────────────────────────────────────────────────────
-        const addMergedTitle = (
-          text: string,
-          rowIdx: number,
-          height: number,
-          fontSize: number,
-          bold: boolean,
-          italic = false
-        ) => {
-          ws.addRow([text]);
-          ws.mergeCells(rowIdx, 1, rowIdx, numCols);
-          const cell = ws.getCell(rowIdx, 1);
-          cell.font      = { bold, italic, size: fontSize, color: { argb: C_WHITE }, name: "Calibri" };
-          cell.fill      = solidFill(C_EMERALD);
-          cell.alignment = { horizontal: "center", vertical: "middle" };
-          ws.getRow(rowIdx).height = height;
-        };
+        // Set column widths before we start adding rows (so mergeCells uses correct count)
+        ws.getColumn(1).width = 14;
+        visibleTimeSlots.forEach((_, i) => { ws.getColumn(i + 2).width = 26; });
 
-        addMergedTitle("Abhigyan Gurukull", 1, 42, 20, true);
-        addMergedTitle("WEEKLY CLASS TIMETABLE", 2, 26, 13, true);
+        // ── Banner rows ──────────────────────────────────────────────────────────
+        addBanner(ws, "ABHIGYAN GURUKULL", 1, 52, { size: 22, bold: true, fill: C_BRAND });
+        addBanner(ws, "WEEKLY CLASS TIMETABLE", 2, 30, { size: 14, bold: true, fill: C_BRAND_MID });
         const filterLabel = `Class ${filterClass}${filterBatch ? "  |  Batch: " + filterBatch : ""}  |  Generated: ${new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`;
-        addMergedTitle(filterLabel, 3, 20, 10, false, true);
+        addBanner(ws, filterLabel, 3, 22, { size: 9, italic: true, fill: C_BRAND, color: C_BRAND_LITE });
 
         // Spacer
         ws.addRow([]);
-        ws.getRow(4).height = 6;
+        ws.getRow(4).height = 8;
 
-        // ── Column headers ───────────────────────────────────────────────────────
-        const hdrRow = ws.addRow(["Day / Time", ...visibleTimeSlots.map((s) => s.label)]);
-        hdrRow.height = 36;
+        // ── Column header row (time slots) ────────────────────────────────────────
+        const hdrRow = ws.addRow(["DAY / TIME", ...visibleTimeSlots.map((s) => s.label)]);
+        hdrRow.height = 42;
         hdrRow.eachCell({ includeEmpty: true }, (cell, col) => {
-          cell.font      = { bold: true, size: 10, color: { argb: C_TEXT_DARK }, name: "Calibri" };
-          cell.fill      = solidFill(C_EMERALD_LITE);
+          cell.font      = { bold: true, size: 9, color: { argb: C_BRAND }, name: "Calibri" };
+          cell.fill      = solidFill(C_BRAND_LITE);
           cell.alignment = { horizontal: col === 1 ? "left" : "center", vertical: "middle", wrapText: true };
-          cell.border    = borderThin;
+          cell.border    = mediumBorder(C_BRAND_MID);
         });
 
-        ws.getColumn(1).width = 14;
-        visibleTimeSlots.forEach((_, i) => { ws.getColumn(i + 2).width = 28; });
-
-        // ── Data rows ─────────────────────────────────────────────────────────────
+        // ── Day data rows ─────────────────────────────────────────────────────────
         DAYS_WEEK.forEach((day, idx) => {
           const dayIndex = idx + 1;
-          const dataRow  = ws.addRow([day, ...visibleTimeSlots.map(() => "")]);
-          dataRow.height = 60;
+          const dc = DAY_COLORS[dayIndex];
+          const dataRow = ws.addRow([day, ...visibleTimeSlots.map(() => "")]);
+          dataRow.height = 68;
 
-          dataRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-            cell.border = borderThin;
-            if (colNumber === 1) {
-              cell.font      = { bold: true, size: 10, color: { argb: C_TEXT_DARK } };
-              cell.fill      = solidFill(C_EMERALD_PALE);
-              cell.alignment = { horizontal: "left", vertical: "middle" };
+          dataRow.eachCell({ includeEmpty: true }, (cell, col) => {
+            if (col === 1) {
+              // Day label cell
+              cell.font      = { bold: true, size: 11, color: { argb: dc.accent }, name: "Calibri" };
+              cell.fill      = solidFill(dc.hdr);
+              cell.alignment = { horizontal: "center", vertical: "middle" };
+              cell.border    = mediumBorder(dc.accent);
             } else {
-              const slotStart = visibleTimeSlots[colNumber - 2]?.start;
+              const slotStart = visibleTimeSlots[col - 2]?.start;
               const sch = regGrid[dayIndex]?.[slotStart];
               if (sch) {
                 cell.value = {
                   richText: [
-                    { text: sch.subject + "\n",               font: { bold: true, size: 11, color: { argb: C_EMERALD_DEEP } } },
-                    { text: (sch.teacherName || "Teacher TBA") + "\n", font: { size: 9, color: { argb: C_TEXT_MED } } },
-                    { text: "Room " + sch.roomNumber,         font: { size: 9, color: { argb: C_TEXT_LIGHT }, italic: true } },
+                    { text: sch.subject + "\n",                          font: { bold: true, size: 11, color: { argb: dc.accent } } },
+                    { text: (sch.teacherName || "Teacher TBA") + "\n",   font: { size: 9, italic: true, color: { argb: C_TEXT_MED } } },
+                    { text: "Room " + sch.roomNumber,                    font: { size: 9, bold: true, color: { argb: C_TEXT_LIGHT } } },
                   ],
                 };
-                cell.fill      = solidFill(C_EMERALD_PALE);
+                cell.fill      = solidFill(dc.bg);
                 cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+                cell.border    = {
+                  top:    { style: "thin",   color: { argb: dc.accent } },
+                  left:   { style: "medium", color: { argb: dc.accent } },
+                  bottom: { style: "thin",   color: { argb: dc.accent } },
+                  right:  { style: "thin",   color: { argb: C_BORDER } },
+                };
               } else {
                 cell.value     = "";
-                cell.fill      = solidFill(C_WHITE);
+                cell.fill      = solidFill(idx % 2 === 0 ? C_WHITE : C_GRAY_BG);
                 cell.alignment = { horizontal: "center", vertical: "middle" };
+                cell.border    = thinBorder();
               }
             }
           });
         });
+
+        // Footer
+        addFooter(ws, DAYS_WEEK.length + 6);
 
         const buf  = await wb.xlsx.writeBuffer();
         const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         saveAs(blob, `Timetable_Class${filterClass}${filterBatch ? "_" + filterBatch.replace(/\s+/g, "_") : ""}.xlsx`);
 
-      } else {
-        // ── Custom / Daily View ────────────────────────────────────────────────
-        const isDaily   = activeTab === "daily_view";
-        const sheetName = isDaily ? "Daily View" : "Custom Schedule";
-        const ws = wb.addWorksheet(sheetName, {
-          pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+      } else if (activeTab === "daily_view") {
+        // ════════════════════════════════════════════════════════════════════════
+        // PREMIUM DAILY SCHEDULE — 3-sheet workbook
+        //   Sheet 1 : Cover  (branding + KPIs + class legend)
+        //   Sheet 2 : Daily Schedule matrix  (class × time slot)
+        //   Sheet 3 : Teacher Duty Chart  (teacher × time slot)
+        // ════════════════════════════════════════════════════════════════════════
+        const grid    = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
+        const dateStr = customWeekStart.toISOString().split("T")[0];
+        const dateLbl = customWeekStart.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+        const numCols = visibleTimeSlots.length + 1;
+
+        // Flatten all schedules for KPIs and teacher chart
+        type RichSch = Schedule & { _cl: string; _bn: string };
+        const allSchs: RichSch[] = [];
+        CLASS_LEVELS.forEach(cl => {
+          Object.entries(grid[cl] || {}).forEach(([bn, slotMap]) => {
+            Object.values(slotMap).forEach(sch => {
+              if (!allSchs.some(s => s._id === sch._id && s._cl === cl && s._bn === bn))
+                allSchs.push({ ...sch, _cl: cl, _bn: bn });
+            });
+          });
         });
+        const kpiClasses  = allSchs.length;
+        const kpiTeachers = new Set(allSchs.map(s => s.teacherName).filter(Boolean)).size;
+        const kpiRooms    = new Set(allSchs.map(s => s.roomNumber)).size;
+        const kpiBatches  = new Set(allSchs.map(s => `${s._cl}|${s._bn}`)).size;
 
-        const customGrid = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
-        const numCols    = visibleTimeSlots.length + 1;
-        const dateLabel  = customWeekStart.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-
-        const addMergedRow = (
-          text: string,
-          rowIdx: number,
-          height: number,
-          fontSize: number,
-          bold: boolean,
-          italic = false
-        ) => {
-          ws.addRow([text]);
-          ws.mergeCells(rowIdx, 1, rowIdx, numCols);
-          const cell = ws.getCell(rowIdx, 1);
-          cell.font      = { bold, italic, size: fontSize, color: { argb: C_WHITE }, name: "Calibri" };
-          cell.fill      = solidFill(C_EMERALD);
-          cell.alignment = { horizontal: "center", vertical: "middle" };
-          ws.getRow(rowIdx).height = height;
+        // ── Helper: fill every cell in a row with a background colour ──────────
+        const paintRow = (wsp: import("exceljs").Worksheet, r: number, argb: string, h: number, nc: number) => {
+          wsp.getRow(r).height = h;
+          for (let c = 1; c <= nc; c++) wsp.getCell(r, c).fill = solidFill(argb);
         };
 
-        addMergedRow(isDaily ? "INSTITUTE DAILY SCHEDULE" : "CUSTOM SCHEDULE", 1, 40, 18, true);
-        addMergedRow("Abhigyan Gurukull  |  " + dateLabel, 2, 26, 11, true);
-        addMergedRow(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 3, 18, 9, false, true);
+        // ── Helper: merge + style a single region ──────────────────────────────
+        type MscOpts = { size: number; bold?: boolean; italic?: boolean; color?: string; fill?: string; halign?: import("exceljs").Alignment["horizontal"]; indent?: number; border?: Partial<import("exceljs").Borders> };
+        const msc = (wsp: import("exceljs").Worksheet, r1: number, c1: number, r2: number, c2: number, value: string, o: MscOpts) => {
+          wsp.mergeCells(r1, c1, r2, c2);
+          const cell = wsp.getCell(r1, c1);
+          cell.value     = value;
+          cell.font      = { name: "Calibri", bold: o.bold, italic: o.italic, size: o.size, color: { argb: o.color ?? C_WHITE } };
+          cell.fill      = solidFill(o.fill ?? C_NAVY);
+          cell.alignment = { horizontal: o.halign ?? "center", vertical: "middle", wrapText: true, indent: o.indent };
+          if (o.border) cell.border = o.border;
+        };
 
-        ws.addRow([]);
-        ws.getRow(4).height = 6;
+        // ════════════════
+        // SHEET 1 – COVER
+        // ════════════════
+        const COV_COLS = 8;
+        const cov = wb.addWorksheet("Cover", {
+          pageSetup: { orientation: "portrait" },
+          views: [{ showGridLines: false }],
+        });
+        for (let c = 1; c <= COV_COLS; c++) cov.getColumn(c).width = 14;
 
-        // Headers
-        const hdrRow = ws.addRow(["Class / Batch", ...visibleTimeSlots.map((s) => s.label)]);
-        hdrRow.height = 34;
-        hdrRow.eachCell({ includeEmpty: true }, (cell, col) => {
-          cell.font      = { bold: true, size: 10, color: { argb: C_TEXT_DARK }, name: "Calibri" };
-          cell.fill      = solidFill(C_EMERALD_LITE);
+        // Rows 1–12: deep-navy brand header block
+        for (let r = 1; r <= 12; r++) paintRow(cov, r, C_NAVY, r === 1 || r === 12 ? 10 : 28, COV_COLS);
+        msc(cov, 2, 1, 7, COV_COLS, "ABHIGYAN GURUKULL", { size: 30, bold: true });
+        msc(cov, 8, 1, 10, COV_COLS, "Excellence in Education  ·  Institute Management System",
+          { size: 11, italic: true, color: C_MINT });
+        // Emerald accent row 11
+        cov.mergeCells(11, 1, 11, COV_COLS); cov.getCell(11, 1).fill = solidFill(C_EMERALD); cov.getRow(11).height = 5;
+
+        // Spacer row 13
+        cov.getRow(13).height = 20;
+
+        // Document title rows 14–15
+        msc(cov, 14, 1, 15, COV_COLS, "INSTITUTE DAILY SCHEDULE",
+          { size: 22, bold: true, color: C_NAVY, fill: C_WHITE });
+        cov.getRow(14).height = 36; cov.getRow(15).height = 36;
+
+        // Date rows 16–17
+        msc(cov, 16, 1, 17, COV_COLS, dateLbl.toUpperCase(),
+          { size: 13, bold: true, color: C_EMERALD, fill: C_WHITE });
+        cov.getRow(16).height = 28; cov.getRow(17).height = 8;
+
+        // Gold divider row 18
+        cov.mergeCells(18, 1, 18, COV_COLS); cov.getCell(18, 1).fill = solidFill(C_GOLD); cov.getRow(18).height = 4;
+        cov.getRow(19).height = 16;
+
+        // DAILY SUMMARY heading row 20
+        msc(cov, 20, 1, 20, COV_COLS, "DAILY SUMMARY", { size: 10, bold: true, color: C_TEXT_MED, fill: C_WHITE });
+        cov.getRow(20).height = 22; cov.getRow(21).height = 8;
+
+        // 4 KPI cards (2 cols each, 8 total)
+        const kpis = [
+          { label: "TOTAL CLASSES",    value: String(kpiClasses),  cp: CP["9"]  },
+          { label: "TEACHERS ON DUTY", value: String(kpiTeachers), cp: CP["7"]  },
+          { label: "ROOMS IN USE",     value: String(kpiRooms),    cp: CP["10"] },
+          { label: "ACTIVE BATCHES",   value: String(kpiBatches),  cp: CP["11"] },
+        ];
+        kpis.forEach(({ label, value, cp }, i) => {
+          const c1 = i * 2 + 1, c2 = c1 + 1;
+          cov.mergeCells(22, c1, 24, c2);
+          const vCell = cov.getCell(22, c1);
+          vCell.value     = value;
+          vCell.font      = { name: "Calibri", bold: true, size: 32, color: { argb: cp.dark } };
+          vCell.fill      = solidFill(cp.pale);
+          vCell.alignment = { horizontal: "center", vertical: "middle" };
+          vCell.border    = mediumBorder(cp.mid);
+          [22, 23, 24].forEach(r => { cov.getRow(r).height = 22; });
+          cov.mergeCells(25, c1, 25, c2);
+          const lCell = cov.getCell(25, c1);
+          lCell.value     = label;
+          lCell.font      = { name: "Calibri", bold: true, size: 8, color: { argb: C_WHITE } };
+          lCell.fill      = solidFill(cp.dark);
+          lCell.alignment = { horizontal: "center", vertical: "middle" };
+          cov.getRow(25).height = 18;
+        });
+
+        cov.getRow(26).height = 24;
+        msc(cov, 27, 1, 27, COV_COLS, "CLASS COLOR LEGEND", { size: 10, bold: true, color: C_TEXT_MED, fill: C_WHITE });
+        cov.getRow(27).height = 22; cov.getRow(28).height = 6;
+
+        // Legend: one row per class level
+        CLASS_LEVELS.forEach((cl, i) => {
+          const r = 29 + i;
+          const cp = CP[cl] ?? CP["12"];
+          cov.mergeCells(r, 1, r, 3);
+          const sw = cov.getCell(r, 1);
+          sw.value = `  CLASS ${cl}`; sw.font = { name: "Calibri", bold: true, size: 10, color: { argb: C_WHITE } };
+          sw.fill = solidFill(cp.dark); sw.alignment = { vertical: "middle" };
+          cov.mergeCells(r, 4, r, 5);
+          const pc = cov.getCell(r, 4);
+          pc.value = "Sample"; pc.font = { name: "Calibri", size: 9, color: { argb: cp.dark } };
+          pc.fill = solidFill(cp.pale); pc.alignment = { horizontal: "center", vertical: "middle" }; pc.border = thinBorder(cp.light);
+          cov.mergeCells(r, 6, r, COV_COLS);
+          const dc = cov.getCell(r, 6);
+          dc.value = `Standard Grade ${cl}`; dc.font = { name: "Calibri", size: 9, color: { argb: C_TEXT_MED } };
+          dc.fill = solidFill(C_WHITE); dc.alignment = { vertical: "middle" };
+          cov.getRow(r).height = 20;
+        });
+
+        // Footer row 36
+        cov.mergeCells(36, 1, 36, COV_COLS);
+        cov.getCell(36, 1).value     = `Generated on ${new Date().toLocaleDateString("en-IN", { dateStyle: "full" })}  ·  Abhigyan Gurukull  ·  Confidential`;
+        cov.getCell(36, 1).font      = { name: "Calibri", italic: true, size: 8, color: { argb: C_TEXT_LIGHT } };
+        cov.getCell(36, 1).fill      = solidFill(C_GRAY_LIGHT);
+        cov.getCell(36, 1).alignment = { horizontal: "center", vertical: "middle" };
+        cov.getRow(36).height = 22;
+
+        // ═══════════════════════════════
+        // SHEET 2 – DAILY SCHEDULE MATRIX
+        // ═══════════════════════════════
+        const ws = wb.addWorksheet("Daily Schedule", {
+          pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, paperSize: 9 },
+          views: [{ state: "frozen", xSplit: 1, ySplit: 6, showGridLines: false }],
+        });
+        ws.getColumn(1).width = 22;
+        visibleTimeSlots.forEach((_, i) => { ws.getColumn(i + 2).width = 22; });
+
+        paintRow(ws, 1, C_NAVY, 8, numCols);
+        msc(ws, 2, 1, 3, numCols, "ABHIGYAN GURUKULL", { size: 18, bold: true });
+        ws.getRow(2).height = 30; ws.getRow(3).height = 30;
+        msc(ws, 4, 1, 4, numCols, `INSTITUTE DAILY SCHEDULE  ·  ${dateLbl.toUpperCase()}`,
+          { size: 10, bold: true, fill: C_EMERALD });
+        ws.getRow(4).height = 22;
+        paintRow(ws, 5, C_GOLD, 4, numCols);
+
+        // Column header row 6
+        const wsHdr = ws.addRow(["CLASS / BATCH", ...visibleTimeSlots.map(s => s.label)]);
+        wsHdr.height = 44;
+        wsHdr.eachCell({ includeEmpty: true }, (cell, col) => {
+          cell.font      = { name: "Calibri", bold: true, size: 9, color: { argb: C_GOLD } };
+          cell.fill      = solidFill(C_NAVY);
           cell.alignment = { horizontal: col === 1 ? "left" : "center", vertical: "middle", wrapText: true };
-          cell.border    = borderThin;
+          cell.border    = { top:{style:"medium",color:{argb:C_EMERALD}}, left:{style:"thin",color:{argb:C_NAVY_MID}}, bottom:{style:"medium",color:{argb:C_EMERALD}}, right:{style:"thin",color:{argb:C_NAVY_MID}} };
         });
 
-        ws.getColumn(1).width = 24;
-        visibleTimeSlots.forEach((_, i) => { ws.getColumn(i + 2).width = 26; });
-
-        // Data
-        const allRows = CLASS_LEVELS.flatMap((classLevel) => {
-          const cls = batches.filter((b) => b.classLevels.includes(classLevel));
-          return cls.length === 0
-            ? [{ classLevel, batchName: "" }]
-            : cls.map((b) => ({ classLevel, batchName: b.name }));
+        const allRowsWs = CLASS_LEVELS.flatMap(cl => {
+          const cls = batches.filter(b => b.classLevels.includes(cl));
+          return cls.length === 0 ? [{ cl, bn: "" }] : cls.map(b => ({ cl, bn: b.name }));
         });
 
-        allRows.forEach(({ classLevel, batchName }) => {
-          const rowLabel = `Class ${classLevel}${batchName ? " — " + batchName : ""}`;
-          const dataRow  = ws.addRow([rowLabel, ...visibleTimeSlots.map(() => "")]);
-          dataRow.height = 56;
+        let prevClWs = "";
+        let wsR = 7;
+        allRowsWs.forEach(({ cl, bn }) => {
+          const isNew = cl !== prevClWs;
+          prevClWs = cl;
+          const cp = CP[cl] ?? CP["12"];
 
-          dataRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-            cell.border = borderThin;
-            if (colNumber === 1) {
-              cell.font      = { bold: true, size: 10, color: { argb: C_TEXT_DARK } };
-              cell.fill      = solidFill(C_EMERALD_PALE);
-              cell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+          // Thin coloured section-break strip before each new class group
+          if (isNew) {
+            for (let c = 1; c <= numCols; c++) ws.getCell(wsR, c).fill = solidFill(cp.mid);
+            ws.getRow(wsR).height = 4; wsR++;
+          }
+
+          const label = `Class ${cl}${bn ? "  ·  " + bn : ""}`;
+          const dr = ws.addRow([label, ...visibleTimeSlots.map(() => "")]);
+          dr.height = 64;
+
+          dr.eachCell({ includeEmpty: true }, (cell, col) => {
+            if (col === 1) {
+              cell.value     = label;
+              cell.font      = { name: "Calibri", bold: true, size: 10, color: { argb: cp.dark } };
+              cell.fill      = solidFill(cp.pale);
+              cell.alignment = { horizontal: "left", vertical: "middle", wrapText: true, indent: 1 };
+              cell.border    = { top:{style:"medium",color:{argb:cp.dark}}, left:{style:"thick",color:{argb:cp.mid}}, bottom:{style:"thin",color:{argb:cp.light}}, right:{style:"medium",color:{argb:cp.light}} };
             } else {
-              const slotStart = visibleTimeSlots[colNumber - 2]?.start;
-              const sch = customGrid[classLevel]?.[batchName]?.[slotStart];
+              const slotStart = visibleTimeSlots[col - 2]?.start;
+              const sch = grid[cl]?.[bn]?.[slotStart];
               if (sch) {
+                const isCust = sch.scheduleType === "custom";
                 cell.value = {
                   richText: [
-                    { text: sch.subject + "\n",               font: { bold: true, size: 11, color: { argb: C_EMERALD_DEEP } } },
-                    { text: (sch.teacherName || "TBA") + "\n",font: { size: 9, color: { argb: C_TEXT_MED } } },
-                    { text: "Room " + sch.roomNumber,         font: { size: 9, color: { argb: C_TEXT_LIGHT }, italic: true } },
+                    { text: sch.subject + "\n",               font: { name: "Calibri", bold: true, size: 11, color: { argb: isCust ? C_AMBER : cp.dark } } },
+                    { text: (sch.teacherName || "TBA") + "\n",font: { name: "Calibri", size: 9, italic: true, color: { argb: C_TEXT_MED } } },
+                    { text: "Room " + sch.roomNumber,         font: { name: "Calibri", size: 9, bold: true, color: { argb: C_TEXT_LIGHT } } },
+                    ...(isCust ? [{ text: "\n★ Special", font: { name: "Calibri", size: 8, bold: true, color: { argb: C_AMBER } } }] : []),
                   ],
                 };
-                cell.fill      = solidFill(C_EMERALD_PALE);
+                cell.fill      = solidFill(isCust ? "FFFFF7ED" : cp.pale);
                 cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+                cell.border    = { top:{style:"thin",color:{argb:cp.light}}, left:{style:"thin",color:{argb:C_GRAY_MID}}, bottom:{style:"thin",color:{argb:cp.light}}, right:{style:"thin",color:{argb:C_GRAY_MID}} };
               } else {
-                cell.value     = "";
-                cell.fill      = solidFill(C_WHITE);
-                cell.alignment = { horizontal: "center", vertical: "middle" };
+                cell.fill   = solidFill(C_OFF_WHITE);
+                cell.border = thinBorder(C_GRAY_MID);
+              }
+            }
+          });
+          wsR++;
+          if (isNew) wsR++;
+        });
+
+        // Bottom strip + footer
+        for (let c = 1; c <= numCols; c++) ws.getCell(wsR, c).fill = solidFill(C_EMERALD);
+        ws.getRow(wsR).height = 4; wsR++;
+        ws.mergeCells(wsR, 1, wsR, numCols);
+        ws.getCell(wsR, 1).value     = `© Abhigyan Gurukull  ·  ${new Date().toLocaleDateString("en-IN", { dateStyle: "full" })}  ·  For Internal Use Only`;
+        ws.getCell(wsR, 1).font      = { name: "Calibri", italic: true, size: 8, color: { argb: C_TEXT_LIGHT } };
+        ws.getCell(wsR, 1).fill      = solidFill(C_GRAY_LIGHT);
+        ws.getCell(wsR, 1).alignment = { horizontal: "center", vertical: "middle" };
+        ws.getRow(wsR).height = 20;
+
+        // ══════════════════════════════
+        // SHEET 3 – TEACHER DUTY CHART
+        // ══════════════════════════════
+        const tWs = wb.addWorksheet("Teacher Schedule", {
+          pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+          views: [{ state: "frozen", xSplit: 1, ySplit: 5, showGridLines: false }],
+        });
+        tWs.getColumn(1).width = 24;
+        visibleTimeSlots.forEach((_, i) => { tWs.getColumn(i + 2).width = 22; });
+        const tNumCols = visibleTimeSlots.length + 1;
+
+        // Build teacher → slots map
+        type TeachEntry = { slot: string; subject: string; cl: string; bn: string; room: number };
+        const teacherMap: Record<string, TeachEntry[]> = {};
+        allSchs.forEach(s => {
+          const t = s.teacherName || "Unassigned";
+          if (!teacherMap[t]) teacherMap[t] = [];
+          teacherMap[t].push({ slot: s.startTimeSlot, subject: s.subject, cl: s._cl, bn: s._bn, room: s.roomNumber });
+        });
+        const teacherNames = Object.keys(teacherMap).sort();
+
+        paintRow(tWs, 1, C_NAVY, 8, tNumCols);
+        msc(tWs, 2, 1, 3, tNumCols, "ABHIGYAN GURUKULL", { size: 18, bold: true });
+        tWs.getRow(2).height = 30; tWs.getRow(3).height = 30;
+        msc(tWs, 4, 1, 4, tNumCols, `TEACHER DUTY CHART  ·  ${dateLbl.toUpperCase()}`,
+          { size: 10, bold: true, fill: C_EMERALD_BRT });
+        tWs.getRow(4).height = 22;
+
+        const tHdr = tWs.addRow(["TEACHER", ...visibleTimeSlots.map(s => s.label)]);
+        tHdr.height = 42;
+        tHdr.eachCell({ includeEmpty: true }, (cell) => {
+          cell.font      = { name: "Calibri", bold: true, size: 9, color: { argb: C_GOLD } };
+          cell.fill      = solidFill(C_NAVY);
+          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+          cell.border    = thinBorder(C_NAVY_MID);
+        });
+        tWs.getCell(5, 1).font = { name: "Calibri", bold: true, size: 10, color: { argb: C_GOLD } };
+
+        teacherNames.forEach((teacher, idx) => {
+          const rowBg = idx % 2 === 0 ? C_WHITE : C_GRAY_LIGHT;
+          const row = tWs.addRow([teacher, ...visibleTimeSlots.map(() => "")]);
+          row.height = 60;
+          row.eachCell({ includeEmpty: true }, (cell, col) => {
+            if (col === 1) {
+              cell.value     = teacher;
+              cell.font      = { name: "Calibri", bold: true, size: 10, color: { argb: C_NAVY } };
+              cell.fill      = solidFill(rowBg);
+              cell.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
+              cell.border    = { top:{style:"thin",color:{argb:C_GRAY_MID}}, left:{style:"thick",color:{argb:C_EMERALD}}, bottom:{style:"thin",color:{argb:C_GRAY_MID}}, right:{style:"medium",color:{argb:C_GRAY_DARK}} };
+            } else {
+              const slot = visibleTimeSlots[col - 2];
+              const entry = teacherMap[teacher]?.find(e => e.slot === slot?.start);
+              if (entry) {
+                const cp = CP[entry.cl] ?? CP["12"];
+                cell.value = {
+                  richText: [
+                    { text: entry.subject + "\n",                                    font: { name: "Calibri", bold: true, size: 11, color: { argb: cp.dark } } },
+                    { text: `Class ${entry.cl}${entry.bn ? " · " + entry.bn : ""}\n`, font: { name: "Calibri", size: 9, color: { argb: C_TEXT_MED } } },
+                    { text: "Room " + entry.room,                                    font: { name: "Calibri", size: 9, bold: true, color: { argb: C_TEXT_LIGHT } } },
+                  ],
+                };
+                cell.fill      = solidFill(cp.pale);
+                cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+                cell.border    = { top:{style:"thin",color:{argb:cp.light}}, left:{style:"thin",color:{argb:C_GRAY_MID}}, bottom:{style:"thin",color:{argb:cp.light}}, right:{style:"thin",color:{argb:C_GRAY_MID}} };
+              } else {
+                cell.fill   = solidFill(rowBg);
+                cell.border = thinBorder(C_GRAY_MID);
               }
             }
           });
         });
 
-        const dateStr = customWeekStart.toISOString().split("T")[0];
-        const buf     = await wb.xlsx.writeBuffer();
-        const blob    = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        saveAs(blob, `Schedule_${isDaily ? "DailyView" : "Custom"}_${dateStr}.xlsx`);
+        const tFR = teacherNames.length + 6;
+        tWs.mergeCells(tFR, 1, tFR, tNumCols);
+        tWs.getCell(tFR, 1).value     = `© Abhigyan Gurukull  ·  Teacher Duty Chart  ·  ${dateStr}`;
+        tWs.getCell(tFR, 1).font      = { name: "Calibri", italic: true, size: 8, color: { argb: C_TEXT_LIGHT } };
+        tWs.getCell(tFR, 1).fill      = solidFill(C_GRAY_LIGHT);
+        tWs.getCell(tFR, 1).alignment = { horizontal: "center", vertical: "middle" };
+        tWs.getRow(tFR).height = 20;
+
+        const bufDaily = await wb.xlsx.writeBuffer();
+        saveAs(new Blob([bufDaily], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+          `DailySchedule_${dateStr}.xlsx`);
+
+      } else {
+        // ════════════════════════════════════════════════════════════════════════
+        // CUSTOM SCHEDULE – enhanced single sheet
+        // ════════════════════════════════════════════════════════════════════════
+        const customGrid  = timetableGrid as Record<string, Record<string, Record<string, Schedule>>>;
+        const custDateStr = customWeekStart.toISOString().split("T")[0];
+        const custDateLbl = customWeekStart.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+        const custNumCols = visibleTimeSlots.length + 1;
+
+        const custWs = wb.addWorksheet("Custom Schedule", {
+          pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+          views: [{ state: "frozen", xSplit: 1, ySplit: 5 }],
+        });
+        custWs.getColumn(1).width = 22;
+        visibleTimeSlots.forEach((_, i) => { custWs.getColumn(i + 2).width = 24; });
+
+        addBanner(custWs, "ABHIGYAN GURUKULL", 1, 52, { size: 22, bold: true, fill: C_BRAND });
+        addBanner(custWs, "CUSTOM CLASS SCHEDULE", 2, 30, { size: 14, bold: true, fill: C_BRAND_MID });
+        addBanner(custWs, custDateLbl, 3, 22, { size: 9, italic: true, fill: C_BRAND, color: C_BRAND_LITE });
+        custWs.addRow([]); custWs.getRow(4).height = 8;
+
+        const custHdr = custWs.addRow(["CLASS / BATCH", ...visibleTimeSlots.map(s => s.label)]);
+        custHdr.height = 42;
+        custHdr.eachCell({ includeEmpty: true }, (cell, col) => {
+          cell.font      = { bold: true, size: 9, color: { argb: C_BRAND }, name: "Calibri" };
+          cell.fill      = solidFill(C_BRAND_LITE);
+          cell.alignment = { horizontal: col === 1 ? "left" : "center", vertical: "middle", wrapText: true };
+          cell.border    = mediumBorder(C_BRAND_MID);
+        });
+
+        const custAllRows = CLASS_LEVELS.flatMap(cl => {
+          const cls = batches.filter(b => b.classLevels.includes(cl));
+          return cls.length === 0 ? [{ cl, bn: "" }] : cls.map(b => ({ cl, bn: b.name }));
+        });
+
+        let prevClCust = "";
+        custAllRows.forEach(({ cl, bn }, rowIndex) => {
+          const isNew = cl !== prevClCust;
+          prevClCust = cl;
+          const cp = CP[cl] ?? CP["12"];
+          const label = `Class ${cl}${bn ? "  —  " + bn : ""}`;
+          const dr = custWs.addRow([label, ...visibleTimeSlots.map(() => "")]);
+          dr.height = 62;
+          dr.eachCell({ includeEmpty: true }, (cell, col) => {
+            const ts = isNew ? "medium" : "thin";
+            const tc = isNew ? cp.dark : C_BORDER;
+            if (col === 1) {
+              cell.value     = label;
+              cell.font      = { name: "Calibri", bold: true, size: 10, color: { argb: cp.dark } };
+              cell.fill      = solidFill(cp.pale);
+              cell.alignment = { horizontal: "left", vertical: "middle", wrapText: true, indent: 1 };
+              cell.border    = { top:{style:ts,color:{argb:tc}}, left:{style:"thick",color:{argb:cp.mid}}, bottom:{style:"thin",color:{argb:cp.light}}, right:{style:"medium",color:{argb:cp.light}} };
+            } else {
+              const slotStart = visibleTimeSlots[col - 2]?.start;
+              const sch = customGrid[cl]?.[bn]?.[slotStart];
+              if (sch) {
+                const isCust = sch.scheduleType === "custom";
+                cell.value = {
+                  richText: [
+                    { text: sch.subject + "\n",               font: { name: "Calibri", bold: true, size: 11, color: { argb: isCust ? C_AMBER : cp.dark } } },
+                    { text: (sch.teacherName || "TBA") + "\n",font: { name: "Calibri", size: 9, italic: true, color: { argb: C_TEXT_MED } } },
+                    { text: "Room " + sch.roomNumber,         font: { name: "Calibri", size: 9, bold: true, color: { argb: C_TEXT_LIGHT } } },
+                    ...(isCust ? [{ text: "\n★ Custom", font: { name: "Calibri", size: 8, bold: true, color: { argb: C_AMBER } } }] : []),
+                  ],
+                };
+                cell.fill      = solidFill(isCust ? "FFFFF7ED" : cp.pale);
+                cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+                cell.border    = { top:{style:ts,color:{argb:tc}}, left:{style:"thin",color:{argb:C_BORDER}}, bottom:{style:"thin",color:{argb:C_BORDER}}, right:{style:"thin",color:{argb:C_BORDER}} };
+              } else {
+                cell.fill   = solidFill(rowIndex % 2 === 0 ? C_WHITE : C_GRAY_BG);
+                cell.border = { top:{style:ts,color:{argb:tc}}, left:{style:"thin",color:{argb:C_BORDER}}, bottom:{style:"thin",color:{argb:C_BORDER}}, right:{style:"thin",color:{argb:C_BORDER}} };
+              }
+            }
+          });
+        });
+
+        addFooter(custWs, custAllRows.length + 6);
+
+        const custBuf = await wb.xlsx.writeBuffer();
+        saveAs(new Blob([custBuf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+          `CustomSchedule_${custDateStr}.xlsx`);
+        // suppress unused-var lint for custNumCols (used implicitly via custWs column setup)
+        void custNumCols;
       }
 
-      toast.success("Schedule exported successfully");
+      toast.success("Timetable exported successfully");
     } catch (e) {
       console.error("Export failed:", e);
       toast.error("Export failed. Please try again.");

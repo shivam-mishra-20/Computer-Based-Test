@@ -7,13 +7,12 @@ interface Params {
   attemptId: string;
 }
 
-export default function AttemptPage({ params }: { params: Params }) {
+export default function AttemptPage({ params }: { params: Promise<Params> }) {
+  // Next.js 15: route params are async and must be unwrapped before use.
+  const { attemptId } = React.use(params);
   const search = useSearchParams();
   const review = search?.get("review");
   return (
-    <AttemptPlayer
-      attemptId={params.attemptId}
-      mode={review ? "review" : "attempt"}
-    />
+    <AttemptPlayer attemptId={attemptId} mode={review ? "review" : "attempt"} />
   );
 }
