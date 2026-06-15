@@ -51,6 +51,11 @@ export default function CreateExamFlow() {
   const [examTitle, setExamTitle] = useState("");
   const [examClass, setExamClass] = useState("");
   const [totalDuration, setTotalDuration] = useState(60);
+  // Marking scheme (marks per question). Defaults to +1 / 0 / 0; teachers set
+  // e.g. +4 / -1 / 0 for JEE/NEET style negative marking.
+  const [markCorrect, setMarkCorrect] = useState(1);
+  const [markIncorrect, setMarkIncorrect] = useState(0);
+  const [markUnattempted, setMarkUnattempted] = useState(0);
 
   // Filters
   const [selectedSubject, setSelectedSubject] = useState("");
@@ -239,6 +244,11 @@ export default function CreateExamFlow() {
           title: examTitle.trim(),
           classLevel: `Class ${examClass}`,
           totalDurationMins: totalDuration,
+          markingScheme: {
+            correct: markCorrect,
+            incorrect: markIncorrect,
+            unattempted: markUnattempted,
+          },
           sections: sections.map((s) => ({
             title: s.title,
             questionIds: s.questionIds,
@@ -423,6 +433,43 @@ export default function CreateExamFlow() {
                     max="300"
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base transition-all"
                   />
+                </div>
+              </div>
+
+              {/* Marking scheme */}
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Marking scheme (marks per question)
+                </label>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <span className="block text-xs text-gray-500 mb-1">Correct</span>
+                    <input
+                      type="number"
+                      value={markCorrect}
+                      onChange={(e) => setMarkCorrect(Number(e.target.value))}
+                      className="w-24 px-3 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-base transition-all"
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-xs text-gray-500 mb-1">Incorrect</span>
+                    <input
+                      type="number"
+                      value={markIncorrect}
+                      onChange={(e) => setMarkIncorrect(Number(e.target.value))}
+                      className="w-24 px-3 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-red-400 text-base transition-all"
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-xs text-gray-500 mb-1">Not attempted</span>
+                    <input
+                      type="number"
+                      value={markUnattempted}
+                      onChange={(e) => setMarkUnattempted(Number(e.target.value))}
+                      className="w-24 px-3 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 text-base transition-all"
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400 pb-2">e.g. +4 / −1 / 0 (negative marking)</span>
                 </div>
               </div>
             </div>

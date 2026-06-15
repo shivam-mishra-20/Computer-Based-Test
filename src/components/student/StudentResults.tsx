@@ -11,6 +11,8 @@ interface AttemptSummary {
   submittedAt?: string;
   totalScore?: number;
   maxScore?: number;
+  percentage?: number;
+  rankInTest?: number | null;
   resultPublished?: boolean;
   status: string;
 }
@@ -310,7 +312,7 @@ export default function StudentResults() {
                                   Submitted {formatDate(attempt.submittedAt)}
                                 </div>
                               )}
-                              <div>
+                              <div className="flex items-center gap-2">
                                 {attempt.resultPublished ? (
                                   <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full border border-emerald-200">
                                     Published
@@ -318,6 +320,11 @@ export default function StudentResults() {
                                 ) : (
                                   <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-full border border-amber-200">
                                     Pending
+                                  </span>
+                                )}
+                                {attempt.rankInTest != null && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full border border-indigo-200">
+                                    Rank #{attempt.rankInTest}
                                   </span>
                                 )}
                               </div>
@@ -404,15 +411,22 @@ export default function StudentResults() {
                                 : "—"}
                             </td>
                             <td className="px-6 py-4 align-top">
-                              {attempt.resultPublished ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full border border-emerald-200">
-                                  Published
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-full border border-amber-200">
-                                  Pending
-                                </span>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {attempt.resultPublished ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full border border-emerald-200">
+                                    Published
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-full border border-amber-200">
+                                    Pending
+                                  </span>
+                                )}
+                                {attempt.rankInTest != null && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full border border-indigo-200">
+                                    Rank #{attempt.rankInTest}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-6 py-4 align-top">
                               {attempt.totalScore !== undefined &&

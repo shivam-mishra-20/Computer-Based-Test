@@ -73,12 +73,18 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const autosaveRef = useRef<NodeJS.Timeout | null>(null);
+  // Per-question debounce timers + the latest pending payload for each question.
+  // A single shared timer would let a rapid change on question B cancel the
+  // still-unsaved answer for question A, silently dropping answers.
+  const autosaveTimersRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const pendingSavesRef = useRef<Record<string, PrimitiveResponse>>({});
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const attemptEndRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
+  const submitGuardRef = useRef(false);
 
   const updateTimeLeft = useCallback((end: number) => {
     function tick() {
@@ -133,7 +139,14 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         const ok = confirm("Submit attempt? This cannot be undone.");
         if (!ok) return;
       }
+      // Guard against concurrent submits (manual click racing an auto-submit).
+      if (submitGuardRef.current) return;
+      submitGuardRef.current = true;
+      setSubmitting(true);
       try {
+        // Flush any debounced answers so the last answers a student entered are
+        // persisted BEFORE the server grades the attempt.
+        await flushPendingSaves();
         await apiFetch(`/attempts/${attemptId}/submit`, {
           method: "POST",
           body: JSON.stringify({ auto: silent, reason: opts?.reason }),
@@ -141,6 +154,9 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         await load();
       } catch {
         if (!silent) alert("Submit failed");
+      } finally {
+        submitGuardRef.current = false;
+        setSubmitting(false);
       }
     },
     [attemptId, load]
@@ -153,7 +169,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
   useEffect(
     () => () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (autosaveRef.current) clearTimeout(autosaveRef.current);
+      Object.values(autosaveTimersRef.current).forEach((t) => clearTimeout(t));
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     },
     []
@@ -319,10 +335,10 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     const idx = cloned.attempt.answers.findIndex(
       (a) => a.questionId === currentQid
     );
+    let nextMarked = true;
     if (idx >= 0) {
-      cloned.attempt.answers[idx].isMarkedForReview = !Boolean(
-        cloned.attempt.answers[idx].isMarkedForReview
-      );
+      nextMarked = !Boolean(cloned.attempt.answers[idx].isMarkedForReview);
+      cloned.attempt.answers[idx].isMarkedForReview = nextMarked;
     } else {
       const newAns: AttemptCore["answers"][number] = {
         questionId: currentQid,
@@ -331,26 +347,72 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       cloned.attempt.answers.push(newAns);
     }
     setView(cloned);
-    apiFetch(`/attempts/${attemptId}/answer`, {
+    // Use the dedicated /mark endpoint. Posting the review flag through /answer
+    // used to ship undefined chosenOptionId/textAnswer, which the server merged
+    // over the saved answer and erased it. /mark only touches the review flag.
+    apiFetch(`/attempts/${attemptId}/mark`, {
       method: "POST",
-      body: JSON.stringify({
-        questionId: currentQid,
-        isMarkedForReview: cloned.attempt.answers.find(
-          (a) => a.questionId === currentQid
-        )?.isMarkedForReview,
-      }),
+      body: JSON.stringify({ questionId: currentQid, marked: nextMarked }),
     }).catch(() => {});
   }
 
+  // Deselect / clear the current answer. The mark-for-review flag is preserved
+  // server-side, so clearing the response never touches the review flag.
+  function clearResponse() {
+    if (!view || !currentQid) return;
+    const cloned: AttemptViewResponse = JSON.parse(JSON.stringify(view));
+    const idx = cloned.attempt.answers.findIndex(
+      (a) => a.questionId === currentQid
+    );
+    if (idx >= 0) {
+      cloned.attempt.answers[idx].chosenOptionId = undefined;
+      cloned.attempt.answers[idx].textAnswer = undefined;
+    }
+    setView(cloned);
+    // Drop any pending debounced save for this question so it can't re-write it.
+    delete pendingSavesRef.current[currentQid];
+    if (autosaveTimersRef.current[currentQid]) {
+      clearTimeout(autosaveTimersRef.current[currentQid]);
+      delete autosaveTimersRef.current[currentQid];
+    }
+    setSaving(true);
+    apiFetch(`/attempts/${attemptId}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ questionId: currentQid, clear: true }),
+    })
+      .catch(() => {})
+      .finally(() => setSaving(false));
+  }
+
   function scheduleAutosave(qid: string, response: PrimitiveResponse) {
-    if (autosaveRef.current) clearTimeout(autosaveRef.current);
-    autosaveRef.current = setTimeout(() => saveAnswer(qid, response), 800);
+    pendingSavesRef.current[qid] = response;
+    if (autosaveTimersRef.current[qid])
+      clearTimeout(autosaveTimersRef.current[qid]);
+    autosaveTimersRef.current[qid] = setTimeout(() => {
+      delete autosaveTimersRef.current[qid];
+      void saveAnswer(qid, response);
+    }, 800);
+  }
+
+  async function flushPendingSaves() {
+    const pendingQids = Object.keys(pendingSavesRef.current);
+    Object.values(autosaveTimersRef.current).forEach((t) => clearTimeout(t));
+    autosaveTimersRef.current = {};
+    await Promise.all(
+      pendingQids.map((qid) => saveAnswer(qid, pendingSavesRef.current[qid]))
+    );
   }
 
   async function saveAnswer(questionId: string, response: PrimitiveResponse) {
     if (mode === "review") return;
+    // We're persisting this question now; drop its pending marker so a later
+    // flush doesn't redundantly re-save it.
+    delete pendingSavesRef.current[questionId];
     setSaving(true);
     try {
+      // Resolve the question type by id (not from the currently-viewed question)
+      // so a flushed answer for an off-screen question routes to the right field.
+      const qType = view?.questions[questionId]?.type || "";
       const payload: {
         questionId: string;
         chosenOptionId?: string;
@@ -360,7 +422,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       if (Array.isArray(response))
         payload.textAnswer = JSON.stringify(response);
       else if (typeof response === "string") {
-        if (["mcq", "mcq-single"].includes(currentQuestion?.type || ""))
+        if (["mcq", "mcq-single"].includes(qType))
           payload.chosenOptionId = response;
         else payload.textAnswer = response;
       }
@@ -659,17 +721,28 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                   </p>
                 </div>
               </div>
-              {timeLeft !== null && !view?.attempt.submittedAt && (
-                <div
-                  className={`px-3 py-1.5 rounded-full text-sm font-mono ${
-                    timeLeft < 300000
-                      ? "bg-red-100 text-red-700 border border-red-200"
-                      : "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                  }`}
-                >
-                  {formatTime(timeLeft)}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {timeLeft !== null && !view?.attempt.submittedAt && (
+                  <div
+                    className={`px-3 py-1.5 rounded-full text-sm font-mono ${
+                      timeLeft < 300000
+                        ? "bg-red-100 text-red-700 border border-red-200"
+                        : "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                    }`}
+                  >
+                    {formatTime(timeLeft)}
+                  </div>
+                )}
+                {!view?.attempt.submittedAt && (
+                  <button
+                    onClick={() => submitAttempt()}
+                    disabled={submitting}
+                    className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white text-sm font-semibold rounded-full shadow-sm disabled:opacity-60"
+                  >
+                    {submitting ? "..." : "Submit"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -726,6 +799,12 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
+                      {saving && (
+                        <div className="flex items-center gap-2 text-slate-600">
+                          <InlineLoader />
+                          <span className="text-sm">Saving...</span>
+                        </div>
+                      )}
                       {timeLeft !== null && !view.attempt.submittedAt && (
                         <div
                           className={`px-4 py-2 rounded-xl font-mono text-lg font-bold ${
@@ -737,16 +816,20 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                           {formatTime(timeLeft)}
                         </div>
                       )}
-                      {view.attempt.submittedAt && (
+                      {view.attempt.submittedAt ? (
                         <div className="px-4 py-2 bg-emerald-100 text-emerald-700 border-2 border-emerald-200 rounded-xl font-medium">
                           Submitted
                         </div>
-                      )}
-                      {saving && (
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <InlineLoader />
-                          <span className="text-sm">Saving...</span>
-                        </div>
+                      ) : (
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => submitAttempt()}
+                          disabled={submitting}
+                          className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-semibold rounded-xl shadow-sm transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {submitting ? "Submitting..." : "Submit Exam"}
+                        </motion.button>
                       )}
                     </div>
                   </div>
@@ -843,6 +926,21 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                             </div>
                           )}
                         </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                        {!view.attempt.submittedAt &&
+                          mode !== "review" &&
+                          (existingAnswer?.chosenOptionId ||
+                            existingAnswer?.textAnswer) && (
+                            <button
+                              type="button"
+                              onClick={clearResponse}
+                              disabled={isPaused}
+                              className="px-3 py-2 rounded-xl border-2 border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Deselect / clear your answer"
+                            >
+                              Clear
+                            </button>
+                          )}
                         <motion.button
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
@@ -881,6 +979,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                               : "Mark for Review"}
                           </span>
                         </motion.button>
+                        </div>
                       </div>
 
                       <div className="border-t border-slate-100 pt-6">
@@ -981,16 +1080,9 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                             </svg>
                           </motion.button>
                         </div>
-                        {!view.attempt.submittedAt && (
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => submitAttempt()}
-                            className="px-6 py-2 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-medium rounded-lg shadow-sm transition-all duration-200"
-                          >
-                            Submit Exam
-                          </motion.button>
-                        )}
+                        <span className="text-xs text-slate-400 hidden sm:inline">
+                          Use “Submit Exam” at the top when you&apos;re done
+                        </span>
                       </div>
                     </div>
                   </div>

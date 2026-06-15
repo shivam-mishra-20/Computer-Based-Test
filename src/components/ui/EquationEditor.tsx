@@ -79,6 +79,7 @@ export default function EquationEditor({
 
   // Block / multi-line math toolbar items (rendered in a second row)
   const blockToolbarItems = [
+    { label: "•", title: "Bullet point (starts a new line)", template: "\n• ", cursorOffset: 3 },
     { label: "$$", title: "Display / block math — renders centred on its own line", template: "$$\n\n$$", cursorOffset: 3 },
     { label: "align", title: "Multi-line aligned equations (use & for alignment, \\\\ for new line)", template: "$$\n\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}\n$$", cursorOffset: 24 },
     { label: "cases", title: "Piecewise / cases expression", template: "$$\n\\begin{cases}\nx & \\text{if } x \\geq 0 \\\\\n-x & \\text{if } x < 0\n\\end{cases}\n$$", cursorOffset: 24 },
@@ -187,7 +188,7 @@ export default function EquationEditor({
           <p className="text-xs font-semibold text-indigo-600 mb-2">
             Live Preview
           </p>
-          <div className="text-center p-3 bg-gray-50 rounded min-h-12 flex items-center justify-center">
+          <div className="p-3 bg-gray-50 rounded min-h-12 whitespace-pre-wrap break-words leading-relaxed text-left">
             <MathText text={value} />
           </div>
         </div>
