@@ -822,7 +822,7 @@ export default function AdminQuestionBank() {
     }
   }
 
-  async function saveDraft(e: React.FormEvent) {
+  const saveDraft = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!draft.text.trim()) {
       notify.error("Question text required");
@@ -945,7 +945,7 @@ export default function AdminQuestionBank() {
     } finally {
       setSaving(false);
     }
-  }
+  }, [draft, pendingDiagramFile, selectedClass, load]);
 
   async function onDelete(id: string) {
     if (!confirm("Delete this question?")) return;

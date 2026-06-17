@@ -1113,12 +1113,12 @@ function SubjectiveScorer({ initial, max, disabled, onSave }: { initial?: number
 
 // ── Version + audit history ──────────────────────────────────────────────────
 function HistoryModal({ examId, onClose, notify }: { examId: string; onClose: () => void; notify: (k: "ok" | "err", m: string) => void }) {
-  const [data, setData] = useState<{ versions: any[]; audit: any[] } | null>(null);
+  const [data, setData] = useState<{ versions: { version: number; event: string; reviewState: string; totalMarks?: number; at: string; note?: string }[]; audit: { _id: string; action: string; createdAt: string; actorName?: string; field?: string; oldValue?: unknown; newValue?: unknown }[] } | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        setData((await apiFetch(`/exam-review/${examId}/history`)) as { versions: any[]; audit: any[] });
+        setData((await apiFetch(`/exam-review/${examId}/history`)) as { versions: { version: number; event: string; reviewState: string; totalMarks?: number; at: string; note?: string }[]; audit: { _id: string; action: string; createdAt: string; actorName?: string; field?: string; oldValue?: unknown; newValue?: unknown }[] });
       } catch (e) {
         notify("err", e instanceof Error ? e.message : "Failed to load history");
       }
@@ -1150,7 +1150,7 @@ function HistoryModal({ examId, onClose, notify }: { examId: string; onClose: ()
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Publish versions</h3>
             <ol className="relative border-l border-gray-200 ml-2 space-y-3">
-              {(data?.versions || []).slice().reverse().map((v: any) => (
+              {(data?.versions || []).slice().reverse().map((v) => (
                 <li key={v.version} className="ml-4">
                   <div className="absolute -left-1.5 w-3 h-3 bg-indigo-500 rounded-full" />
                   <div className="text-sm font-medium text-gray-900">
@@ -1169,7 +1169,7 @@ function HistoryModal({ examId, onClose, notify }: { examId: string; onClose: ()
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Audit log</h3>
             <div className="space-y-2">
-              {(data?.audit || []).map((a: any) => (
+              {(data?.audit || []).map((a) => (
                 <div key={a._id} className="text-xs border border-gray-100 rounded-lg p-2.5">
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-800">{a.action}</span>

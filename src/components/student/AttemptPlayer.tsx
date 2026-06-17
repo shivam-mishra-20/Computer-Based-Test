@@ -159,6 +159,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         setSubmitting(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [attemptId, load]
   );
 

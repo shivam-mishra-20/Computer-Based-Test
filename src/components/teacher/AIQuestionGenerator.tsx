@@ -372,7 +372,6 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
     setManualPyqYear(isPYQ ? pyqYear : CURRENT_YEAR);
     setManualPyqExam(isPYQ ? pyqExam : "");
     setManualPyqShift(isPYQ ? pyqShift : "");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPYQ, pyqYear, pyqExam, pyqShift]);
 
   // Reset all form data including localStorage

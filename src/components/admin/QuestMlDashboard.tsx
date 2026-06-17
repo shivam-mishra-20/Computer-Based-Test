@@ -224,7 +224,6 @@ export default function QuestMlDashboard() {
     setError(null); setBusy(true);
     try {
       let res: Response;
-      const providerNote = aiProvider !== 'none' ? ` · AI: ${aiProvider}` : '';
       if (mode === 'upload') {
         if (!file) { setError('Choose a .pdf or .epub file'); setBusy(false); return; }
         const fd = new FormData();
@@ -298,8 +297,6 @@ export default function QuestMlDashboard() {
     queued:    'bg-amber-100 text-amber-800 border-amber-200',
     failed:    'bg-red-100 text-red-800 border-red-200',
   }[st]);
-
-  const selectedProvider = AI_PROVIDERS.find(p => p.value === aiProvider) || AI_PROVIDERS[0];
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
