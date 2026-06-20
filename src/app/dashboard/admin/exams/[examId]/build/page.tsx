@@ -69,7 +69,7 @@ export default function ExamBuilderPage() {
 
   // Section management - always start with one default section
   const [sections, setSections] = useState<ExamSection[]>([
-    { title: "Section A", questionIds: [], sectionDurationMins: 30 },
+    { title: "Section A", questionIds: [], sectionDurationMins: 30, shuffleQuestions: true },
   ]);
   const [expandedSection, setExpandedSection] = useState<number | null>(0);
 
@@ -113,7 +113,7 @@ export default function ExamBuilderPage() {
           // Ensure at least one section exists
           const loadedSections = examData.sections && examData.sections.length > 0
             ? examData.sections
-            : [{ title: "Section A", questionIds: [], sectionDurationMins: 30 }];
+            : [{ title: "Section A", questionIds: [], sectionDurationMins: 30, shuffleQuestions: true }];
           setSections(loadedSections);
         }
       } catch (err) {
@@ -199,6 +199,7 @@ export default function ExamBuilderPage() {
         title: `Section ${String.fromCharCode(65 + prev.length)}`,
         questionIds: [],
         sectionDurationMins: 30,
+        shuffleQuestions: true,
       },
     ]);
   };

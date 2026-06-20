@@ -592,7 +592,7 @@ export default function TeacherAITools() {
             {
               title: "Section 1",
               questionIds: bankSelectedQuestions,
-              shuffleQuestions: false,
+              shuffleQuestions: true,
               shuffleOptions: false,
             },
           ],
@@ -1020,7 +1020,7 @@ export default function TeacherAITools() {
             {
               title: "Section 1",
               questionIds: createdIds,
-              shuffleQuestions: false,
+              shuffleQuestions: true,
               shuffleOptions: false,
             },
           ],
