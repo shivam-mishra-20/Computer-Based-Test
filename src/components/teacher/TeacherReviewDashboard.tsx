@@ -86,6 +86,8 @@ interface AttemptRow {
   maxScore?: number;
   percentage?: number;
   rankInTest?: number;
+  percentile?: number;
+  hasManualOverride?: boolean;
   hasSubjectivePending?: boolean;
 }
 
@@ -781,6 +783,7 @@ function TestDetailView({
                 <th className="text-left px-4 py-2 font-semibold">Student</th>
                 <th className="text-center px-4 py-2 font-semibold">Score</th>
                 <th className="text-center px-4 py-2 font-semibold">%</th>
+                <th className="text-center px-4 py-2 font-semibold">%ile</th>
                 <th className="text-center px-4 py-2 font-semibold">Status</th>
                 <th className="text-right px-4 py-2 font-semibold">Actions</th>
               </tr>
@@ -806,6 +809,7 @@ function TestDetailView({
                       {a.totalScore ?? 0} / {a.maxScore ?? 0}
                     </td>
                     <td className="px-4 py-2 text-center text-gray-900">{a.percentage ?? 0}%</td>
+                    <td className="px-4 py-2 text-center text-gray-700">{a.percentile != null ? `${a.percentile}%` : "—"}</td>
                     <td className="px-4 py-2 text-center">
                       {a.hasSubjectivePending ? (
                         <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs">needs grading</span>
@@ -868,16 +872,17 @@ interface TeacherAttemptView {
   attempt: {
     _id: string;
     userId?: { name?: string; classLevel?: string; batch?: string };
-    answers: { questionId: string; chosenOptionId?: string; textAnswer?: string; scoreAwarded?: number; rubricScore?: number; aiFeedback?: string; isCorrect?: boolean }[];
+    answers: { questionId: string; chosenOptionId?: string; textAnswer?: string; scoreAwarded?: number; rubricScore?: number; aiFeedback?: string; isCorrect?: boolean; manualScore?: number; manualScoreAt?: string }[];
     totalScore?: number;
     maxScore?: number;
     percentage?: number;
     rankInTest?: number;
+    percentile?: number;
     status: string;
   };
   exam: { _id: string; title: string };
   sections: { _id: string; title: string; questionIds: string[] }[];
-  questions: Record<string, { _id: string; text: string; type: string; options?: { _id: string; text: string; isCorrect?: boolean }[] }>;
+  questions: Record<string, { _id: string; text: string; type: string; options?: { _id: string; text: string; isCorrect?: boolean }[]; subject?: string; tags?: { subject?: string; topic?: string } }>;
 }
 
 function AttemptReviewModal({
@@ -929,6 +934,27 @@ function AttemptReviewModal({
     }
   };
 
+  // Manually set/clear ONE student's mark for ONE question (any type). A number
+  // pins a persistent override (+4/+1/0/-1/custom) that survives recompute;
+  // null reverts the question to automatic grading. Recompute updates this
+  // student's score/rank/percentile and the whole cohort's ranking.
+  const saveManualScore = async (questionId: string, score: number | null) => {
+    setBusy(true);
+    try {
+      await apiFetch(`/exam-review/attempts/${attemptId}/manual-score`, {
+        method: "PATCH",
+        body: JSON.stringify({ questionId, score }),
+      });
+      notify("ok", score === null ? "Reverted to auto-grading; totals recomputed" : "Marks updated and totals recomputed");
+      await load();
+      onChanged();
+    } catch (e) {
+      notify("err", e instanceof Error ? e.message : "Failed to update marks");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const fixAnswerKey = async (questionId: string, optionId: string) => {
     if (!confirm("Set this option as the correct answer for ALL students? Every attempt will be re-graded.")) return;
     setBusy(true);
@@ -949,6 +975,30 @@ function AttemptReviewModal({
 
   const orderedQids = view ? view.sections.flatMap((s) => s.questionIds) : [];
 
+  // Group the student's answers subject-wise (by question subject tag, falling
+  // back to the section title) so the teacher reviews them the same way the
+  // student saw them in the player. Numbering stays the exam-global order.
+  const subjectOfQ = (qid: string): string => {
+    const q = view?.questions[qid];
+    const s = q?.subject || q?.tags?.subject;
+    if (s && s.trim()) return s.trim();
+    const sec = view?.sections.find((x) => x.questionIds.includes(qid));
+    return sec?.title?.trim() || "General";
+  };
+  const subjectGroups: { subject: string; qids: string[] }[] = [];
+  for (const qid of orderedQids) {
+    const sub = subjectOfQ(qid);
+    let g = subjectGroups.find((x) => x.subject === sub);
+    if (!g) {
+      g = { subject: sub, qids: [] };
+      subjectGroups.push(g);
+    }
+    g.qids.push(qid);
+  }
+  const orderedBySubject = subjectGroups.flatMap((g) => g.qids);
+  const multiSubject = subjectGroups.length > 1;
+  const globalIndexOf = (qid: string) => orderedQids.indexOf(qid);
+
   return (
     <motion.div
       className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3"
@@ -968,6 +1018,7 @@ function AttemptReviewModal({
             <p className="text-xs text-indigo-100">
               Score {view?.attempt.totalScore ?? "—"} / {view?.attempt.maxScore ?? "—"} · {view?.attempt.percentage ?? 0}% · Rank{" "}
               {view?.attempt.rankInTest ?? "—"}
+              {view?.attempt.percentile != null && <> · {view.attempt.percentile}%ile</>}
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg">
@@ -980,13 +1031,24 @@ function AttemptReviewModal({
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {!view && <div className="text-center py-10 text-gray-500">Loading…</div>}
           {view &&
-            orderedQids.map((qid, idx) => {
+            orderedBySubject.map((qid, flatPos) => {
               const q = view.questions[qid];
               if (!q) return null;
+              const idx = globalIndexOf(qid);
               const ans = view.attempt.answers.find((a) => a.questionId === qid);
               const subjective = isSubjective(q.type);
+              const showHeader =
+                multiSubject &&
+                (flatPos === 0 ||
+                  subjectOfQ(orderedBySubject[flatPos - 1]) !== subjectOfQ(qid));
               return (
-                <div key={qid} className="border border-gray-200 rounded-2xl p-4">
+                <div key={qid}>
+                  {showHeader && (
+                    <div className="mb-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
+                      <span className="text-sm font-bold text-indigo-700">{subjectOfQ(qid)}</span>
+                    </div>
+                  )}
+                  <div className="border border-gray-200 rounded-2xl p-4">
                   <div className="flex items-start gap-2 mb-3">
                     <span className="flex items-center justify-center w-7 h-7 bg-indigo-600 text-white text-xs font-bold rounded-lg flex-shrink-0">
                       {idx + 1}
@@ -1035,6 +1097,22 @@ function AttemptReviewModal({
                     </div>
                   )}
 
+                  {/* Objective: manually override THIS student's marks for THIS question.
+                      "Make correct" above fixes the key for everyone; this awards a
+                      specific mark to one student (+4/+1/0/-1/custom) and persists
+                      through recompute. */}
+                  {!subjective && (
+                    <MarkScorer
+                      label="Override marks for this student"
+                      manualScore={ans?.manualScore}
+                      autoScore={ans?.scoreAwarded}
+                      correctMark={correctMark}
+                      disabled={busy}
+                      onSave={(v) => saveManualScore(qid, v)}
+                      onReset={() => saveManualScore(qid, null)}
+                    />
+                  )}
+
                   {/* Subjective: student answer + AI + score input */}
                   {subjective && (
                     <div className="space-y-3">
@@ -1057,12 +1135,96 @@ function AttemptReviewModal({
                       />
                     </div>
                   )}
+                  </div>
                 </div>
               );
             })}
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+// Per-student, per-question manual mark override. Unlike SubjectiveScorer this
+// allows negative values (e.g. -1) and a "Reset to auto" that clears the
+// override. Presets default to the marking scheme (+correct / +1 / 0 / -1).
+function MarkScorer({
+  label,
+  manualScore,
+  autoScore,
+  correctMark,
+  disabled,
+  onSave,
+  onReset,
+}: {
+  label: string;
+  manualScore?: number;
+  autoScore?: number;
+  correctMark: number;
+  disabled?: boolean;
+  onSave: (v: number) => void;
+  onReset: () => void;
+}) {
+  const hasOverride = typeof manualScore === "number";
+  const [val, setVal] = useState<string>(hasOverride ? String(manualScore) : "");
+  useEffect(() => {
+    setVal(hasOverride ? String(manualScore) : "");
+  }, [manualScore, hasOverride]);
+  const presets = Array.from(new Set([correctMark, 1, 0, -1])).filter((v) => Number.isFinite(v));
+  return (
+    <div className="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-amber-800">{label}</span>
+        {hasOverride ? (
+          <span className="text-[10px] bg-amber-600 text-white px-1.5 py-0.5 rounded">Manually set: {manualScore}</span>
+        ) : (
+          <span className="text-[10px] text-gray-500">Auto: {autoScore ?? 0}</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex gap-1">
+          {presets.map((v) => (
+            <button
+              key={v}
+              onClick={() => setVal(String(v))}
+              className={`px-2 py-1 text-xs rounded border ${
+                val === String(v) ? "bg-amber-600 text-white border-amber-600" : "border-amber-300 text-amber-700 hover:bg-amber-100"
+              }`}
+            >
+              {v > 0 ? `+${v}` : v}
+            </button>
+          ))}
+        </div>
+        <input
+          type="number"
+          step={0.5}
+          value={val}
+          placeholder="custom"
+          onChange={(e) => setVal(e.target.value)}
+          className="w-24 px-2 py-1.5 border border-amber-300 rounded-lg text-sm"
+        />
+        <button
+          onClick={() => {
+            const n = Number(val);
+            if (val === "" || Number.isNaN(n)) return;
+            onSave(n);
+          }}
+          disabled={disabled || val === ""}
+          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+        >
+          Save
+        </button>
+        {hasOverride && (
+          <button
+            onClick={onReset}
+            disabled={disabled}
+            className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Reset to auto
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -43,6 +43,8 @@ interface QuestionView {
   assertion?: string;
   reason?: string;
   diagramUrl?: string;
+  subject?: string;
+  tags?: { subject?: string; topic?: string; chapter?: string };
 }
 
 interface AttemptViewResponse {
@@ -60,6 +62,45 @@ interface AttemptViewResponse {
 interface Props {
   attemptId: string;
   mode?: "attempt" | "review";
+}
+
+// Canonical question kind — mirrors the backend's normalizeQuestionType() so the
+// player renders + stores answers for EVERY type the teacher's "Add Questions"
+// flow can save (mcq / truefalse / fill / integer / assertion-reason / subjective)
+// plus their aliases. Unknown/mislabeled types degrade gracefully (options →
+// single-choice, otherwise a text input) instead of showing "Unsupported".
+type QKind =
+  | "single"
+  | "multi"
+  | "assertion"
+  | "truefalse"
+  | "integer"
+  | "fill"
+  | "subjective";
+
+const normType = (t?: string): string =>
+  (t || "").toLowerCase().replace(/[\s_-]+/g, "");
+
+const SINGLE_TYPES = new Set(["mcq", "mcqsingle", "singlechoice", "multiplechoice"]);
+const MULTI_TYPES = new Set(["mcqmulti", "multiselect", "multipleselect", "msq"]);
+const TRUEFALSE_TYPES = new Set(["truefalse"]);
+const INTEGER_TYPES = new Set(["integer", "numerical", "numeric", "number"]);
+const FILL_TYPES = new Set(["fill", "fillblank", "fillintheblank", "fillups"]);
+const SUBJECTIVE_TYPES = new Set(["short", "long", "subjective", "text", "essay", "descriptive"]);
+
+function questionKind(q?: { type?: string; options?: { _id: string }[] }): QKind {
+  if (!q) return "fill";
+  const t = normType(q.type);
+  const hasOptions = !!(q.options && q.options.length > 0);
+  if (t === "assertionreason") return "assertion";
+  if (MULTI_TYPES.has(t)) return "multi";
+  if (TRUEFALSE_TYPES.has(t)) return "truefalse";
+  if (SINGLE_TYPES.has(t)) return "single";
+  if (INTEGER_TYPES.has(t)) return "integer";
+  if (FILL_TYPES.has(t)) return "fill";
+  if (SUBJECTIVE_TYPES.has(t)) return "subjective";
+  // Unknown type: infer from the data shape so it still renders.
+  return hasOptions ? "single" : "fill";
 }
 
 export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
@@ -204,7 +245,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
 
   useEffect(() => {
     if (mode === "review") return;
-    const VIOLATION_THRESHOLD = 6;
+    const VIOLATION_THRESHOLD = 10;
     const handleViolation = (why: string) => {
       if (view?.attempt.submittedAt) return;
       if (isPaused) return; // ignore violations while paused/offline
@@ -289,6 +330,52 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     : [];
   const currentQid = orderedQuestionIds[index];
   const currentQuestion = currentQid ? view?.questions[currentQid] : undefined;
+
+  // ── Subject-wise organisation ──────────────────────────────────────────────
+  // Questions are grouped by their subject tag (chosen at exam-creation time and
+  // carried on the question). Falls back to the containing section's title, then
+  // "General". This drives the subject tabs + the per-subject question palette;
+  // the underlying flat order (and all grading/submission logic) is unchanged.
+  const subjectOf = (qid: string): string => {
+    const q = view?.questions[qid];
+    // Class-specific questions store a flat `subject`; the generic bank uses
+    // `tags.subject`. Fall back to the containing section's title, then General.
+    const sub = q?.subject || q?.tags?.subject;
+    if (sub && sub.trim()) return sub.trim();
+    const sec = view?.sections.find((s) => s.questionIds.includes(qid));
+    return sec?.title?.trim() || "General";
+  };
+  const subjects: string[] = [];
+  for (const qid of orderedQuestionIds) {
+    const s = subjectOf(qid);
+    if (!subjects.includes(s)) subjects.push(s);
+  }
+  const hasMultipleSubjects = subjects.length > 1;
+  const activeSubject = currentQid ? subjectOf(currentQid) : subjects[0];
+  // Global-indexed questions belonging to a subject (preserves numbering).
+  const questionsInSubject = (subject: string) =>
+    orderedQuestionIds
+      .map((qid, i) => ({ qid, i }))
+      .filter(({ qid }) => subjectOf(qid) === subject);
+  const subjectStats = (subject: string) => {
+    const items = questionsInSubject(subject);
+    const answered = items.filter(({ qid }) => {
+      const a = view?.attempt.answers.find((x) => x.questionId === qid);
+      return a && (a.chosenOptionId || a.textAnswer);
+    }).length;
+    return { total: items.length, answered };
+  };
+  // Switch to a subject: jump to its first unanswered question (else its first).
+  const goToSubject = (subject: string) => {
+    const items = questionsInSubject(subject);
+    if (!items.length) return;
+    const firstUnanswered = items.find(({ qid }) => {
+      const a = view?.attempt.answers.find((x) => x.questionId === qid);
+      return !(a && (a.chosenOptionId || a.textAnswer));
+    });
+    setIndex((firstUnanswered || items[0]).i);
+    setSidebarOpen(false);
+  };
   const existingAnswer = view?.attempt.answers.find(
     (a) => a.questionId === currentQid
   );
@@ -299,11 +386,12 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     const idx = cloned.attempt.answers.findIndex(
       (a) => a.questionId === currentQid
     );
+    const single = questionKind(currentQuestion) === "single";
     if (idx >= 0) {
       if (Array.isArray(val)) {
         cloned.attempt.answers[idx].textAnswer = JSON.stringify(val);
       } else if (typeof val === "string") {
-        if (["mcq", "mcq-single"].includes(currentQuestion.type)) {
+        if (single) {
           cloned.attempt.answers[idx].chosenOptionId = val as unknown as string;
           (
             cloned.attempt.answers[idx] as unknown as Record<string, unknown>
@@ -320,8 +408,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       } = { questionId: currentQid };
       if (Array.isArray(val)) base.textAnswer = JSON.stringify(val);
       else if (typeof val === "string") {
-        if (["mcq", "mcq-single"].includes(currentQuestion.type))
-          base.chosenOptionId = val;
+        if (single) base.chosenOptionId = val;
         else base.textAnswer = val;
       }
       cloned.attempt.answers.push(base);
@@ -411,9 +498,9 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     delete pendingSavesRef.current[questionId];
     setSaving(true);
     try {
-      // Resolve the question type by id (not from the currently-viewed question)
+      // Resolve the question kind by id (not from the currently-viewed question)
       // so a flushed answer for an off-screen question routes to the right field.
-      const qType = view?.questions[questionId]?.type || "";
+      const single = questionKind(view?.questions[questionId]) === "single";
       const payload: {
         questionId: string;
         chosenOptionId?: string;
@@ -423,8 +510,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       if (Array.isArray(response))
         payload.textAnswer = JSON.stringify(response);
       else if (typeof response === "string") {
-        if (["mcq", "mcq-single"].includes(qType))
-          payload.chosenOptionId = response;
+        if (single) payload.chosenOptionId = response;
         else payload.textAnswer = response;
       }
       const currentMark = view?.attempt.answers.find(
@@ -449,9 +535,8 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     const disabled =
       mode === "review" || Boolean(view?.attempt.submittedAt) || isPaused;
 
-    switch (q.type) {
-      case "mcq":
-      case "mcq-single":
+    switch (questionKind(q)) {
+      case "single":
         return (
           <div className="space-y-3">
             {q.options?.map((opt, idx) => (
@@ -482,7 +567,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
           </div>
         );
 
-      case "mcq-multi": {
+      case "multi": {
         const selected: string[] = ans?.textAnswer
           ? (() => {
               try {
@@ -529,7 +614,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         );
       }
 
-      case "assertionreason":
+      case "assertion":
         return (
           <div className="space-y-6">
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
@@ -596,7 +681,6 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
           </div>
         );
 
-      case "true-false":
       case "truefalse":
         return (
           <div className="flex flex-col sm:flex-row gap-3">
@@ -629,8 +713,21 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         return (
           <input
             type="number"
+            inputMode="numeric"
             className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200 disabled:bg-slate-50 disabled:cursor-not-allowed"
-            placeholder="Enter your answer..."
+            placeholder="Enter your numeric answer..."
+            value={ans?.textAnswer ?? ""}
+            onChange={(e) => onChangeResponse(e.target.value)}
+            disabled={disabled}
+          />
+        );
+
+      case "fill":
+        return (
+          <input
+            type="text"
+            className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200 disabled:bg-slate-50 disabled:cursor-not-allowed"
+            placeholder="Type your answer..."
             value={ans?.textAnswer ?? ""}
             onChange={(e) => onChangeResponse(e.target.value)}
             disabled={disabled}
@@ -638,8 +735,6 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         );
 
       case "subjective":
-      case "short":
-      case "long":
         return (
           <textarea
             className="w-full min-h-[160px] px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200 resize-vertical disabled:bg-slate-50 disabled:cursor-not-allowed"
@@ -651,12 +746,17 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
         );
 
       default:
+        // questionKind() never returns anything outside the cases above, but
+        // keep a safe text input so a question can always be answered.
         return (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-center">
-            <span className="text-amber-700">
-              Unsupported question type: {q.type}
-            </span>
-          </div>
+          <input
+            type="text"
+            className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200 disabled:bg-slate-50 disabled:cursor-not-allowed"
+            placeholder="Type your answer..."
+            value={ans?.textAnswer ?? ""}
+            onChange={(e) => onChangeResponse(e.target.value)}
+            disabled={disabled}
+          />
         );
     }
   }
@@ -860,7 +960,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                           {violationMessage}
                         </p>
                         <p className="text-amber-700 text-sm mt-1">
-                          Violations: {violations}/6
+                          Violations: {violations}/10
                         </p>
                       </div>
                     </motion.div>
@@ -897,6 +997,37 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                     </motion.div>
                   )}
 
+                  {/* Subject tabs — switch between the subjects chosen when the
+                      exam was created. Only shown for multi-subject exams. */}
+                  {hasMultipleSubjects && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                      {subjects.map((subject) => {
+                        const { answered, total } = subjectStats(subject);
+                        const active = subject === activeSubject;
+                        return (
+                          <button
+                            key={subject}
+                            onClick={() => goToSubject(subject)}
+                            className={`flex-shrink-0 px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all duration-200 ${
+                              active
+                                ? "border-emerald-500 bg-emerald-600 text-white shadow-sm"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50"
+                            }`}
+                          >
+                            {subject}
+                            <span
+                              className={`ml-2 text-xs font-medium ${
+                                active ? "text-emerald-100" : "text-slate-400"
+                              }`}
+                            >
+                              {answered}/{total}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Question Card */}
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="p-6 lg:p-8 space-y-6">
@@ -908,6 +1039,11 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-slate-500 mb-2">
                             Question {index + 1}
+                            {hasMultipleSubjects && currentQid && (
+                              <span className="ml-2 text-emerald-600">
+                                • {subjectOf(currentQid)}
+                              </span>
+                            )}
                           </div>
                           <div className="text-lg text-slate-900 leading-relaxed whitespace-pre-wrap break-words">
                             <MathText text={currentQuestion?.text || ""} />
@@ -1119,37 +1255,59 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                 <h3 className="font-semibold text-slate-900 mb-4">
                   Question Navigation
                 </h3>
-                <div className="grid grid-cols-5 gap-2">
-                  {orderedQuestionIds.map((qid, i) => {
-                    const ans = view?.attempt.answers.find(
-                      (a) => a.questionId === qid
-                    );
-                    const answered =
-                      ans && (ans.chosenOptionId || ans.textAnswer);
-                    const marked = Boolean(ans?.isMarkedForReview);
-                    const current = i === index;
+                <div className="space-y-4">
+                  {subjects.map((subject) => (
+                    <div key={subject}>
+                      {hasMultipleSubjects && (
+                        <button
+                          onClick={() => goToSubject(subject)}
+                          className={`flex items-center justify-between w-full text-left text-xs font-semibold uppercase tracking-wide mb-2 ${
+                            subject === activeSubject
+                              ? "text-emerald-700"
+                              : "text-slate-500 hover:text-emerald-600"
+                          }`}
+                        >
+                          <span>{subject}</span>
+                          <span className="font-medium normal-case">
+                            {subjectStats(subject).answered}/
+                            {subjectStats(subject).total}
+                          </span>
+                        </button>
+                      )}
+                      <div className="grid grid-cols-5 gap-2">
+                        {questionsInSubject(subject).map(({ qid, i }) => {
+                          const ans = view?.attempt.answers.find(
+                            (a) => a.questionId === qid
+                          );
+                          const answered =
+                            ans && (ans.chosenOptionId || ans.textAnswer);
+                          const marked = Boolean(ans?.isMarkedForReview);
+                          const current = i === index;
 
-                    return (
-                      <motion.button
-                        key={qid}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setIndex(i)}
-                        className={`relative h-12 rounded-lg border-2 font-medium text-sm transition-all duration-200 ${
-                          current
-                            ? "border-emerald-500 bg-emerald-600 text-white shadow-md"
-                            : answered
-                            ? "border-green-300 bg-green-50 text-green-800 hover:bg-green-100"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50"
-                        }`}
-                      >
-                        {i + 1}
-                        {marked && (
-                          <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full ring-2 ring-white"></span>
-                        )}
-                      </motion.button>
-                    );
-                  })}
+                          return (
+                            <motion.button
+                              key={qid}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => setIndex(i)}
+                              className={`relative h-12 rounded-lg border-2 font-medium text-sm transition-all duration-200 ${
+                                current
+                                  ? "border-emerald-500 bg-emerald-600 text-white shadow-md"
+                                  : answered
+                                  ? "border-green-300 bg-green-50 text-green-800 hover:bg-green-100"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50"
+                              }`}
+                            >
+                              {i + 1}
+                              {marked && (
+                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full ring-2 ring-white"></span>
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1238,38 +1396,60 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                       <h4 className="font-medium text-slate-900 mb-3">
                         Questions
                       </h4>
-                      <div className="grid grid-cols-4 gap-2">
-                        {orderedQuestionIds.map((qid, i) => {
-                          const ans = view?.attempt.answers.find(
-                            (a) => a.questionId === qid
-                          );
-                          const answered =
-                            ans && (ans.chosenOptionId || ans.textAnswer);
-                          const marked = Boolean(ans?.isMarkedForReview);
-                          const current = i === index;
+                      <div className="space-y-4">
+                        {subjects.map((subject) => (
+                          <div key={subject}>
+                            {hasMultipleSubjects && (
+                              <button
+                                onClick={() => goToSubject(subject)}
+                                className={`flex items-center justify-between w-full text-left text-xs font-semibold uppercase tracking-wide mb-2 ${
+                                  subject === activeSubject
+                                    ? "text-emerald-700"
+                                    : "text-slate-500"
+                                }`}
+                              >
+                                <span>{subject}</span>
+                                <span className="font-medium normal-case">
+                                  {subjectStats(subject).answered}/
+                                  {subjectStats(subject).total}
+                                </span>
+                              </button>
+                            )}
+                            <div className="grid grid-cols-4 gap-2">
+                              {questionsInSubject(subject).map(({ qid, i }) => {
+                                const ans = view?.attempt.answers.find(
+                                  (a) => a.questionId === qid
+                                );
+                                const answered =
+                                  ans && (ans.chosenOptionId || ans.textAnswer);
+                                const marked = Boolean(ans?.isMarkedForReview);
+                                const current = i === index;
 
-                          return (
-                            <button
-                              key={qid}
-                              onClick={() => {
-                                setIndex(i);
-                                setSidebarOpen(false);
-                              }}
-                              className={`relative h-12 rounded-lg border-2 font-medium text-sm transition-all duration-200 ${
-                                current
-                                  ? "border-emerald-500 bg-emerald-600 text-white"
-                                  : answered
-                                  ? "border-green-300 bg-green-50 text-green-800"
-                                  : "border-slate-200 bg-white text-slate-700"
-                              }`}
-                            >
-                              {i + 1}
-                              {marked && (
-                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full ring-2 ring-white"></span>
-                              )}
-                            </button>
-                          );
-                        })}
+                                return (
+                                  <button
+                                    key={qid}
+                                    onClick={() => {
+                                      setIndex(i);
+                                      setSidebarOpen(false);
+                                    }}
+                                    className={`relative h-12 rounded-lg border-2 font-medium text-sm transition-all duration-200 ${
+                                      current
+                                        ? "border-emerald-500 bg-emerald-600 text-white"
+                                        : answered
+                                        ? "border-green-300 bg-green-50 text-green-800"
+                                        : "border-slate-200 bg-white text-slate-700"
+                                    }`}
+                                  >
+                                    {i + 1}
+                                    {marked && (
+                                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full ring-2 ring-white"></span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
