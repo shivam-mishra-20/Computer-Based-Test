@@ -91,7 +91,13 @@ interface ImportBatch {
   processingProgress: number;
   totalProcessingTime: number;
   createdAt: string;
-  ocrProvider: "pdf-parse" | "google-vision" | "groq" | "gemini" | "tesseract";
+  ocrProvider: "pdf-parse" | "nvidia-vision" | "tesseract" | "google-vision" | "groq" | "gemini";
+  // Live progress fields merged into the GET response (not persisted).
+  stage?: string;
+  stageLabel?: string;
+  etaSeconds?: number | null;
+  questionsPerSecond?: number;
+  elapsedSeconds?: number;
   error?: string;
 }
 
@@ -163,8 +169,13 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [ocrProvider] = useState<"pdf-parse">("pdf-parse");
+  const [provider, setProvider] = useState<"nvidia" | "ollama">("nvidia");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Stop polling on unmount.
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   // Drag & Drop handlers
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -278,6 +289,40 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
     };
   }, [hasUnsavedEdits]);
 
+  // Poll the batch endpoint for live progress while the import runs in the
+  // background. Updates currentBatch (stage / processed / total / ETA / speed).
+  const pollBatch = (batchId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    const POLL_MS = Number(process.env.NEXT_PUBLIC_IMPORT_POLL_MS) || 1500;
+    const tick = async () => {
+      try {
+        const data = (await apiFetch(`/import-paper/batch/${batchId}`)) as {
+          batch: ImportBatch;
+          questions: ImportedQuestion[];
+        };
+        if (data?.batch) setCurrentBatch(data.batch);
+        const status = data?.batch?.status;
+        if (status === "completed") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setQuestions(data.questions || []);
+          setProcessing(false);
+          setSuccess(`Extracted ${data.questions?.length || 0} questions — review and save.`);
+          setIsPreviewOpen(true);
+        } else if (status === "failed") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setProcessing(false);
+          setError(data.batch?.error || "Import failed during processing.");
+        }
+      } catch {
+        // transient error — keep polling
+      }
+    };
+    tick();
+    pollRef.current = setInterval(tick, POLL_MS);
+  };
+
   // Upload and process file with new validation endpoint
   const handleUpload = async () => {
     if (!selectedFile) {
@@ -301,6 +346,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
       formData.append("subject", subject.trim());
       formData.append("topic", topic.trim());
       formData.append("ocrProvider", ocrProvider);
+      formData.append("provider", provider);
 
       // Add new metadata fields for validation
       if (className.trim()) formData.append("class", className.trim());
@@ -324,19 +370,12 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
         throw new Error(errorData.message || "Upload failed");
       }
 
-      const result = (await response.json()) as {
-        batchId: string;
-        totalQuestions: number;
-        processedQuestions: number;
-        processingTime: number;
-      };
+      const result = (await response.json()) as { batchId?: string; status?: string };
+      if (!result.batchId) throw new Error("Server did not return a batch id");
 
-      // Instead of showing a banner, immediately fetch details and open the preview modal
-      await fetchBatchDetails(result.batchId);
-      setIsPreviewOpen(true);
-
+      // File uploaded; processing now runs in the background. Poll for progress.
       setUploading(false);
-      setProcessing(false);
+      pollBatch(result.batchId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
       setUploading(false);
@@ -514,7 +553,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                   Smart Question Import
                 </h1>
                 <p className="text-sm text-gray-600">
-                  Powered by local Ollama Qwen3:8b — fast, private, zero cloud cost
+                  Upload a PDF or image and extract questions with AI
                 </p>
               </div>
             </div>
@@ -588,8 +627,38 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           )}
         </AnimatePresence>
 
-        {/* Upload Section */}
-        {!currentBatch && (
+        {/* Review banner for previously-extracted questions (persisted in session) */}
+        {!processing && questions.length > 0 && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-sm text-emerald-800">
+              You have <span className="font-semibold">{questions.length}</span> extracted question(s) from a previous import.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsPreviewOpen(true)}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
+              >
+                Review &amp; Save
+              </button>
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem(STORAGE_KEY);
+                  sessionStorage.removeItem(BATCH_KEY);
+                  setQuestions([]);
+                  setCurrentBatch(null);
+                  setSelectedQuestions(new Set());
+                }}
+                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Upload Section — visible whenever idle (incl. after a completed/stale
+            batch is restored from session) or during upload before a batch exists. */}
+        {(!currentBatch || !processing) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -651,38 +720,40 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
                 </div>
               </div>
 
-              {/* Processing Pipeline Info */}
-              <div className="mt-4 p-3 bg-violet-50 border border-violet-200 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5 text-violet-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              {/* AI model: Cloud (NVIDIA) vs Local (Ollama) */}
+              <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">AI Model</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProvider("nvidia")}
+                    className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-all ${
+                      provider === "nvidia"
+                        ? "border-emerald-500 bg-emerald-50"
+                        : "border-gray-200 hover:border-emerald-300 hover:bg-white"
+                    }`}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"
-                    />
-                  </svg>
-                  <p className="text-sm font-medium text-violet-900">
-                    Local Pipeline:{" "}
-                    <span className="font-semibold">pdf-parse</span>
-                    {" → "}
-                    <span className="font-semibold">Ollama</span>
-                    {" · "}
-                    <span className="font-semibold text-violet-700">Qwen3:8b</span>
-                  </p>
-                </div>
-                <p className="text-xs text-violet-700 mt-1 ml-7">
-                  100% local · no cloud API · low VRAM · structured JSON extraction
-                </p>
-                <div className="flex gap-2 mt-2 ml-7">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-violet-100 text-violet-800">offline</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">JSON mode</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">chunked</span>
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${provider === "nvidia" ? "bg-emerald-500" : "bg-gray-300"}`} />
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">Cloud · NVIDIA</div>
+                      <div className="text-xs text-gray-500">Nemotron Super 49B · best quality</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProvider("ollama")}
+                    className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-all ${
+                      provider === "ollama"
+                        ? "border-violet-500 bg-violet-50"
+                        : "border-gray-200 hover:border-violet-300 hover:bg-white"
+                    }`}
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${provider === "ollama" ? "bg-violet-500" : "bg-gray-300"}`} />
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">Local · Ollama</div>
+                      <div className="text-xs text-gray-500">Qwen3:8b · private · offline · zero cost</div>
+                    </div>
+                  </button>
                 </div>
               </div>
 
@@ -907,54 +978,93 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           </motion.div>
         )}
 
-        {/* Processing Status */}
-        {processing && currentBatch && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <ArrowPathIcon className="w-6 h-6 text-blue-500 animate-spin" />
-              <h3 className="text-lg font-semibold text-gray-900">
-                Processing Questions
-              </h3>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>Progress</span>
-                <span>{Math.round(currentBatch.processingProgress)}%</span>
+        {/* Processing Status — multi-stage live indicator */}
+        {processing && currentBatch && (() => {
+          const STAGES: { id: string; label: string }[] = [
+            { id: "extracting", label: "Extracting" },
+            { id: "parsing", label: "Parsing" },
+            { id: "enhancing", label: "AI Enhancement" },
+            { id: "validating", label: "Validating" },
+            { id: "saving", label: "Saving" },
+          ];
+          const order = STAGES.map((s) => s.id);
+          const cur = currentBatch.stage || "enhancing";
+          const curIdx = order.indexOf(cur);
+          const pct = Number.isFinite(currentBatch.processingProgress) ? currentBatch.processingProgress : 0;
+          const eta = currentBatch.etaSeconds;
+          const etaText = eta == null ? "—" : eta >= 60 ? `${Math.floor(eta / 60)}m ${eta % 60}s` : `${eta}s`;
+          const elapsed = currentBatch.elapsedSeconds != null
+            ? currentBatch.elapsedSeconds
+            : Math.round((currentBatch.totalProcessingTime || 0) / 1000);
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6"
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <ArrowPathIcon className="w-6 h-6 text-blue-500 animate-spin" />
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {currentBatch.stageLabel || "Processing Questions"}
+                </h3>
+                <span className="ml-auto text-sm font-bold text-blue-600">{Math.round(pct)}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+
+              {/* Stage stepper */}
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {STAGES.map((st, i) => {
+                  const active = i === curIdx;
+                  const done = curIdx > i;
+                  return (
+                    <span
+                      key={st.id}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                        active
+                          ? "bg-blue-100 text-blue-700"
+                          : done
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-gray-100 text-gray-400"
+                      }`}
+                    >
+                      {done ? "✓ " : ""}{st.label}
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
                 <div
                   className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${currentBatch.processingProgress}%` }}
+                  style={{ width: `${pct}%` }}
                 />
               </div>
-              <div className="grid grid-cols-3 gap-4 text-center text-sm">
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center text-sm">
                 <div>
-                  <p className="text-gray-500">Total</p>
+                  <p className="text-gray-500">Questions</p>
                   <p className="font-semibold text-gray-900">
-                    {currentBatch.totalQuestions}
+                    {currentBatch.processedQuestions || 0}
+                    {currentBatch.totalQuestions ? ` / ${currentBatch.totalQuestions}` : ""}
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Processed</p>
+                  <p className="text-gray-500">Speed</p>
                   <p className="font-semibold text-blue-600">
-                    {currentBatch.processedQuestions}
+                    {currentBatch.questionsPerSecond ? `${currentBatch.questionsPerSecond.toFixed(2)} q/s` : "—"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Time</p>
-                  <p className="font-semibold text-purple-600">
-                    {Math.round(currentBatch.totalProcessingTime / 1000)}s
-                  </p>
+                  <p className="text-gray-500">ETA</p>
+                  <p className="font-semibold text-emerald-600">{etaText}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Elapsed</p>
+                  <p className="font-semibold text-purple-600">{elapsed}s</p>
                 </div>
               </div>
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          );
+        })()}
 
         {/* Inline preview removed. All review happens in modal. */}
 

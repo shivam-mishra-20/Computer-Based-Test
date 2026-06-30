@@ -93,8 +93,8 @@ export default function AutomationDashboard() {
   const [availableFolders, setAvailableFolders] = useState<FolderInfo[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<FolderInfo | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
-  const [aiProvider, setAiProvider] = useState<'ollama' | 'gemini'>('ollama');
-  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
+  const [aiProvider, setAiProvider] = useState<'ollama' | 'nvidia'>('ollama');
+  const [nvidiaModel, setNvidiaModel] = useState('nvidia/llama-3.3-nemotron-super-49b-v1.5');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const connectSSE = useCallback((token: string) => {
@@ -214,7 +214,7 @@ export default function AutomationDashboard() {
     } catch { setError('Failed to stop automation'); }
   };
 
-  const startProcessing = async (folderName: string, files: string[] = [], provider: 'ollama' | 'gemini' = 'ollama', gModel?: string) => {
+  const startProcessing = async (folderName: string, files: string[] = [], provider: 'ollama' | 'nvidia' = 'ollama', nModel?: string) => {
     try {
       const token = getToken();
       const uniqueFiles = Array.from(new Set(files.filter(Boolean)));
@@ -226,7 +226,7 @@ export default function AutomationDashboard() {
       const res = await fetch(`${API_BASE_URL}/api/automation/trigger`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: folderName, selectedFiles: uniqueFiles, aiProvider: provider, geminiModel: gModel }),
+        body: JSON.stringify({ folder: folderName, selectedFiles: uniqueFiles, aiProvider: provider, nvidiaModel: nModel }),
       });
 
       const data = await res.json();
@@ -236,7 +236,7 @@ export default function AutomationDashboard() {
         if (Array.isArray(data.selectedFiles) && data.selectedFiles.length > 0) {
           addLog(`Selected files: ${data.selectedFiles.length}`);
         }
-        addLog(provider === 'gemini' ? `AI: Google Gemini ${gModel || 'gemini-2.5-flash'} (cloud)` : `AI: Ollama Qwen3:8b (local, JSON mode)`);
+        addLog(provider === 'nvidia' ? `AI: NVIDIA ${nModel || 'nemotron-super-49b'} (cloud)` : `AI: Ollama Qwen3:8b (local, JSON mode)`);
         startPolling();
       } else {
         addLog(`Failed to start: ${data.message}`);
@@ -339,17 +339,26 @@ export default function AutomationDashboard() {
                 <h1 className="text-2xl font-bold text-gray-900">EPUB Question Extractor</h1>
                 <p className="text-sm text-gray-500 mt-0.5">
                   Powered by{' '}
-                  <span className="font-semibold text-violet-700">Ollama · Qwen3:8b</span>
-                  {' '}— local, private, zero cloud cost
+                  {aiProvider === 'nvidia' ? (
+                    <>
+                      <span className="font-semibold text-emerald-700">NVIDIA · Nemotron Super 49B</span>
+                      {' '}— cloud
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-violet-700">Ollama · Qwen3:8b</span>
+                      {' '}— local, private, zero cloud cost
+                    </>
+                  )}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
               {/* AI badge */}
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 border border-violet-200 rounded-lg">
-                <span className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
-                <span className="text-xs font-medium text-violet-700">qwen3:8b · local</span>
+              <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${aiProvider === 'nvidia' ? 'bg-emerald-50 border-emerald-200' : 'bg-violet-50 border-violet-200'}`}>
+                <span className={`w-2 h-2 rounded-full animate-pulse ${aiProvider === 'nvidia' ? 'bg-emerald-500' : 'bg-violet-500'}`} />
+                <span className={`text-xs font-medium ${aiProvider === 'nvidia' ? 'text-emerald-700' : 'text-violet-700'}`}>{aiProvider === 'nvidia' ? 'nemotron · cloud' : 'qwen3:8b · local'}</span>
               </div>
 
               <Button
@@ -648,43 +657,43 @@ export default function AutomationDashboard() {
                       </div>
                     </button>
                     <button
-                      onClick={() => setAiProvider('gemini')}
+                      onClick={() => setAiProvider('nvidia')}
                       className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-all ${
-                        aiProvider === 'gemini'
+                        aiProvider === 'nvidia'
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${aiProvider === 'gemini' ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${aiProvider === 'nvidia' ? 'bg-blue-500' : 'bg-gray-300'}`} />
                       <div>
-                        <div className="text-sm font-semibold text-gray-900">Gemini (Cloud)</div>
-                        <div className="text-xs text-gray-500">{geminiModel} · Google API</div>
+                        <div className="text-sm font-semibold text-gray-900">NVIDIA (Cloud)</div>
+                        <div className="text-xs text-gray-500">Nemotron Super 49B · NVIDIA API</div>
                       </div>
                     </button>
                   </div>
 
-                  {/* Gemini model selector — visible only when Gemini is selected */}
-                  {aiProvider === 'gemini' && (
+                  {/* NVIDIA model selector — visible only when NVIDIA is selected */}
+                  {aiProvider === 'nvidia' && (
                     <div className="px-3 pb-3">
-                      <p className="text-xs text-gray-500 mb-1.5 font-medium">Gemini Model</p>
+                      <p className="text-xs text-gray-500 mb-1.5 font-medium">NVIDIA Model</p>
                       <div className="grid grid-cols-2 gap-1.5">
                         {[
-                          { id: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash',  tag: 'fast · low cost' },
-                          { id: 'gemini-2.5-pro',        label: 'Gemini 2.5 Pro',    tag: 'best quality' },
-                          { id: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash',  tag: 'stable' },
-                          { id: 'gemini-1.5-pro',        label: 'Gemini 1.5 Pro',    tag: 'legacy' },
+                          { id: 'nvidia/llama-3.3-nemotron-super-49b-v1.5', label: 'Nemotron Super 49B', tag: 'recommended' },
+                          { id: 'nvidia/llama-3.1-nemotron-70b-instruct',   label: 'Nemotron 70B',       tag: 'high quality' },
+                          { id: 'meta/llama-3.3-70b-instruct',              label: 'Llama 3.3 70B',      tag: 'general' },
+                          { id: 'meta/llama-3.1-8b-instruct',               label: 'Llama 3.1 8B',       tag: 'fast · low cost' },
                         ].map(m => (
                           <button
                             key={m.id}
-                            onClick={() => setGeminiModel(m.id)}
+                            onClick={() => setNvidiaModel(m.id)}
                             className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-all text-xs ${
-                              geminiModel === m.id
+                              nvidiaModel === m.id
                                 ? 'border-blue-500 bg-blue-50 text-blue-800'
                                 : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50 text-gray-700'
                             }`}
                           >
                             <span className="font-semibold">{m.label}</span>
-                            <span className={`text-[10px] mt-0.5 ${geminiModel === m.id ? 'text-blue-500' : 'text-gray-400'}`}>{m.tag}</span>
+                            <span className={`text-[10px] mt-0.5 ${nvidiaModel === m.id ? 'text-blue-500' : 'text-gray-400'}`}>{m.tag}</span>
                           </button>
                         ))}
                       </div>
@@ -808,7 +817,7 @@ export default function AutomationDashboard() {
                   onClick={() => {
                     if (!selectedFolder) return;
                     setShowModal(false);
-                    startProcessing(selectedFolder.name, selectedFiles, aiProvider, aiProvider === 'gemini' ? geminiModel : undefined);
+                    startProcessing(selectedFolder.name, selectedFiles, aiProvider, aiProvider === 'nvidia' ? nvidiaModel : undefined);
                   }}
                   disabled={!selectedFolder || selectedFiles.length === 0}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40"

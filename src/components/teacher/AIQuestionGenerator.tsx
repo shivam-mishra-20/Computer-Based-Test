@@ -74,16 +74,13 @@ const DIFFICULTY_OPTIONS = [
   { value: "hard", label: "Hard" },
 ];
 
+// The backend selects the model from server env (NVIDIA primary, Ollama
+// fallback), so this is informational. Kept as a list for forward-compat.
 const MODEL_OPTIONS = [
   {
-    value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro (Advanced)",
-    description: "Enhanced reasoning for complex problems",
-  },
-  {
-    value: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash (Recommended)",
-    description: "Fast and accurate - best for most use cases",
+    value: "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    label: "NVIDIA Nemotron Super 49B (Recommended)",
+    description: "High-quality reasoning model — server-managed, no setup needed",
   },
 ];
 
@@ -199,7 +196,7 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
   const [marks, setMarks] = useState("");
   const [questionCount] = useState("10");
   const [difficulty, setDifficulty] = useState("mixed");
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-pro");
+  const [selectedModel, setSelectedModel] = useState("nvidia/llama-3.3-nemotron-super-49b-v1.5");
 
   // Initialize metadata from localStorage on mount
   useEffect(() => {
@@ -215,7 +212,9 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
         if (metadata.section) setSection(metadata.section);
         if (metadata.marks) setMarks(metadata.marks);
         if (metadata.difficulty) setDifficulty(metadata.difficulty);
-        if (metadata.selectedModel) setSelectedModel(metadata.selectedModel);
+        // Only restore a known (NVIDIA) model; ignore stale Gemini values.
+        if (metadata.selectedModel && String(metadata.selectedModel).startsWith("nvidia/"))
+          setSelectedModel(metadata.selectedModel);
       }
     } catch {
       // Silent fail - localStorage might not be available
@@ -385,7 +384,7 @@ const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
       setSection("");
       setMarks("");
       setDifficulty("mixed");
-      setSelectedModel("gemini-2.5-pro");
+      setSelectedModel("nvidia/llama-3.3-nemotron-super-49b-v1.5");
       setManualQuestions([]);
       resetManualComposer();
       try {
