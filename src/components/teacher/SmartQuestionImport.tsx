@@ -189,7 +189,10 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
   }, []);
 
   const handleFileSelect = useCallback((file: File) => {
-    // Validate file type
+    // Validate file type. Browsers often report an EMPTY or generic
+    // (application/octet-stream) MIME for images — especially screenshots,
+    // webp, and phone photos — so accept by file EXTENSION as a fallback
+    // instead of blocking a perfectly valid image before OCR ever runs.
     const allowedTypes = [
       "application/pdf",
       "image/jpeg",
@@ -197,10 +200,21 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
       "image/png",
       "image/gif",
       "image/bmp",
+      "image/webp",
+      "image/heic",
+      "image/heif",
+      "image/tiff",
     ];
+    const allowedExts = [
+      ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp",
+      ".webp", ".heic", ".heif", ".tif", ".tiff",
+    ];
+    const name = (file.name || "").toLowerCase();
+    const extOk = allowedExts.some((e) => name.endsWith(e));
+    const mimeOk = allowedTypes.includes(file.type);
 
-    if (!allowedTypes.includes(file.type)) {
-      setError("Invalid file type. Only PDF and image files are allowed.");
+    if (!mimeOk && !extOk) {
+      setError("Unsupported file. Please upload a PDF or an image (JPG, PNG, WEBP, HEIC, etc.).");
       return;
     }
 
@@ -827,7 +841,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
               ref={fileInputRef}
               type="file"
               onChange={handleFileInput}
-              accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp"
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp,.heic,.heif,.tif,.tiff,image/*,application/pdf"
               className="sr-only"
             />
 
