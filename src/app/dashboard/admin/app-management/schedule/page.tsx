@@ -8,6 +8,7 @@ import dynamic from "next/dynamic";
 import { CalendarIcon, ClockIcon } from "lucide-react";
 
 import AdminTimeSlotsConfig from "@/components/admin/app-management/AdminTimeSlotsConfig";
+import ScheduleImportFlow from "@/components/admin/app-management/ScheduleImportFlow";
 import { toast } from "sonner";
 
 // Dynamically import AdminBatchManagement to avoid SSR issues
@@ -235,6 +236,7 @@ export default function ScheduleManagement() {
   const [timeSlotView, setTimeSlotView] = useState<TimeSlotView>("evening");
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [teachersOnLeave, setTeachersOnLeave] = useState<string[]>([]); // Teacher IDs on approved leave
   const [allowCustomRegularTime, setAllowCustomRegularTime] = useState(false);
@@ -1767,6 +1769,16 @@ export default function ScheduleManagement() {
                 Export Excel
               </button>
               <button
+                onClick={() => setIsImportOpen(true)}
+                className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm hover:shadow-md transition-all duration-200"
+                title="Extract a schedule from an uploaded photo"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 7.5L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                Upload Schedule
+              </button>
+              <button
                 onClick={() => {
                   resetForm();
                   setFormData(prev => ({
@@ -2541,6 +2553,22 @@ export default function ScheduleManagement() {
           </div>
         )}
       </AnimatePresence>
+
+      <ScheduleImportFlow
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        defaultDate={customWeekStart.toISOString().split("T")[0]}
+        batches={batches}
+        teachers={teachers}
+        visibleTimeSlots={visibleTimeSlots}
+        classLevels={CLASS_LEVELS}
+        onImported={(importedDate) => {
+          setCustomWeekStart(new Date(importedDate));
+          loadTimetable();
+          loadSchedules();
+          setIsImportOpen(false);
+        }}
+      />
     </div>
   );
 }

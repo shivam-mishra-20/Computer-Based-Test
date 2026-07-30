@@ -397,22 +397,6 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
     }
   };
 
-  // Fetch batch details
-  const fetchBatchDetails = async (batchId: string) => {
-    try {
-      const batchData = (await apiFetch(
-        `/import-paper/batch/${batchId}`
-      )) as {
-        batch: ImportBatch;
-        questions: ImportedQuestion[];
-      };
-      setCurrentBatch(batchData.batch);
-      setQuestions(batchData.questions || []);
-    } catch {
-      setError("Failed to fetch batch details");
-    }
-  };
-
   // Question management
   const toggleQuestionSelection = (questionId: string) => {
     setSelectedQuestions((prev) => {
@@ -433,36 +417,6 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
 
   const deselectAllQuestions = () => {
     setSelectedQuestions(new Set());
-  };
-
-  const bulkApproveQuestions = async () => {
-    if (selectedQuestions.size === 0) {
-      setError("Please select questions to approve");
-      return;
-    }
-
-    try {
-      const result = (await apiFetch(
-        "/import-paper/questions/bulk-approve",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            questionIds: Array.from(selectedQuestions),
-          }),
-        }
-      )) as { approved: number; failed: number };
-
-      setSuccess(`Successfully approved ${result.approved} questions`);
-
-      // Refresh questions
-      if (currentBatch) {
-        await fetchBatchDetails(currentBatch._id);
-      }
-
-      setSelectedQuestions(new Set());
-    } catch {
-      setError("Failed to approve questions");
-    }
   };
 
   // updateQuestionStatus removed (status changes via modal bulk actions)
@@ -1096,7 +1050,6 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
           onToggleSelect={toggleQuestionSelection}
           onSelectAll={selectAllQuestions}
           onDeselectAll={deselectAllQuestions}
-          onApproveSelected={bulkApproveQuestions}
           onSaveSelected={saveSelectedToBank}
           onClearStorage={() => {
             // Clear storage when questions are successfully saved
