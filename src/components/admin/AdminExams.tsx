@@ -5,6 +5,10 @@ import { apiFetch } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { notify } from "../ui/toast";
 import { InlineLoader } from "../ElegantLoader";
+import { Modal } from "../ui/modal";
+import SchedulePublishPanel from "../teacher/SchedulePublishPanel";
+import ExamStatusBadge, { type ExamStatus } from "../teacher/ExamStatusBadge";
+import QuickCreateExamForm from "../teacher/QuickCreateExamForm";
 
 interface Exam {
   _id: string;
@@ -21,16 +25,25 @@ interface Exam {
   }[];
   classLevel?: string;
   batch?: string;
+  schedule?: { startAt?: string; endAt?: string; timezone?: string };
+  instructions?: string;
+  antiCheat?: boolean;
+  lateEntryMins?: number;
+  status?: ExamStatus;
 }
+
+// Prefer the server-derived status; the isPublished fallback only covers a
+// response from an older backend that predates deriveExamStatus().
+const statusOf = (exam: Exam): ExamStatus =>
+  exam.status || (exam.isPublished ? "live" : "draft");
 
 export default function AdminExams() {
   const router = useRouter();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(false);
-  const [title, setTitle] = useState("");
-  const [creating, setCreating] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [schedulingExam, setSchedulingExam] = useState<Exam | null>(null);
 
   async function load() {
     setLoading(true);
@@ -54,32 +67,6 @@ export default function AdminExams() {
     router.push(`/dashboard/admin/exams/${ex._id}/build`);
   }
 
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return;
-    setCreating(true);
-    try {
-      await apiFetch("/exams", {
-        method: "POST",
-        body: JSON.stringify({
-          title: title.trim(),
-          description: "",
-          totalDurationMins: 60,
-          sections: [],
-          isPublished: false,
-        }),
-      });
-      setTitle("");
-      setShowCreateForm(false);
-      notify.success("Exam created successfully");
-      await load();
-    } catch (e) {
-      notify.error((e as Error).message || "Failed to create exam");
-    } finally {
-      setCreating(false);
-    }
-  }
-
   async function renameExam(exam: Exam) {
     const newTitle = prompt("New title", exam.title);
     if (!newTitle || newTitle.trim() === exam.title) return;
@@ -99,25 +86,14 @@ export default function AdminExams() {
     }
   }
 
-  async function togglePublish(exam: Exam) {
-    try {
-      const upd = (await apiFetch(`/exams/${exam._id}`, {
-        method: "PUT",
-        body: JSON.stringify({ isPublished: !exam.isPublished }),
-      })) as Partial<Exam>;
-      setExams((arr) =>
-        arr.map((e) =>
-          e._id === exam._id
-            ? { ...e, isPublished: upd.isPublished ?? !exam.isPublished }
-            : e
-        )
-      );
-      notify.success(
-        `Exam ${exam.isPublished ? "unpublished" : "published"} successfully`
-      );
-    } catch (e) {
-      notify.error((e as Error).message || "Failed to update publish status");
-    }
+  function examQuestionCount(exam: Exam) {
+    return exam.sections?.reduce((sum, s) => sum + s.questionIds.length, 0) || 0;
+  }
+
+  function handlePublished(updated: Exam) {
+    setSchedulingExam(null);
+    setExams((arr) => arr.map((e) => (e._id === updated._id ? { ...e, ...updated } : e)));
+    load();
   }
 
   async function deleteExam(exam: Exam) {
@@ -131,12 +107,6 @@ export default function AdminExams() {
       notify.error((e as Error).message || "Failed to delete exam");
     }
   }
-
-  const getStatusColor = (isPublished?: boolean) => {
-    return isPublished
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : "bg-amber-50 text-amber-700 border-amber-200";
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-emerald-50/30 p-4 lg:p-6">
@@ -253,43 +223,10 @@ export default function AdminExams() {
                     </svg>
                   </button>
                 </div>
-                <form
-                  onSubmit={onCreate}
-                  className="flex flex-col sm:flex-row gap-3"
-                >
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Enter exam title..."
-                    className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-200"
-                    required
-                  />
-                  <div className="flex gap-3">
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      type="submit"
-                      disabled={creating || !title.trim()}
-                      className="px-6 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-                    >
-                      {creating ? (
-                        <span className="flex items-center gap-2">
-                          <InlineLoader />
-                          Creating...
-                        </span>
-                      ) : (
-                        "Create Exam"
-                      )}
-                    </motion.button>
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateForm(false)}
-                      className="px-4 py-2.5 border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+                <QuickCreateExamForm
+                  onCreated={(id) => router.push(`/dashboard/admin/exams/${id}/build`)}
+                  onCancel={() => setShowCreateForm(false)}
+                />
               </div>
             </motion.div>
           )}
@@ -342,20 +279,7 @@ export default function AdminExams() {
                                 {exam.title}
                               </h3>
                               <div className="flex items-center gap-4 mt-1">
-                                <span
-                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border ${getStatusColor(
-                                    exam.isPublished
-                                  )}`}
-                                >
-                                  <div
-                                    className={`w-2 h-2 rounded-full ${
-                                      exam.isPublished
-                                        ? "bg-emerald-500"
-                                        : "bg-amber-500"
-                                    }`}
-                                  ></div>
-                                  {exam.isPublished ? "Published" : "Draft"}
-                                </span>
+                                <ExamStatusBadge status={statusOf(exam)} />
                                 {exam.totalDurationMins && (
                                   <span className="text-sm text-slate-600">
                                     {exam.totalDurationMins} minutes
@@ -486,14 +410,10 @@ export default function AdminExams() {
                           <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => togglePublish(exam)}
-                            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                              exam.isPublished
-                                ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
-                                : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                            }`}
+                            onClick={() => setSchedulingExam(exam)}
+                            className="px-3 py-2 text-sm font-medium rounded-lg border transition-colors bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
                           >
-                            {exam.isPublished ? "Unpublish" : "Publish"}
+                            {exam.isPublished ? "Manage Schedule" : "Schedule & Publish"}
                           </motion.button>
                           <motion.button
                             whileHover={{ scale: 1.05 }}
@@ -544,6 +464,21 @@ export default function AdminExams() {
             )}
           </motion.div>
         )}
+
+        <Modal
+          title="Schedule & Publish"
+          open={!!schedulingExam}
+          onOpenChange={(open) => !open && setSchedulingExam(null)}
+        >
+          {schedulingExam && (
+            <SchedulePublishPanel
+              exam={schedulingExam}
+              totalQuestions={examQuestionCount(schedulingExam)}
+              onPublished={handlePublished}
+              onCancel={() => setSchedulingExam(null)}
+            />
+          )}
+        </Modal>
       </div>
     </div>
   );

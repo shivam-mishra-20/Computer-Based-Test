@@ -10,6 +10,17 @@ import Image from "next/image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type ResourceContentCategory = "TECHNIQUE" | "PLAYLIST" | "SAMPLE_PAPER" | "LECTURE_NOTE";
+
+// Controlled sections shown to guests in the mobile app. Optional: leaving it
+// blank simply keeps the resource out of the public section lists.
+const CONTENT_CATEGORIES: { value: ResourceContentCategory; label: string }[] = [
+  { value: "TECHNIQUE", label: "Technique Lessons" },
+  { value: "PLAYLIST", label: "Playlists" },
+  { value: "SAMPLE_PAPER", label: "Sample Papers" },
+  { value: "LECTURE_NOTE", label: "Lecture Notes" },
+];
+
 interface StudyResource {
   _id: string;
   title: string;
@@ -18,6 +29,7 @@ interface StudyResource {
   resourceUrl: string;
   thumbnailUrl?: string;
   category: string;
+  contentCategory?: ResourceContentCategory;
   subject: string;
   classLevel: string;
   batch?: string;
@@ -41,6 +53,7 @@ interface FormState {
   resourceUrl: string;
   thumbnailUrl: string;
   category: string;
+  contentCategory: string;
   subject: string;
   classLevel: string;
   batch: string;
@@ -81,7 +94,7 @@ const CLASSES = ["8","9","10","11","12"];
 
 const EMPTY_FORM: FormState = {
   title:"", description:"", resourceUrl:"", thumbnailUrl:"",
-  category:"", subject:"", classLevel:"", batch:"", tags:"",
+  category:"", contentCategory:"", subject:"", classLevel:"", batch:"", tags:"",
   duration:"", viewCount:"", pageCount:"",
   isPublic: true, isFeatured: false, status: "published",
 };
@@ -267,7 +280,7 @@ export default function ResourcesManagementPage() {
     setForm({
       title: r.title, description: r.description || "",
       resourceUrl: r.resourceUrl || "", thumbnailUrl: r.thumbnailUrl || "",
-      category: r.category, subject: r.subject, classLevel: r.classLevel,
+      category: r.category, contentCategory: r.contentCategory || "", subject: r.subject, classLevel: r.classLevel,
       batch: r.batch || "", tags: r.tags.join(", "),
       duration: r.duration ? String(r.duration) : "",
       viewCount: r.viewCount !== undefined ? String(r.viewCount) : "",
@@ -318,7 +331,7 @@ export default function ResourcesManagementPage() {
         // Edit: always PUT JSON (no file upload on edit)
         const payload: Record<string, unknown> = {
           title: form.title, description: form.description,
-          category: form.category, subject: form.subject,
+          category: form.category, contentCategory: form.contentCategory || undefined, subject: form.subject,
           classLevel: form.classLevel, batch: form.batch || undefined,
           tags, isPublic: form.isPublic, isFeatured: form.isFeatured,
           status: form.status,
@@ -340,7 +353,7 @@ export default function ResourcesManagementPage() {
         const fd = new FormData();
         fd.append("file", pdfFile);
         fd.append("title", form.title); fd.append("description", form.description);
-        fd.append("category", form.category); fd.append("subject", form.subject);
+        fd.append("category", form.category); if (form.contentCategory) fd.append("contentCategory", form.contentCategory); fd.append("subject", form.subject);
         fd.append("classLevel", form.classLevel);
         if (form.batch) fd.append("batch", form.batch);
         fd.append("tags", JSON.stringify(tags));
@@ -733,6 +746,17 @@ export default function ResourcesManagementPage() {
                     <input type="text" required value={form.category} onChange={e => setF({ category: e.target.value })}
                       placeholder="e.g. Mechanics, Algebra"
                       className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Public Section</label>
+                    <select value={form.contentCategory} onChange={e => setF({ contentCategory: e.target.value })}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                      <option value="">Not in a public section</option>
+                      {CONTENT_CATEGORIES.map(c => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-400 mt-1">Groups this resource in the app&apos;s guest Explore sections.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Class Level *</label>

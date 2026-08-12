@@ -1,23 +1,15 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  ArrowLeftIcon,
-  PlusIcon,
-  TrashIcon,
-  CheckIcon,
-  MagnifyingGlassIcon,
-  FunnelIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  PhotoIcon,
-  PrinterIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, PrinterIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
 import { apiFetch } from "@/lib/api";
 import MathText from "@/components/ui/MathText";
-import { notify } from "@/components/ui/toast";
+import SchedulePublishPanel from "@/components/teacher/SchedulePublishPanel";
+import ExamStatusBadge, { type ExamStatus } from "@/components/teacher/ExamStatusBadge";
+import QuestionBankPicker from "@/components/teacher/QuestionBankPicker";
+import StudentAssignmentPicker from "@/components/teacher/StudentAssignmentPicker";
 
 interface Question {
   _id: string;
@@ -26,19 +18,9 @@ interface Question {
   subject: string;
   chapter?: string;
   topic?: string;
-  section?: string;
-  marks?: number;
   difficulty?: string;
   diagramUrl?: string;
   options?: Array<{ text: string; isCorrect?: boolean }>;
-}
-
-interface ExamSection {
-  title: string;
-  questionIds: string[];
-  sectionDurationMins: number;
-  shuffleQuestions?: boolean;
-  shuffleOptions?: boolean;
 }
 
 interface Exam {
@@ -47,311 +29,165 @@ interface Exam {
   classLevel?: string;
   batch?: string;
   totalDurationMins?: number;
-  sections?: ExamSection[];
+  sections?: { title: string; questionIds: string[]; sectionDurationMins?: number; shuffleQuestions?: boolean; shuffleOptions?: boolean }[];
+  markingScheme?: { correct?: number; incorrect?: number; unattempted?: number };
+  schedule?: { startAt?: string; endAt?: string; timezone?: string };
+  instructions?: string;
+  antiCheat?: boolean;
+  lateEntryMins?: number;
+  isPublished?: boolean;
+  status?: ExamStatus;
+  assignedTo?: { users?: string[]; groups?: string[] };
+  meta?: { subject?: string };
 }
 
-interface FilterOptions {
-  subjects: string[];
-  chapters: string[];
-  topics: string[];
-  sections: string[];
-}
+type Tab = "questions" | "settings" | "students" | "review";
+const TABS: { key: Tab; label: string }[] = [
+  { key: "questions", label: "Questions" },
+  { key: "settings", label: "Settings" },
+  { key: "students", label: "Students" },
+  { key: "review", label: "Review" },
+];
+
+const DURATION_PRESETS = [30, 60, 90, 120];
+const MARKING_PRESETS = [
+  { label: "+4 / -1 / 0", correct: 4, incorrect: -1, unattempted: 0 },
+  { label: "+1 / 0 / 0", correct: 1, incorrect: 0, unattempted: 0 },
+  { label: "+2 / -0.5 / 0", correct: 2, incorrect: -0.5, unattempted: 0 },
+];
+
+const getImageUrl = (url: string) => {
+  if (!url) return "";
+  if (url.startsWith("http") || url.startsWith("data:")) return url;
+  return `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}${url}`;
+};
 
 export default function ExamBuilderPage() {
   const params = useParams();
   const router = useRouter();
   const examId = params?.examId as string;
 
-  // Exam data
   const [exam, setExam] = useState<Exam | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<Tab>("questions");
 
-  // Section management - always start with one default section
-  const [sections, setSections] = useState<ExamSection[]>([
-    { title: "Section A", questionIds: [], sectionDurationMins: 30, shuffleQuestions: true },
-  ]);
-  const [expandedSection, setExpandedSection] = useState<number | null>(0);
+  // Builder content is a single "Section A" — the old per-section
+  // duration/shuffle model is folded into exam-wide Settings. An exam with
+  // multiple LEGACY sections gets its questions merged into one on load; the
+  // combined content is what gets saved back.
+  const [questionIds, setQuestionIds] = useState<string[]>([]);
+  const [allQuestions, setAllQuestions] = useState<Question[]>([]); // unfiltered, for print/review lookups
+  const [durationMins, setDurationMins] = useState(60);
+  const [customDuration, setCustomDuration] = useState("");
+  const [markCorrect, setMarkCorrect] = useState(1);
+  const [markIncorrect, setMarkIncorrect] = useState(0);
+  const [markUnattempted, setMarkUnattempted] = useState(0);
+  const [shuffleQuestions, setShuffleQuestions] = useState(true);
+  const [shuffleOptions, setShuffleOptions] = useState(false);
+  const [antiCheat, setAntiCheat] = useState(true);
+  const [assignedTo, setAssignedTo] = useState<{ users?: string[]; groups?: string[] }>({});
 
-  // Question bank
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [questionsLoading, setQuestionsLoading] = useState(false);
-  const [selectedClass, setSelectedClass] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const skipAutosaveRef = useRef(true);
 
-  // Filters
-  const [selectedSubject, setSelectedSubject] = useState("");
-  const [selectedChapter, setSelectedChapter] = useState("");
-  const [selectedTopic, setSelectedTopic] = useState("");
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    subjects: [],
-    chapters: [],
-    topics: [],
-    sections: [],
-  });
-
-  // Image lightbox
   const [viewingImage, setViewingImage] = useState<string | null>(null);
-
-  // Assign state
-  const [assignClass, setAssignClass] = useState("");
-  const [assignBatch, setAssignBatch] = useState("");
-  const [assigning, setAssigning] = useState(false);
-
-  // Print preview
   const [showPrintPreview, setShowPrintPreview] = useState(false);
 
-  // Load exam data
   useEffect(() => {
-    async function loadExam() {
+    if (!examId) return;
+    (async () => {
       try {
-        // API returns exam directly, not wrapped in {success, data}
-        const examData = (await apiFetch(`/exams/${examId}`)) as Exam;
-        if (examData && examData._id) {
-          setExam(examData);
-          // Ensure at least one section exists
-          const loadedSections = examData.sections && examData.sections.length > 0
-            ? examData.sections
-            : [{ title: "Section A", questionIds: [], sectionDurationMins: 30, shuffleQuestions: true }];
-          setSections(loadedSections);
-        }
+        const data = (await apiFetch(`/exams/${examId}`)) as Exam;
+        if (!data?._id) return;
+        setExam(data);
+        setQuestionIds(data.sections?.flatMap((s) => s.questionIds) || []);
+        setDurationMins(data.totalDurationMins || 60);
+        setMarkCorrect(data.markingScheme?.correct ?? 1);
+        setMarkIncorrect(data.markingScheme?.incorrect ?? 0);
+        setMarkUnattempted(data.markingScheme?.unattempted ?? 0);
+        setShuffleQuestions(data.sections?.[0]?.shuffleQuestions ?? true);
+        setShuffleOptions(data.sections?.[0]?.shuffleOptions ?? false);
+        setAntiCheat(data.antiCheat ?? true);
+        setAssignedTo(data.assignedTo || {});
       } catch (err) {
         console.error("Failed to load exam:", err);
       } finally {
         setLoading(false);
       }
-    }
-    if (examId) loadExam();
+    })();
   }, [examId]);
 
-  // Load filters when class changes
+  // Unfiltered class question list, purely for print/review to resolve full
+  // question objects for ids that may currently be filtered out of the
+  // QuestionBankPicker's own (narrower) result set.
   useEffect(() => {
-    async function loadFilters() {
-      if (!selectedClass) return;
+    if (!exam?.classLevel) return;
+    (async () => {
       try {
-        const res = (await apiFetch(
-          `/ai/questions/class/${selectedClass}/filters`
-        )) as { success: boolean; data: FilterOptions };
-        if (res.success) {
-          setFilterOptions(res.data);
-        }
+        const res = (await apiFetch(`/ai/questions/class/${exam.classLevel}?limit=500`)) as {
+          success: boolean;
+          data: { questions: Question[] };
+        };
+        if (res.success) setAllQuestions(res.data.questions || []);
       } catch (err) {
-        console.error("Failed to load filters:", err);
+        console.error("Failed to load class questions:", err);
       }
-    }
-    loadFilters();
-    setSelectedSubject("");
-    setSelectedChapter("");
-    setSelectedTopic("");
-  }, [selectedClass]);
+    })();
+  }, [exam?.classLevel]);
 
-  // Load questions when filters change
+  // Autosave: content + settings only (never assignment, schedule, or
+  // isPublished — those are StudentAssignmentPicker's and
+  // SchedulePublishPanel's own write paths). Skipped once right after load so
+  // hydrating state from the server doesn't immediately re-save it.
   useEffect(() => {
-    async function loadQuestions() {
-      if (!selectedClass) {
-        setQuestions([]);
-        return;
-      }
-      setQuestionsLoading(true);
+    if (!exam) return;
+    if (skipAutosaveRef.current) {
+      const t = setTimeout(() => {
+        skipAutosaveRef.current = false;
+      }, 0);
+      return () => clearTimeout(t);
+    }
+    setSaveStatus("saving");
+    const handle = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ limit: "500" });
-        if (selectedSubject) params.append("subject", selectedSubject);
-        if (selectedChapter) params.append("chapter", selectedChapter);
-        if (selectedTopic) params.append("topic", selectedTopic);
-
-        const res = (await apiFetch(
-          `/ai/questions/class/${selectedClass}?${params}`
-        )) as { success: boolean; data: { questions: Question[] } };
-
-        if (res.success) {
-          setQuestions(res.data.questions || []);
-        }
+        await apiFetch(`/exams/${examId}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            sections: [
+              {
+                title: "Section A",
+                questionIds,
+                sectionDurationMins: effectiveDuration(),
+                shuffleQuestions,
+                shuffleOptions,
+              },
+            ],
+            totalDurationMins: effectiveDuration(),
+            markingScheme: { correct: markCorrect, incorrect: markIncorrect, unattempted: markUnattempted },
+            antiCheat,
+          }),
+        });
+        setSaveStatus("saved");
       } catch (err) {
-        console.error("Failed to load questions:", err);
-        setQuestions([]);
-      } finally {
-        setQuestionsLoading(false);
+        console.error("Autosave failed:", err);
+        setSaveStatus("error");
       }
-    }
-    loadQuestions();
-  }, [selectedClass, selectedSubject, selectedChapter, selectedTopic]);
+    }, 800);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionIds, durationMins, customDuration, markCorrect, markIncorrect, markUnattempted, shuffleQuestions, shuffleOptions, antiCheat]);
 
-  // Filter questions by search
-  const filteredQuestions = questions.filter((q) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      q.text.toLowerCase().includes(query) ||
-      q.subject?.toLowerCase().includes(query) ||
-      q.topic?.toLowerCase().includes(query)
-    );
-  });
+  function effectiveDuration() {
+    return customDuration.trim() ? Number(customDuration) || 0 : durationMins;
+  }
 
-  // Get all selected question IDs across all sections
-  const allSelectedIds = new Set(sections.flatMap((s) => s.questionIds));
+  const questionsById: Record<string, Question> = {};
+  for (const q of allQuestions) questionsById[q._id] = q;
 
-  // Section management functions
-  const addSection = () => {
-    setSections((prev) => [
-      ...prev,
-      {
-        title: `Section ${String.fromCharCode(65 + prev.length)}`,
-        questionIds: [],
-        sectionDurationMins: 30,
-        shuffleQuestions: true,
-      },
-    ]);
-  };
-
-  const removeSection = (index: number) => {
-    if (sections.length <= 1) return;
-    setSections((prev) => prev.filter((_, i) => i !== index));
-    if (expandedSection === index) {
-      setExpandedSection(Math.max(0, index - 1));
-    }
-  };
-
-  const updateSection = (index: number, updates: Partial<ExamSection>) => {
-    setSections((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, ...updates } : s))
-    );
-  };
-
-  const addQuestionToSection = (sectionIndex: number, questionId: string) => {
-    setSections((prev) =>
-      prev.map((s, i) =>
-        i === sectionIndex && !s.questionIds.includes(questionId)
-          ? { ...s, questionIds: [...s.questionIds, questionId] }
-          : s
-      )
-    );
-  };
-
-  const removeQuestionFromSection = (sectionIndex: number, questionId: string) => {
-    setSections((prev) =>
-      prev.map((s, i) =>
-        i === sectionIndex
-          ? { ...s, questionIds: s.questionIds.filter((id) => id !== questionId) }
-          : s
-      )
-    );
-  };
-
-  const toggleQuestionInSection = (sectionIndex: number, questionId: string) => {
-    const section = sections[sectionIndex];
-    if (section.questionIds.includes(questionId)) {
-      removeQuestionFromSection(sectionIndex, questionId);
-    } else {
-      addQuestionToSection(sectionIndex, questionId);
-    }
-  };
-
-  // Save exam as draft
-  const saveExam = async () => {
-    if (!exam) return;
-    setSaving(true);
-    try {
-      await apiFetch(`/exams/${examId}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          sections,
-          totalDurationMins: sections.reduce(
-            (sum, s) => sum + (s.sectionDurationMins || 0),
-            0
-          ),
-        }),
-      });
-      notify.success("Draft saved successfully");
-    } catch (err) {
-      console.error("Failed to save:", err);
-      notify.error("Failed to save draft");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Assign to class and batch
-  const assignToClassBatch = async () => {
-    if (!exam) return;
-    if (!assignClass || !assignBatch) {
-      notify.error("Select both Class and Batch");
-      return;
-    }
-    setAssigning(true);
-    try {
-      // First save the sections
-      await apiFetch(`/exams/${examId}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          sections,
-          totalDurationMins: sections.reduce(
-            (sum, s) => sum + (s.sectionDurationMins || 0),
-            0
-          ),
-          classLevel: assignClass,
-          batch: assignBatch,
-          isPublished: true,
-        }),
-      });
-
-      // Assign to groups
-      const groups =
-        assignBatch === "All Batches"
-          ? [assignClass, "Lakshya", "Aadharshilla", "Basic", "Commerce"]
-          : [assignClass, assignBatch];
-
-      await apiFetch(`/exams/${examId}/assign`, {
-        method: "POST",
-        body: JSON.stringify({ groups }),
-      });
-
-      notify.success(
-        assignBatch === "All Batches"
-          ? "Assigned to entire class successfully"
-          : "Assigned to class/batch successfully"
-      );
-      router.push("/dashboard/teacher?tab=exams");
-    } catch (err) {
-      console.error("Failed to assign:", err);
-      notify.error("Assignment failed");
-    } finally {
-      setAssigning(false);
-    }
-  };
-
-  const getImageUrl = (url: string) => {
-    if (!url) return "";
-    if (url.startsWith("http") || url.startsWith("data:")) return url;
-    return `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}${url}`;
-  };
-
-  // Get all selected questions from all sections
-  const getSelectedQuestions = () => {
-    const selectedQuestions: Array<{ section: string; question: Question }> = [];
-    sections.forEach((section) => {
-      section.questionIds.forEach((qId) => {
-        const q = questions.find((q) => q._id === qId);
-        if (q) {
-          selectedQuestions.push({ section: section.title, question: q });
-        }
-      });
-    });
-    return selectedQuestions;
-  };
-
-  // Print selected questions
   const handlePrint = () => {
-    const selectedQuestions = getSelectedQuestions();
-    if (selectedQuestions.length === 0) {
-      notify.error("No questions selected to print");
-      return;
-    }
+    if (questionIds.length === 0) return;
     setShowPrintPreview(true);
   };
-
-  const totalQuestions = sections.reduce((sum, s) => sum + s.questionIds.length, 0);
-  const totalDuration = sections.reduce((sum, s) => sum + (s.sectionDurationMins || 0), 0);
 
   if (loading) {
     return (
@@ -369,10 +205,7 @@ export default function ExamBuilderPage() {
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Exam not found</p>
-          <button
-            onClick={() => router.push("/dashboard/teacher?tab=exams")}
-            className="text-emerald-600 font-medium"
-          >
+          <button onClick={() => router.push("/dashboard/teacher?tab=exams")} className="text-emerald-600 font-medium">
             Go Back
           </button>
         </div>
@@ -380,510 +213,215 @@ export default function ExamBuilderPage() {
     );
   }
 
+  const checklist = [
+    { label: "Questions added", ok: questionIds.length > 0 },
+    { label: "Duration configured", ok: effectiveDuration() > 0 },
+    { label: "Marking configured", ok: markCorrect > 0 },
+    { label: "Students assigned", ok: !!(assignedTo.users?.length || assignedTo.groups?.length) },
+    { label: "Schedule configured", ok: !!(exam.schedule?.startAt && exam.schedule?.endAt) },
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-white border-b">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push("/dashboard/teacher?tab=exams")}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-              >
+            <div className="flex items-center gap-3 min-w-0">
+              <button onClick={() => router.push("/dashboard/teacher?tab=exams")} className="p-2 hover:bg-gray-100 rounded-lg shrink-0">
                 <ArrowLeftIcon className="w-5 h-5 text-gray-600" />
               </button>
-              <div>
-                <h1 className="font-semibold text-gray-900">{exam.title}</h1>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="font-semibold text-gray-900 truncate">{exam.title}</h1>
+                  <ExamStatusBadge status={exam.status || (exam.isPublished ? "live" : "draft")} />
+                </div>
                 <p className="text-xs text-gray-500">
-                  {totalQuestions} questions • {totalDuration} min
+                  Class {exam.classLevel || "—"} · {questionIds.length} questions · {effectiveDuration()} min
+                  {saveStatus !== "idle" && (
+                    <span className="ml-2">
+                      {saveStatus === "saving" && "· Saving..."}
+                      {saveStatus === "saved" && "· Saved"}
+                      {saveStatus === "error" && <span className="text-red-500">· Unable to save — retry by editing again</span>}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              disabled={questionIds.length === 0}
+              className="px-3 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+            >
+              <PrinterIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Print</span>
+            </button>
+          </div>
+
+          {/* Step tabs */}
+          <div className="flex gap-1 mt-3 -mb-px overflow-x-auto">
+            {TABS.map((t) => (
               <button
-                onClick={handlePrint}
-                disabled={totalQuestions === 0}
-                className="px-3 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 disabled:opacity-50 flex items-center gap-1.5"
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 whitespace-nowrap ${
+                  tab === t.key ? "border-emerald-600 text-emerald-700 bg-emerald-50/50" : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
               >
-                <PrinterIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Print</span>
+                {t.label}
+                {t.key === "questions" && questionIds.length > 0 && (
+                  <span className="ml-1.5 text-xs text-gray-400">({questionIds.length})</span>
+                )}
               </button>
-              <button
-                onClick={saveExam}
-                disabled={saving}
-                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Save Draft"}
-              </button>
-            </div>
+            ))}
           </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-4 pb-32">
-        {/* Class Selection */}
-        <div className="bg-white rounded-lg p-4 border">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Class for Questions
-          </label>
-          <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            className="w-full px-3 py-2.5 border rounded-lg bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-          >
-            <option value="">Choose a class (6-12)</option>
-            {["6", "7", "8", "9", "10", "11", "12"].map((c) => (
-              <option key={c} value={c}>
-                Class {c}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="p-4 max-w-4xl mx-auto space-y-4 pb-16">
+        {tab === "questions" && (
+          <QuestionBankPicker
+            classLevel={exam.classLevel || ""}
+            selectedIds={questionIds}
+            onChange={setQuestionIds}
+            marksPerQuestion={markCorrect}
+          />
+        )}
 
-        {/* Sections */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium text-gray-900">Exam Sections</h2>
-            <button
-              onClick={addSection}
-              className="flex items-center gap-1 text-sm text-emerald-600 font-medium hover:text-emerald-700"
-            >
-              <PlusIcon className="w-4 h-4" />
-              Add Section
-            </button>
-          </div>
-
-          {sections.map((section, sectionIdx) => (
-            <div
-              key={sectionIdx}
-              className="bg-white rounded-xl border shadow-sm overflow-hidden"
-            >
-              {/* Section Header */}
-              <button
-                onClick={() =>
-                  setExpandedSection(expandedSection === sectionIdx ? null : sectionIdx)
-                }
-                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50"
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="text"
-                    value={section.title}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      updateSection(sectionIdx, { title: e.target.value });
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="font-semibold text-gray-900 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-emerald-500 outline-none"
-                  />
-                  <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
-                    {section.questionIds.length} Q
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {sections.length > 1 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeSection(sectionIdx);
-                      }}
-                      className="p-1 text-red-500 hover:bg-red-50 rounded"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                    </button>
-                  )}
-                  {expandedSection === sectionIdx ? (
-                    <ChevronUpIcon className="w-5 h-5 text-gray-400" />
-                  ) : (
-                    <ChevronDownIcon className="w-5 h-5 text-gray-400" />
-                  )}
-                </div>
-              </button>
-
-              {/* Section Content */}
-              <AnimatePresence>
-                {expandedSection === sectionIdx && (
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{ height: "auto" }}
-                    exit={{ height: 0 }}
-                    className="overflow-hidden"
+        {tab === "settings" && (
+          <div className="bg-white rounded-xl border p-5 space-y-6">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-2">Duration</label>
+              <div className="flex flex-wrap gap-2">
+                {DURATION_PRESETS.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => { setDurationMins(d); setCustomDuration(""); }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 ${
+                      !customDuration && durationMins === d ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
                   >
-                    <div className="px-4 pb-4 space-y-3">
-                      {/* Duration & Options */}
-                      <div className="flex flex-wrap gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-500">Duration:</span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={section.sectionDurationMins}
-                            onChange={(e) =>
-                              updateSection(sectionIdx, {
-                                sectionDurationMins: Number(e.target.value),
-                              })
-                            }
-                            className="w-16 px-2 py-1 border rounded text-center"
-                          />
-                          <span className="text-gray-500">min</span>
-                        </div>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={section.shuffleQuestions}
-                            onChange={(e) =>
-                              updateSection(sectionIdx, {
-                                shuffleQuestions: e.target.checked,
-                              })
-                            }
-                            className="rounded text-emerald-600"
-                          />
-                          <span className="text-gray-600">Shuffle Questions</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={section.shuffleOptions}
-                            onChange={(e) =>
-                              updateSection(sectionIdx, {
-                                shuffleOptions: e.target.checked,
-                              })
-                            }
-                            className="rounded text-emerald-600"
-                          />
-                          <span className="text-gray-600">Shuffle Options</span>
-                        </label>
-                      </div>
-
-                      {/* Selected Questions in Section */}
-                      {section.questionIds.length > 0 ? (
-                        <div className="space-y-2">
-                          <p className="text-xs font-medium text-gray-500 uppercase">
-                            Selected Questions
-                          </p>
-                          {section.questionIds.map((qId, idx) => {
-                            const q = questions.find((q) => q._id === qId);
-                            if (!q) return null;
-                            return (
-                              <div
-                                key={qId}
-                                className="flex gap-2 p-3 bg-emerald-50 rounded-lg border border-emerald-100"
-                              >
-                                <span className="text-xs font-bold text-emerald-600 mt-0.5">
-                                  {idx + 1}.
-                                </span>
-                                <div className="flex-1 text-sm">
-                                  <MathText text={q.text} />
-                                </div>
-                                <button
-                                  onClick={() =>
-                                    removeQuestionFromSection(sectionIdx, qId)
-                                  }
-                                  className="text-red-400 hover:text-red-600"
-                                >
-                                  <TrashIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-400 text-center py-4 border-2 border-dashed rounded-lg">
-                          No questions added yet. Select questions below.
-                        </p>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))}
-        </div>
-
-        {/* Question Bank */}
-        {selectedClass && (
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="p-4 border-b bg-gradient-to-r from-emerald-50 to-teal-50">
-              <h3 className="font-semibold text-gray-900 mb-3">
-                Question Bank (Class {selectedClass})
-              </h3>
-
-              {/* Search & Filter */}
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search questions..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm"
-                  />
-                </div>
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className={`px-3 py-2 rounded-lg border flex items-center gap-1 ${
-                    showFilters ? "bg-emerald-50 border-emerald-200" : ""
-                  }`}
-                >
-                  <FunnelIcon className="w-4 h-4" />
-                </button>
+                    {d} min
+                  </button>
+                ))}
+                <input
+                  value={customDuration}
+                  onChange={(e) => setCustomDuration(e.target.value.replace(/[^0-9]/g, ""))}
+                  placeholder="Custom"
+                  className="w-20 px-3 py-1.5 border rounded-full text-sm text-center"
+                />
               </div>
-
-              {/* Filter Panel */}
-              <AnimatePresence>
-                {showFilters && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="grid grid-cols-3 gap-2 mt-3">
-                      <select
-                        value={selectedSubject}
-                        onChange={(e) => {
-                          setSelectedSubject(e.target.value);
-                          setSelectedChapter("");
-                          setSelectedTopic("");
-                        }}
-                        className="px-2 py-1.5 border rounded text-sm"
-                      >
-                        <option value="">All Subjects</option>
-                        {filterOptions.subjects.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={selectedChapter}
-                        onChange={(e) => {
-                          setSelectedChapter(e.target.value);
-                          setSelectedTopic("");
-                        }}
-                        disabled={!selectedSubject}
-                        className="px-2 py-1.5 border rounded text-sm disabled:opacity-50"
-                      >
-                        <option value="">All Chapters</option>
-                        {filterOptions.chapters.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={selectedTopic}
-                        onChange={(e) => setSelectedTopic(e.target.value)}
-                        disabled={!selectedChapter}
-                        className="px-2 py-1.5 border rounded text-sm disabled:opacity-50"
-                      >
-                        <option value="">All Topics</option>
-                        {filterOptions.topics.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
 
-            {/* Questions List */}
-            <div className="divide-y max-h-[60vh] overflow-y-auto">
-              {questionsLoading ? (
-                <div className="py-12 text-center text-gray-500">
-                  <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  Loading questions...
-                </div>
-              ) : filteredQuestions.length === 0 ? (
-                <div className="py-12 text-center text-gray-500">
-                  No questions found
-                </div>
-              ) : (
-                filteredQuestions.map((q) => {
-                  const isInAnySection = allSelectedIds.has(q._id);
-                  const currentSection = expandedSection ?? 0;
-                  const isInCurrentSection =
-                    sections[currentSection]?.questionIds.includes(q._id);
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-2">Marking Scheme</label>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {MARKING_PRESETS.map((m) => (
+                  <button
+                    key={m.label}
+                    onClick={() => { setMarkCorrect(m.correct); setMarkIncorrect(m.incorrect); setMarkUnattempted(m.unattempted); }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border-2 ${
+                      markCorrect === m.correct && markIncorrect === m.incorrect ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <label className="block">
+                  <span className="text-xs text-gray-500">Correct</span>
+                  <input type="number" value={markCorrect} onChange={(e) => setMarkCorrect(Number(e.target.value))} className="w-full px-2 py-1.5 border rounded" />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-gray-500">Incorrect</span>
+                  <input type="number" value={markIncorrect} onChange={(e) => setMarkIncorrect(Number(e.target.value))} className="w-full px-2 py-1.5 border rounded" />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-gray-500">Unattempted</span>
+                  <input type="number" value={markUnattempted} onChange={(e) => setMarkUnattempted(Number(e.target.value))} className="w-full px-2 py-1.5 border rounded" />
+                </label>
+              </div>
+            </div>
 
-                  return (
-                    <div
-                      key={q._id}
-                      className={`p-4 ${
-                        isInCurrentSection
-                          ? "bg-emerald-50"
-                          : isInAnySection
-                          ? "bg-gray-50 opacity-60"
-                          : "hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex gap-3">
-                        {/* Add/Remove Button */}
-                        <button
-                          onClick={() =>
-                            toggleQuestionInSection(currentSection, q._id)
-                          }
-                          disabled={isInAnySection && !isInCurrentSection}
-                          className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                            isInCurrentSection
-                              ? "bg-emerald-600 text-white"
-                              : isInAnySection
-                              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                              : "bg-gray-100 text-gray-600 hover:bg-emerald-50 hover:text-emerald-600"
-                          }`}
-                        >
-                          {isInCurrentSection ? (
-                            <CheckIcon className="w-5 h-5" />
-                          ) : (
-                            <PlusIcon className="w-5 h-5" />
-                          )}
-                        </button>
-
-                        {/* Question Content */}
-                        <div className="flex-1 min-w-0">
-                          {/* Question Text */}
-                          <div className="text-sm text-gray-900 leading-relaxed mb-2">
-                            <MathText text={q.text} />
-                          </div>
-
-                          {/* MCQ Options */}
-                          {q.options && q.options.length > 0 && (
-                            <div className="space-y-1.5 mb-3">
-                              {q.options.map((opt, idx) => (
-                                <div
-                                  key={idx}
-                                  className={`text-sm px-3 py-2 rounded-lg ${
-                                    opt.isCorrect
-                                      ? "bg-green-50 border border-green-200 text-green-800"
-                                      : "bg-gray-50 border border-gray-100 text-gray-700"
-                                  }`}
-                                >
-                                  <span className="font-semibold mr-2">
-                                    {String.fromCharCode(65 + idx)}.
-                                  </span>
-                                  <MathText text={opt.text} inline />
-                                  {opt.isCorrect && (
-                                    <span className="ml-2 text-xs text-green-600 font-medium">
-                                      ✓ Correct
-                                    </span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Diagram */}
-                          {q.diagramUrl && (
-                            <button
-                              onClick={() => setViewingImage(getImageUrl(q.diagramUrl!))}
-                              className="mb-3 inline-block"
-                            >
-                              <Image
-                                src={getImageUrl(q.diagramUrl)}
-                                alt="Diagram"
-                                width={200}
-                                height={150}
-                                className="max-w-[200px] h-auto rounded-lg border shadow-sm hover:shadow-md transition-shadow"
-                                style={{ width: "auto", height: "auto" }}
-                                unoptimized
-                              />
-                            </button>
-                          )}
-
-                          {/* Tags */}
-                          <div className="flex gap-1.5 flex-wrap">
-                            {q.subject && (
-                              <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded">
-                                {q.subject}
-                              </span>
-                            )}
-                            {q.topic && (
-                              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                                {q.topic}
-                              </span>
-                            )}
-                            {q.difficulty && (
-                              <span
-                                className={`text-xs px-2 py-0.5 rounded ${
-                                  q.difficulty === "easy"
-                                    ? "bg-green-50 text-green-600"
-                                    : q.difficulty === "medium"
-                                    ? "bg-amber-50 text-amber-600"
-                                    : "bg-red-50 text-red-600"
-                                }`}
-                              >
-                                {q.difficulty}
-                              </span>
-                            )}
-                            {q.diagramUrl && (
-                              <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded flex items-center gap-1">
-                                <PhotoIcon className="w-3 h-3" />
-                                Image
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={shuffleQuestions} onChange={(e) => setShuffleQuestions(e.target.checked)} className="w-4 h-4 rounded text-emerald-600" />
+                <span className="text-sm text-gray-700">Shuffle question order per student</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={shuffleOptions} onChange={(e) => setShuffleOptions(e.target.checked)} className="w-4 h-4 rounded text-emerald-600" />
+                <span className="text-sm text-gray-700">Shuffle option order per student</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={antiCheat} onChange={(e) => setAntiCheat(e.target.checked)} className="w-4 h-4 rounded text-emerald-600" />
+                <span className="text-sm text-gray-700">Enable proctoring (tab-switch/fullscreen detection, auto-submit)</span>
+              </label>
             </div>
           </div>
         )}
 
-        {/* Assign & Publish Section */}
-        <div className="bg-white rounded-lg border p-4">
-          <h3 className="font-medium text-gray-900 mb-2">
-            Assign & Publish
-          </h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Publish this exam to a class
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <select
-              value={assignClass}
-              onChange={(e) => setAssignClass(e.target.value)}
-              className="flex-1 px-3 py-2.5 border rounded-lg bg-white text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-            >
-              <option value="">Select Class</option>
-              {["6", "7", "8", "9", "10", "11", "12"].map((c) => (
-                <option key={c} value={c}>
-                  Class {c}
-                </option>
-              ))}
-            </select>
-            <select
-              value={assignBatch}
-              onChange={(e) => setAssignBatch(e.target.value)}
-              className="flex-1 px-3 py-2.5 border rounded-lg bg-white text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-            >
-              <option value="">Select Batch</option>
-              <option value="All Batches">All Batches</option>
-              {["Lakshya", "Aadharshilla", "Basic", "Commerce"].map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={assignToClassBatch}
-              disabled={!assignClass || !assignBatch || assigning || totalQuestions === 0}
-              className="px-6 py-2.5 bg-emerald-600 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-700 transition-colors text-sm whitespace-nowrap"
-            >
-              {assigning ? "Publishing..." : "Publish Exam"}
-            </button>
+        {tab === "students" && (
+          <div className="bg-white rounded-xl border p-5">
+            {exam.classLevel ? (
+              <StudentAssignmentPicker
+                examId={examId}
+                classLevel={exam.classLevel}
+                initialAssignedTo={assignedTo}
+                onSaved={(a) => setAssignedTo(a)}
+              />
+            ) : (
+              <p className="text-sm text-amber-600">Set a class for this exam first.</p>
+            )}
           </div>
-          {totalQuestions === 0 && (
-            <p className="text-xs text-amber-600 mt-2">
-              ⚠️ Add at least one question to publish
-            </p>
-          )}
-        </div>
+        )}
+
+        {tab === "review" && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border p-5">
+              <h3 className="font-semibold text-gray-900 mb-3">Summary</h3>
+              <dl className="grid grid-cols-2 gap-y-2 text-sm">
+                <dt className="text-gray-500">Class</dt>
+                <dd className="text-gray-900 font-medium">{exam.classLevel || "—"}</dd>
+                <dt className="text-gray-500">Subject</dt>
+                <dd className="text-gray-900 font-medium">{exam.meta?.subject || "—"}</dd>
+                <dt className="text-gray-500">Questions</dt>
+                <dd className="text-gray-900 font-medium">{questionIds.length}</dd>
+                <dt className="text-gray-500">Total Marks</dt>
+                <dd className="text-gray-900 font-medium">{questionIds.length * markCorrect}</dd>
+                <dt className="text-gray-500">Duration</dt>
+                <dd className="text-gray-900 font-medium">{effectiveDuration()} minutes</dd>
+                <dt className="text-gray-500">Assignment</dt>
+                <dd className="text-gray-900 font-medium">
+                  {assignedTo.users?.length
+                    ? `${assignedTo.users.length} students`
+                    : assignedTo.groups?.length
+                    ? assignedTo.groups.join(", ")
+                    : "Not assigned yet"}
+                </dd>
+              </dl>
+            </div>
+
+            <div className="bg-white rounded-xl border p-5">
+              <h3 className="font-semibold text-gray-900 mb-3">Ready to publish?</h3>
+              <ul className="space-y-1.5">
+                {checklist.map((c) => (
+                  <li key={c.label} className={`text-sm flex items-center gap-2 ${c.ok ? "text-emerald-700" : "text-gray-500"}`}>
+                    <span>{c.ok ? "✓" : "✕"}</span>
+                    {c.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <SchedulePublishPanel
+              exam={exam}
+              totalQuestions={questionIds.length}
+              sections={[{ title: "Section A", questionIds, sectionDurationMins: effectiveDuration(), shuffleQuestions, shuffleOptions }]}
+              onPublished={() => router.push("/dashboard/teacher?tab=exams")}
+            />
+          </div>
+        )}
       </div>
 
       {/* Image Lightbox */}
@@ -896,36 +434,24 @@ export default function ExamBuilderPage() {
             className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
             onClick={() => setViewingImage(null)}
           >
-            <motion.img
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.9 }}
-              src={viewingImage}
-              alt="Diagram"
-              className="max-w-full max-h-[90vh] rounded-xl"
-            />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={viewingImage} alt="Diagram" className="max-w-full max-h-[90vh] rounded-xl" />
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Print Preview Modal */}
       {showPrintPreview && (
-        <div 
-          id="print-modal-overlay"
-          className="fixed inset-0 z-50 bg-black/60 overflow-auto"
-        >
-          {/* Toolbar - Fixed at top */}
+        <div id="print-modal-overlay" className="fixed inset-0 z-50 bg-black/60 overflow-auto">
           <div className="sticky top-0 z-10 bg-white shadow-md p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
             <h2 className="font-bold text-gray-900 text-lg">Print Preview</h2>
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <button
                 onClick={() => {
-                  document.documentElement.classList.add('print-mode');
+                  document.documentElement.classList.add("print-mode");
                   setTimeout(() => {
                     window.print();
-                    setTimeout(() => {
-                      document.documentElement.classList.remove('print-mode');
-                    }, 500);
+                    setTimeout(() => document.documentElement.classList.remove("print-mode"), 500);
                   }, 100);
                 }}
                 className="flex-1 sm:flex-none justify-center px-5 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2"
@@ -942,210 +468,83 @@ export default function ExamBuilderPage() {
             </div>
           </div>
 
-          {/* A4 Paper Preview Container - Scaled for Mobile */}
           <div className="py-8 px-2 sm:px-4 flex justify-center bg-gray-100 min-h-screen print:bg-white print:p-0 print:m-0 print:min-h-0">
-            <div 
-              id="print-wrapper"
-              className="transform origin-top scale-[0.45] sm:scale-[0.6] md:scale-[0.8] lg:scale-100 transition-transform duration-200 print:transform-none print:scale-100 print:m-0 print:p-0"
-            >
-              <div 
+            <div id="print-wrapper" className="transform origin-top scale-[0.45] sm:scale-[0.6] md:scale-[0.8] lg:scale-100 transition-transform duration-200 print:transform-none print:scale-100 print:m-0 print:p-0">
+              <div
                 id="print-content"
                 className="bg-white shadow-2xl rounded-sm print:shadow-none print:rounded-none"
-                style={{ 
-                  width: '210mm', 
-                  minHeight: '297mm', 
-                  padding: '20mm',
-                  fontFamily: 'Times New Roman, serif',
-                  fontSize: '12pt',
-                  lineHeight: '1.6',
-                  color: '#1a1a1a',
-                  margin: '0 auto'
-                }}
+                style={{ width: "210mm", minHeight: "297mm", padding: "20mm", fontFamily: "Times New Roman, serif", fontSize: "12pt", lineHeight: "1.6", color: "#1a1a1a", margin: "0 auto" }}
               >
-                {/* Paper Content (same as before) */}
-                
-                {/* Paper Header */}
-                <div style={{ 
-                  border: '3px double #333', 
-                  padding: '20px', 
-                  textAlign: 'center',
-                  marginBottom: '24px'
-                }}>
-                  <h1 style={{ 
-                    fontSize: '22pt', 
-                    fontWeight: 'bold', 
-                    marginBottom: '8px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '1px'
-                  }}>
-                    {exam?.title}
+                <div style={{ border: "3px double #333", padding: "20px", textAlign: "center", marginBottom: "24px" }}>
+                  <h1 style={{ fontSize: "22pt", fontWeight: "bold", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px" }}>
+                    {exam.title}
                   </h1>
-                  <div style={{
-                    borderTop: '2px solid #047857',
-                    borderBottom: '2px solid #047857',
-                    padding: '10px 0',
-                    margin: '12px 0'
-                  }}>
-                    <span style={{ fontSize: '11pt', color: '#444' }}>
-                      <strong>Duration:</strong> {totalDuration} minutes &nbsp;&nbsp;|&nbsp;&nbsp;
-                      <strong>Total Questions:</strong> {totalQuestions} &nbsp;&nbsp;|&nbsp;&nbsp;
-                      <strong>Max Marks:</strong> {totalQuestions * 4}
+                  <div style={{ borderTop: "2px solid #047857", borderBottom: "2px solid #047857", padding: "10px 0", margin: "12px 0" }}>
+                    <span style={{ fontSize: "11pt", color: "#444" }}>
+                      <strong>Duration:</strong> {effectiveDuration()} minutes &nbsp;&nbsp;|&nbsp;&nbsp;
+                      <strong>Total Questions:</strong> {questionIds.length} &nbsp;&nbsp;|&nbsp;&nbsp;
+                      <strong>Max Marks:</strong> {questionIds.length * markCorrect}
                     </span>
                   </div>
                 </div>
 
-                {/* General Instructions */}
-                <div style={{
-                  border: '2px solid #666',
-                  borderRadius: '8px',
-                  padding: '16px',
-                  marginBottom: '24px',
-                  backgroundColor: '#fafafa'
-                }}>
-                  <h3 style={{ 
-                    textAlign: 'center', 
-                    fontWeight: 'bold', 
-                    fontSize: '12pt',
-                    marginBottom: '10px',
-                    textTransform: 'uppercase'
-                  }}>
+                <div style={{ border: "2px solid #666", borderRadius: "8px", padding: "16px", marginBottom: "24px", backgroundColor: "#fafafa" }}>
+                  <h3 style={{ textAlign: "center", fontWeight: "bold", fontSize: "12pt", marginBottom: "10px", textTransform: "uppercase" }}>
                     General Instructions
                   </h3>
-                  <ul style={{ marginLeft: '20px', fontSize: '11pt' }}>
-                    <li style={{ marginBottom: '6px' }}>Read all questions carefully before answering.</li>
-                    <li style={{ marginBottom: '6px' }}>All questions are compulsory.</li>
-                    <li style={{ marginBottom: '6px' }}>Write your answers neatly and legibly.</li>
+                  <ul style={{ marginLeft: "20px", fontSize: "11pt" }}>
+                    <li style={{ marginBottom: "6px" }}>Read all questions carefully before answering.</li>
+                    <li style={{ marginBottom: "6px" }}>All questions are compulsory.</li>
+                    <li style={{ marginBottom: "6px" }}>Write your answers neatly and legibly.</li>
                   </ul>
                 </div>
 
-                {/* Sections with Questions */}
-                {sections.map((section, sectionIdx) => {
-                  if (section.questionIds.length === 0) return null;
-                  
-                  let qNum = 1;
-                  for (let i = 0; i < sectionIdx; i++) {
-                    qNum += sections[i].questionIds.length;
-                  }
-
-                  return (
-                    <div key={sectionIdx} style={{ marginBottom: '28px' }}>
-                      {/* Section Header */}
-                      <h2 style={{
-                        textAlign: 'center',
-                        fontSize: '14pt',
-                        fontWeight: 'bold',
-                        textTransform: 'uppercase',
-                        borderBottom: '2px solid #333',
-                        paddingBottom: '8px',
-                        marginBottom: '16px',
-                        letterSpacing: '0.5px'
-                      }}>
-                        {section.title}
-                      </h2>
-
-                      {/* Questions */}
-                      <div>
-                        {section.questionIds.map((qId, qIdx) => {
-                          const q = questions.find((question) => question._id === qId);
-                          if (!q) return null;
-
-                          return (
-                            <div 
-                              key={qId} 
-                              style={{ 
-                                marginBottom: '20px',
-                                pageBreakInside: 'avoid'
-                              }}
-                            >
-                              {/* Question Row */}
-                              <div style={{ display: 'flex', gap: '12px' }}>
-                                <span style={{ 
-                                  fontWeight: 'bold', 
-                                  minWidth: '42px',
-                                  flexShrink: 0
-                                }}>
-                                  Q{qNum + qIdx}.
-                                </span>
-                                <div style={{ flex: 1 }}>
-                                  {/* Question Text */}
-                                  <div style={{ marginBottom: '8px' }}>
-                                    <MathText text={q.text} />
-                                  </div>
-
-                                  {/* MCQ Options */}
-                                  {q.options && q.options.length > 0 && (
-                                    <div style={{ marginLeft: '16px', marginTop: '8px' }}>
-                                      {q.options.map((opt, optIdx) => (
-                                        <div 
-                                          key={optIdx} 
-                                          style={{ 
-                                            marginBottom: '4px',
-                                            display: 'flex',
-                                            alignItems: 'flex-start',
-                                            gap: '8px'
-                                          }}
-                                        >
-                                          <span style={{ fontWeight: '600' }}>
-                                            ({String.fromCharCode(97 + optIdx)})
-                                          </span>
-                                          <span>
-                                            <MathText text={opt.text} inline />
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  {/* Diagram Image */}
-                                  {q.diagramUrl && (
-                                    <div style={{ 
-                                      marginTop: '12px', 
-                                      marginLeft: '16px',
-                                      pageBreakInside: 'avoid'
-                                    }}>
-                                      <Image
-                                        src={getImageUrl(q.diagramUrl)}
-                                        alt="Diagram"
-                                        width={200}
-                                        height={150}
-                                        style={{
-                                          maxWidth: '200px',
-                                          maxHeight: '150px',
-                                          objectFit: 'contain',
-                                          border: '1px solid #ddd',
-                                          borderRadius: '4px',
-                                          padding: '4px',
-                                          backgroundColor: '#fff',
-                                          width: "auto",
-                                          height: "auto"
-                                        }}
-                                        unoptimized
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
+                <div>
+                  {questionIds.map((qId, qIdx) => {
+                    const q = questionsById[qId];
+                    if (!q) return null;
+                    return (
+                      <div key={qId} style={{ marginBottom: "20px", pageBreakInside: "avoid" }}>
+                        <div style={{ display: "flex", gap: "12px" }}>
+                          <span style={{ fontWeight: "bold", minWidth: "42px", flexShrink: 0 }}>Q{qIdx + 1}.</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ marginBottom: "8px" }}>
+                              <MathText text={q.text} />
                             </div>
-                          );
-                        })}
+                            {q.options && q.options.length > 0 && (
+                              <div style={{ marginLeft: "16px", marginTop: "8px" }}>
+                                {q.options.map((opt, optIdx) => (
+                                  <div key={optIdx} style={{ marginBottom: "4px", display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                                    <span style={{ fontWeight: "600" }}>({String.fromCharCode(97 + optIdx)})</span>
+                                    <span>
+                                      <MathText text={opt.text} inline />
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {q.diagramUrl && (
+                              <div style={{ marginTop: "12px", marginLeft: "16px", pageBreakInside: "avoid" }}>
+                                <Image
+                                  src={getImageUrl(q.diagramUrl)}
+                                  alt="Diagram"
+                                  width={200}
+                                  height={150}
+                                  style={{ maxWidth: "200px", maxHeight: "150px", objectFit: "contain", border: "1px solid #ddd", borderRadius: "4px", padding: "4px", backgroundColor: "#fff", width: "auto", height: "auto" }}
+                                  unoptimized
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
 
-                {/* Footer */}
-                <div style={{
-                  borderTop: '2px solid #333',
-                  paddingTop: '16px',
-                  marginTop: '32px',
-                  textAlign: 'center'
-                }}>
-                  <p style={{ fontWeight: 'bold', fontSize: '12pt' }}>
-                    *** End of Question Paper ***
-                  </p>
-                  <p style={{ fontStyle: 'italic', marginTop: '8px', color: '#666' }}>
-                    Best of Luck!
-                  </p>
+                <div style={{ borderTop: "2px solid #333", paddingTop: "16px", marginTop: "32px", textAlign: "center" }}>
+                  <p style={{ fontWeight: "bold", fontSize: "12pt" }}>*** End of Question Paper ***</p>
+                  <p style={{ fontStyle: "italic", marginTop: "8px", color: "#666" }}>Best of Luck!</p>
                 </div>
               </div>
             </div>
@@ -1153,15 +552,11 @@ export default function ExamBuilderPage() {
         </div>
       )}
 
-      {/* Print Styles */}
       <style jsx global>{`
         @media print {
-          /* Hide all content by default when in print-mode */
           html.print-mode body * {
             visibility: hidden;
           }
-
-          /* Show only the print content and its wrappers */
           html.print-mode #print-content,
           html.print-mode #print-content *,
           html.print-mode #print-wrapper,
@@ -1169,8 +564,6 @@ export default function ExamBuilderPage() {
           html.print-mode .print-visible {
             visibility: visible !important;
           }
-
-          /* Force modal overlay to be static document body */
           html.print-mode #print-modal-overlay {
             position: absolute !important;
             inset: 0 !important;
@@ -1181,44 +574,35 @@ export default function ExamBuilderPage() {
             z-index: 9999 !important;
             display: block !important;
           }
-
-          /* Reset wrapper positioning for print */
           html.print-mode #print-wrapper {
             transform: none !important;
             width: 100% !important;
             height: auto !important;
-            position: static !important; /* Changed from absolute */
+            position: static !important;
             margin: 0 !important;
             padding: 0 !important;
             display: block !important;
           }
-          
-          /* Ensure print content takes full width */
           html.print-mode #print-content {
             width: 100% !important;
             margin: 0 !important;
-            padding: 15mm !important; /* Keep padding for the content spacing */
+            padding: 15mm !important;
             box-shadow: none !important;
             border: none !important;
             display: block !important;
           }
-
           html.print-mode {
             height: auto !important;
             overflow: visible !important;
           }
-
           html.print-mode body {
             height: auto !important;
             overflow: visible !important;
           }
-
           @page {
             size: A4;
-            margin: 0; /* Let duplicate margin be handled by padding */
+            margin: 0;
           }
-
-          /* Ensure images print */
           img {
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;

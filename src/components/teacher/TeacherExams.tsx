@@ -1,13 +1,14 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../lib/api";
 import { Modal } from "../ui/modal";
 import { notify } from "../ui/toast";
 import { InlineLoader } from "../ElegantLoader";
-import { MathText } from "../ui/MathText";
+import SchedulePublishPanel from "./SchedulePublishPanel";
+import ExamStatusBadge, { type ExamStatus } from "./ExamStatusBadge";
+import QuickCreateExamForm from "./QuickCreateExamForm";
 
 interface ExamSectionDraft {
   title: string;
@@ -26,24 +27,25 @@ interface Exam {
   sections?: ExamSectionDraft[];
   classLevel?: string;
   batch?: string;
+  schedule?: { startAt?: string; endAt?: string; timezone?: string };
+  instructions?: string;
+  antiCheat?: boolean;
+  lateEntryMins?: number;
+  status?: ExamStatus;
 }
+
+// Prefer the server-derived status; the isPublished fallback only covers a
+// response from an older backend that predates deriveExamStatus().
+const statusOf = (exam: Exam): ExamStatus =>
+  exam.status || (exam.isPublished ? "live" : "draft");
 
 export default function TeacherExams() {
   const router = useRouter();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(false);
-  const [title, setTitle] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [builderOpen, setBuilderOpen] = useState(false);
-  const [editingExam] = useState<Exam | null>(null);
-  const [sectionDrafts, setSectionDrafts] = useState<ExamSectionDraft[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [classLevel, setClassLevel] = useState<string>("");
-  const [batch, setBatch] = useState<string>("");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [examClassForQuestions, setExamClassForQuestions] =
-    useState<string>("");
+  const [schedulingExam, setSchedulingExam] = useState<Exam | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,152 +64,19 @@ export default function TeacherExams() {
     load();
   }, []);
 
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return;
-    setCreating(true);
-    try {
-      await apiFetch("/exams", {
-        method: "POST",
-        body: JSON.stringify({
-          title: title.trim(),
-          description: "",
-          totalDurationMins: 60,
-          sections: [],
-          isPublished: false,
-        }),
-      });
-      setTitle("");
-      setShowCreateForm(false);
-      await load();
-      notify.success("Exam created successfully");
-    } catch (e) {
-      notify.error((e as Error).message || "Failed to create exam");
-    } finally {
-      setCreating(false);
-    }
-  }
-
   function openBuilder(ex: Exam) {
-    // Navigate to dedicated build page instead of modal
     router.push(`/dashboard/teacher/exams/${ex._id}/build`);
   }
 
-  function addSection() {
-    setSectionDrafts((s) => [
-      ...s,
-      {
-        title: `Section ${s.length + 1}`,
-        questionIds: [],
-        sectionDurationMins: 30,
-        shuffleQuestions: true,
-        shuffleOptions: true,
-      },
-    ]);
+  function examQuestionCount(ex: Exam) {
+    return ex.sections?.reduce((sum, s) => sum + s.questionIds.length, 0) || 0;
   }
 
-  function updateSection(idx: number, patch: Partial<ExamSectionDraft>) {
-    setSectionDrafts((s) =>
-      s.map((sec, i) => (i === idx ? { ...sec, ...patch } : sec))
-    );
+  function handlePublished(updated: Exam) {
+    setSchedulingExam(null);
+    setExams((prev) => prev.map((e) => (e._id === updated._id ? { ...e, ...updated } : e)));
+    load();
   }
-
-  function removeSection(idx: number) {
-    if (!confirm("Remove this section?")) return;
-    setSectionDrafts((s) => s.filter((_, i) => i !== idx));
-  }
-
-  async function saveExamStructure() {
-    if (!editingExam) return;
-    setSaving(true);
-    try {
-      await apiFetch(`/exams/${editingExam._id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          sections: sectionDrafts,
-          totalDurationMins: sectionDrafts.reduce(
-            (sum, s) => sum + (s.sectionDurationMins || 0),
-            0
-          ),
-        }),
-      });
-      notify.success("Exam structure updated successfully");
-      setBuilderOpen(false);
-      await load();
-    } catch (e) {
-      notify.error((e as Error).message || "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function togglePublish(ex: Exam) {
-    try {
-      await apiFetch(`/exams/${ex._id}`, {
-        method: "PUT",
-        body: JSON.stringify({ isPublished: !ex.isPublished }),
-      });
-      notify.success(
-        `Exam ${!ex.isPublished ? "published" : "unpublished"} successfully`
-      );
-      await load();
-    } catch (e) {
-      notify.error((e as Error).message || "Toggle failed");
-    }
-  }
-
-  async function assignToClassBatch() {
-    if (!editingExam) return;
-    if (!classLevel || !batch) {
-      notify.error("Select both Class and Batch");
-      return;
-    }
-    try {
-      const batchValue = batch === "All Batches" ? "All Batches" : batch;
-      await apiFetch(`/exams/${editingExam._id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          classLevel,
-          batch: batchValue,
-          isPublished: true,
-        }),
-      });
-
-      // If "All Batches" is selected, assign to all possible batches
-      const groups =
-        batch === "All Batches"
-          ? [classLevel, "Lakshya", "Aadharshilla", "Basic", "Commerce"]
-          : [classLevel, batch];
-
-      await apiFetch(`/exams/${editingExam._id}/assign`, {
-        method: "POST",
-        body: JSON.stringify({ groups }),
-      });
-      notify.success(
-        batch === "All Batches"
-          ? "Assigned to entire class successfully"
-          : "Assigned to class/batch successfully"
-      );
-      await load();
-    } catch (e) {
-      notify.error((e as Error).message || "Assignment failed");
-    }
-  }
-
-  const getStatusColor = (isPublished?: boolean) => {
-    return isPublished
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : "bg-amber-50 text-amber-700 border-amber-200";
-  };
-
-  const totalQuestions = sectionDrafts.reduce(
-    (sum, s) => sum + s.questionIds.length,
-    0
-  );
-  const totalDuration = sectionDrafts.reduce(
-    (sum, s) => sum + (s.sectionDurationMins || 0),
-    0
-  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50/30 p-4 lg:p-6">
@@ -375,11 +244,9 @@ export default function TeacherExams() {
           <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-emerald-600 text-sm font-medium">
-                  Published
-                </p>
+                <p className="text-emerald-600 text-sm font-medium">Live</p>
                 <p className="text-2xl font-bold text-emerald-900">
-                  {exams.filter((e) => e.isPublished).length}
+                  {exams.filter((e) => statusOf(e) === "live").length}
                 </p>
               </div>
               <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
@@ -405,7 +272,7 @@ export default function TeacherExams() {
               <div>
                 <p className="text-amber-600 text-sm font-medium">Drafts</p>
                 <p className="text-2xl font-bold text-amber-900">
-                  {exams.filter((e) => !e.isPublished).length}
+                  {exams.filter((e) => statusOf(e) === "draft").length}
                 </p>
               </div>
               <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
@@ -488,43 +355,10 @@ export default function TeacherExams() {
                     </svg>
                   </button>
                 </div>
-                <form
-                  onSubmit={onCreate}
-                  className="flex flex-col sm:flex-row gap-3"
-                >
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Enter exam title..."
-                    className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200"
-                    required
-                  />
-                  <div className="flex gap-3">
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      type="submit"
-                      disabled={creating || !title.trim()}
-                      className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                      {creating ? (
-                        <span className="flex items-center gap-2">
-                          <InlineLoader />
-                          Creating...
-                        </span>
-                      ) : (
-                        "Create Exam"
-                      )}
-                    </motion.button>
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateForm(false)}
-                      className="px-4 py-2.5 border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+                <QuickCreateExamForm
+                  onCreated={(id) => router.push(`/dashboard/teacher/exams/${id}/build`)}
+                  onCancel={() => setShowCreateForm(false)}
+                />
               </div>
             </motion.div>
           )}
@@ -609,20 +443,7 @@ export default function TeacherExams() {
                             </span>
                           </div>
                         </div>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                            exam.isPublished
-                          )}`}
-                        >
-                          <div
-                            className={`w-2 h-2 rounded-full inline-block mr-1 ${
-                              exam.isPublished
-                                ? "bg-emerald-500"
-                                : "bg-amber-500"
-                            }`}
-                          ></div>
-                          {exam.isPublished ? "Published" : "Draft"}
-                        </span>
+                        <ExamStatusBadge status={statusOf(exam)} />
                       </div>
 
                       {exam.classLevel || exam.batch ? (
@@ -682,14 +503,10 @@ export default function TeacherExams() {
                         <motion.button
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
-                          onClick={() => togglePublish(exam)}
-                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                            exam.isPublished
-                              ? "bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-200"
-                              : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200"
-                          }`}
+                          onClick={() => setSchedulingExam(exam)}
+                          className="px-4 py-2 text-sm font-medium rounded-lg transition-all bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200"
                         >
-                          {exam.isPublished ? "Unpublish" : "Publish"}
+                          {exam.isPublished ? "Manage Schedule" : "Schedule & Publish"}
                         </motion.button>
                       </div>
                     </motion.div>
@@ -751,20 +568,7 @@ export default function TeacherExams() {
                               {exam.totalDurationMins || 0} min
                             </td>
                             <td className="px-6 text-center py-4">
-                              <span
-                                className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                                  exam.isPublished
-                                )}`}
-                              >
-                                <div
-                                  className={`w-2 h-2 rounded-full mr-1 ${
-                                    exam.isPublished
-                                      ? "bg-emerald-500"
-                                      : "bg-amber-500"
-                                  }`}
-                                ></div>
-                                {exam.isPublished ? "Published" : "Draft"}
-                              </span>
+                              <ExamStatusBadge status={statusOf(exam)} />
                             </td>
                             <td className="px-6 text-right py-4">
                               <div className="flex items-center justify-end gap-2">
@@ -775,14 +579,10 @@ export default function TeacherExams() {
                                   Build
                                 </button>
                                 <button
-                                  onClick={() => togglePublish(exam)}
-                                  className={`px-3 py-1.5 text-xs rounded-lg transition border ${
-                                    exam.isPublished
-                                      ? "border-amber-200 text-amber-700 hover:bg-amber-50"
-                                      : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                                  }`}
+                                  onClick={() => setSchedulingExam(exam)}
+                                  className="px-3 py-1.5 text-xs rounded-lg transition border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                                 >
-                                  {exam.isPublished ? "Unpublish" : "Publish"}
+                                  {exam.isPublished ? "Manage Schedule" : "Schedule & Publish"}
                                 </button>
                               </div>
                             </td>
@@ -836,843 +636,23 @@ export default function TeacherExams() {
           </motion.div>
         )}
 
-        {/* Enhanced Modal for Exam Builder */}
+        {/* Schedule & Publish Modal */}
         <Modal
-          title={
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                <svg
-                  className="w-4 h-4 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-900">
-                  {editingExam ? `Build: ${editingExam.title}` : "Exam Builder"}
-                </h3>
-                <p className="text-sm text-slate-600">
-                  Configure exam sections and questions
-                </p>
-              </div>
-            </div>
-          }
-          open={builderOpen}
-          onOpenChange={setBuilderOpen}
-          wide
-          footer={
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
-              <div className="flex items-center gap-4 text-sm text-slate-600">
-                <div className="flex items-center gap-1">
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                  <span>{sectionDrafts.length} sections</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span>{totalQuestions} questions</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span>{totalDuration} minutes</span>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setBuilderOpen(false)}
-                  className="px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  disabled={saving}
-                  onClick={saveExamStructure}
-                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg disabled:opacity-50 hover:shadow-lg transition-all font-medium"
-                >
-                  {saving ? (
-                    <span className="flex items-center gap-2">
-                      <InlineLoader />
-                      Saving...
-                    </span>
-                  ) : (
-                    "Save Structure"
-                  )}
-                </motion.button>
-              </div>
-            </div>
-          }
+          title="Schedule & Publish"
+          open={!!schedulingExam}
+          onOpenChange={(open) => !open && setSchedulingExam(null)}
         >
-          {!editingExam ? (
-            <div className="text-center py-12 text-slate-500">
-              <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <svg
-                  className="w-8 h-8 text-slate-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                  />
-                </svg>
-              </div>
-              <p className="text-lg font-medium text-slate-900 mb-2">
-                Select an exam to configure
-              </p>
-              <p>
-                Choose an exam from the list to set up its structure and
-                sections.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Class Selection for Question Filtering */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                <div className="flex items-center gap-3 mb-3">
-                  <svg
-                    className="w-5 h-5 text-blue-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                    />
-                  </svg>
-                  <h4 className="font-semibold text-blue-900">
-                    Select Class for Questions
-                  </h4>
-                </div>
-                <p className="text-sm text-blue-700 mb-3">
-                  Choose a class to load questions from that class&apos;s
-                  question bank
-                </p>
-                <select
-                  value={examClassForQuestions}
-                  onChange={(e) => setExamClassForQuestions(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-blue-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 bg-white"
-                >
-                  <option value="">Select Class (6-12)</option>
-                  {["6", "7", "8", "9", "10", "11", "12"].map((c) => (
-                    <option key={c} value={c}>
-                      Class {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Section Management */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 bg-slate-50 rounded-xl">
-                <div>
-                  <h4 className="font-semibold text-slate-900">
-                    Exam Sections
-                  </h4>
-                  <p className="text-sm text-slate-600">
-                    Add and configure sections for your exam
-                  </p>
-                </div>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={addSection}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                    />
-                  </svg>
-                  Add Section
-                </motion.button>
-              </div>
-
-              {/* Sections List */}
-              <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                <AnimatePresence>
-                  {sectionDrafts.map((section, index) => (
-                    <motion.div
-                      key={index}
-                      className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      layout
-                    >
-                      <div className="space-y-4">
-                        {/* Section Header */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                          <input
-                            value={section.title}
-                            onChange={(e) =>
-                              updateSection(index, { title: e.target.value })
-                            }
-                            className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200"
-                            placeholder="Section title"
-                          />
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                              <label className="text-sm text-slate-600 font-medium">
-                                Duration:
-                              </label>
-                              <input
-                                type="number"
-                                min={1}
-                                value={section.sectionDurationMins || 0}
-                                onChange={(e) =>
-                                  updateSection(index, {
-                                    sectionDurationMins: Number(e.target.value),
-                                  })
-                                }
-                                className="w-20 px-3 py-2 border border-slate-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200"
-                              />
-                              <span className="text-sm text-slate-600">
-                                min
-                              </span>
-                            </div>
-                            <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => removeSection(index)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Remove section"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
-                            </motion.button>
-                          </div>
-                        </div>
-
-                        {/* Section Options */}
-                        <div className="flex flex-wrap gap-6">
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={section.shuffleQuestions}
-                              onChange={(e) =>
-                                updateSection(index, {
-                                  shuffleQuestions: e.target.checked,
-                                })
-                              }
-                              className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
-                            />
-                            <span className="text-sm text-slate-700 font-medium">
-                              Shuffle Questions
-                            </span>
-                          </label>
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={section.shuffleOptions}
-                              onChange={(e) =>
-                                updateSection(index, {
-                                  shuffleOptions: e.target.checked,
-                                })
-                              }
-                              className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
-                            />
-                            <span className="text-sm text-slate-700 font-medium">
-                              Shuffle Options
-                            </span>
-                          </label>
-                        </div>
-
-                        {/* Question Status */}
-                        <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <svg
-                              className="w-5 h-5 text-purple-600"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                            <span className="font-medium text-slate-900">
-                              {section.questionIds.length} Questions Selected
-                            </span>
-                          </div>
-                          {section.questionIds.length === 0 && (
-                            <div className="flex items-center gap-2 text-amber-600">
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                                />
-                              </svg>
-                              <span className="text-sm font-medium">
-                                No questions selected
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Question Picker */}
-                        <div className="border-t border-slate-200 pt-4">
-                          <QuestionPicker
-                            selected={section.questionIds}
-                            onChange={(ids) =>
-                              updateSection(index, { questionIds: ids })
-                            }
-                            classLevel={examClassForQuestions}
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-
-                {sectionDrafts.length === 0 && (
-                  <div className="text-center py-12 text-slate-500 border-2 border-dashed border-slate-200 rounded-xl">
-                    <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-                      <svg
-                        className="w-8 h-8 text-slate-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                        />
-                      </svg>
-                    </div>
-                    <p className="text-lg font-medium text-slate-900 mb-1">
-                      No sections created
-                    </p>
-                    <p className="text-sm">
-                      Click &apos;Add Section&apos; to get started
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Assignment Section */}
-              <div className="border-t border-slate-200 pt-6">
-                <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-4">
-                  <div>
-                    <h4 className="font-semibold text-purple-900 mb-2">
-                      Assign to Class & Batch
-                    </h4>
-                    <p className="text-sm text-purple-700">
-                      Select a class (7–12) and batch to publish this exam to
-                      specific student groups
-                    </p>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <select
-                      value={classLevel}
-                      onChange={(e) => setClassLevel(e.target.value)}
-                      className="px-4 py-2.5 border border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200 bg-white"
-                    >
-                      <option value="">Select Class</option>
-                      {["7", "8", "9", "10", "11", "12"].map((c) => (
-                        <option key={c} value={c}>
-                          Class {c}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={batch}
-                      onChange={(e) => setBatch(e.target.value)}
-                      className="px-4 py-2.5 border border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all duration-200 bg-white"
-                    >
-                      <option value="">Select Batch</option>
-                      <option value="All Batches">All Batches</option>
-                      {["Lakshya", "Aadharshilla", "Basic", "Commerce"].map(
-                        (b) => (
-                          <option key={b} value={b}>
-                            {b}
-                          </option>
-                        )
-                      )}
-                    </select>
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={assignToClassBatch}
-                      disabled={!classLevel || !batch}
-                      className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors shadow-sm"
-                    >
-                      Assign & Publish
-                    </motion.button>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {schedulingExam && (
+            <SchedulePublishPanel
+              exam={schedulingExam}
+              totalQuestions={examQuestionCount(schedulingExam)}
+              onPublished={handlePublished}
+              onCancel={() => setSchedulingExam(null)}
+            />
           )}
         </Modal>
       </div>
     </div>
   );
 }
-
-// Enhanced Question Picker Component
-interface QuestionPickerProps {
-  selected: string[];
-  onChange(ids: string[]): void;
-  classLevel?: string;
-}
-
-interface Question {
-  _id: string;
-  text: string;
-  type: string;
-  subject: string;
-  chapter?: string;
-  topic?: string;
-  section?: string;
-  marks?: number;
-  difficulty?: string;
-  diagramUrl?: string;
-}
-
-interface FilterOptions {
-  subjects: string[];
-  chapters: string[];
-  topics: string[];
-  sections: string[];
-}
-
-const QuestionPicker: React.FC<QuestionPickerProps> = ({
-  selected,
-  onChange,
-  classLevel,
-}) => {
-  const [list, setList] = useState<Question[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Filters
-  const [selectedSubject, setSelectedSubject] = useState("");
-  const [selectedChapter, setSelectedChapter] = useState("");
-  const [selectedTopic, setSelectedTopic] = useState("");
-  const [selectedSection, setSelectedSection] = useState("");
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    subjects: [],
-    chapters: [],
-    topics: [],
-    sections: [],
-  });
-
-  // Load filter options
-  async function loadFilters() {
-    if (!classLevel) return;
-    try {
-      const params = new URLSearchParams();
-      if (selectedSubject) params.append("subject", selectedSubject);
-
-      const response = (await apiFetch(
-        `/ai/questions/class/${classLevel}/filters?${params}`
-      )) as { success: boolean; data: FilterOptions };
-
-      if (response.success) {
-        setFilterOptions(response.data);
-      }
-    } catch (error) {
-      console.error("Failed to load filters:", error);
-    }
-  }
-
-  async function loadQuestions() {
-    if (!classLevel) {
-      setList([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: "500" });
-      if (selectedSubject) params.append("subject", selectedSubject);
-      if (selectedChapter) params.append("chapter", selectedChapter);
-      if (selectedTopic) params.append("topic", selectedTopic);
-      if (selectedSection) params.append("section", selectedSection);
-
-      const response = (await apiFetch(
-        `/ai/questions/class/${classLevel}?${params}`
-      )) as { success: boolean; data: { questions: Question[] } };
-
-      if (response.success) {
-        setList(response.data.questions || []);
-      } else {
-        setList([]);
-      }
-    } catch (error) {
-      console.error("Failed to load questions:", error);
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (classLevel) {
-      loadFilters();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classLevel, selectedSubject]);
-
-  useEffect(() => {
-    loadQuestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    classLevel,
-    selectedSubject,
-    selectedChapter,
-    selectedTopic,
-    selectedSection,
-  ]);
-
-  // Reset dependent filters when parent filter changes
-  useEffect(() => {
-    setSelectedChapter("");
-    setSelectedTopic("");
-    setSelectedSection("");
-  }, [selectedSubject]);
-
-  useEffect(() => {
-    setSelectedTopic("");
-    setSelectedSection("");
-  }, [selectedChapter]);
-
-  useEffect(() => {
-    setSelectedSection("");
-  }, [selectedTopic]);
-
-  function toggle(id: string) {
-    if (selected.includes(id)) {
-      onChange(selected.filter((x) => x !== id));
-    } else {
-      onChange([...selected, id]);
-    }
-  }
-
-  // Filter by search query
-  const filteredQuestions = list.filter((q) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      q.text.toLowerCase().includes(query) ||
-      q.subject?.toLowerCase().includes(query) ||
-      q.chapter?.toLowerCase().includes(query) ||
-      q.topic?.toLowerCase().includes(query)
-    );
-  });
-
-  const selectAll = () => {
-    const allIds = filteredQuestions.map((q) => q._id);
-    onChange([...new Set([...selected, ...allIds])]);
-  };
-
-  const clearAll = () => {
-    onChange([]);
-  };
-
-  const activeFiltersCount = [selectedSubject, selectedChapter, selectedTopic, selectedSection].filter(Boolean).length;
-
-  if (!classLevel) {
-    return (
-      <div className="py-6 text-center text-amber-600">
-        <p className="text-sm font-medium">⚠️ Select a class above to load questions</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {/* Compact Search & Filter Bar */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="flex-1 relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search questions..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
-          />
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-3 py-2 text-sm rounded-lg border flex items-center gap-1.5 ${
-              activeFiltersCount > 0 
-                ? "bg-purple-50 border-purple-200 text-purple-700" 
-                : "border-gray-200 text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            Filters{activeFiltersCount > 0 && ` (${activeFiltersCount})`}
-          </button>
-          <button
-            onClick={loadQuestions}
-            disabled={loading}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {loading ? "..." : "Refresh"}
-          </button>
-          <span className="px-3 py-2 text-sm bg-purple-100 text-purple-700 rounded-lg font-medium">
-            {selected.length} selected
-          </span>
-        </div>
-      </div>
-
-      {/* Collapsible Filters */}
-      <AnimatePresence>
-        {showFilters && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-gray-50 rounded-lg">
-              <select
-                value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
-                className="px-2 py-1.5 border rounded text-sm bg-white"
-              >
-                <option value="">All Subjects</option>
-                {filterOptions.subjects.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <select
-                value={selectedChapter}
-                onChange={(e) => setSelectedChapter(e.target.value)}
-                disabled={!selectedSubject}
-                className="px-2 py-1.5 border rounded text-sm bg-white disabled:opacity-50"
-              >
-                <option value="">All Chapters</option>
-                {filterOptions.chapters.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <select
-                value={selectedTopic}
-                onChange={(e) => setSelectedTopic(e.target.value)}
-                disabled={!selectedChapter}
-                className="px-2 py-1.5 border rounded text-sm bg-white disabled:opacity-50"
-              >
-                <option value="">All Topics</option>
-                {filterOptions.topics.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-              <select
-                value={selectedSection}
-                onChange={(e) => setSelectedSection(e.target.value)}
-                disabled={!selectedTopic}
-                className="px-2 py-1.5 border rounded text-sm bg-white disabled:opacity-50"
-              >
-                <option value="">All Sections</option>
-                {filterOptions.sections.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Quick Actions */}
-      <div className="flex items-center gap-2 text-xs">
-        <button
-          onClick={selectAll}
-          disabled={filteredQuestions.length === 0}
-          className="text-purple-600 hover:text-purple-700 disabled:opacity-50 font-medium"
-        >
-          Select All ({filteredQuestions.length})
-        </button>
-        <span className="text-gray-300">|</span>
-        <button
-          onClick={clearAll}
-          disabled={selected.length === 0}
-          className="text-red-600 hover:text-red-700 disabled:opacity-50 font-medium"
-        >
-          Clear
-        </button>
-      </div>
-
-      {/* Questions List - Clean & Minimal */}
-      <div className="border rounded-lg overflow-hidden bg-white">
-        {loading ? (
-          <div className="py-8 text-center text-gray-500">
-            <InlineLoader className="mb-2" />
-            <p className="text-sm">Loading questions...</p>
-          </div>
-        ) : filteredQuestions.length === 0 ? (
-          <div className="py-8 text-center text-gray-500">
-            <p className="text-sm">No questions found</p>
-            {activeFiltersCount > 0 && (
-              <button
-                onClick={() => {
-                  setSelectedSubject("");
-                  setSelectedChapter("");
-                  setSelectedTopic("");
-                  setSelectedSection("");
-                  setSearchQuery("");
-                }}
-                className="mt-2 text-xs text-purple-600 hover:text-purple-700 font-medium"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="divide-y max-h-[50vh] overflow-y-auto">
-            {filteredQuestions.map((question) => {
-              const isSelected = selected.includes(question._id);
-              return (
-                <label
-                  key={question._id}
-                  className={`flex gap-3 p-3 cursor-pointer transition-colors ${
-                    isSelected ? "bg-purple-50" : "hover:bg-gray-50"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggle(question._id)}
-                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                  />
-                  <div className="flex-1 min-w-0">
-                    {/* Question Text - Full Display with MathText */}
-                    <div className="text-sm text-gray-900 leading-relaxed">
-                      <MathText text={question.text} />
-                    </div>
-                    
-                    {/* Diagram if present */}
-                    {question.diagramUrl && (
-                      <Image
-                        src={question.diagramUrl.startsWith("http") ? question.diagramUrl : `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}${question.diagramUrl}`}
-                        alt="Diagram"
-                        width={200}
-                        height={140}
-                        className="mt-2 max-w-[200px] h-auto rounded border"
-                        sizes="200px"
-                      />
-                    )}
-                    
-                    {/* Minimal Tags - Only essential info */}
-                    <div className="flex gap-1.5 mt-2 flex-wrap">
-                      {question.subject && (
-                        <span className="text-xs text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
-                          {question.subject}
-                        </span>
-                      )}
-                      {question.topic && (
-                        <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                          {question.topic}
-                        </span>
-                      )}
-                      {question.difficulty && (
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          question.difficulty === "easy" ? "text-green-600 bg-green-50" :
-                          question.difficulty === "medium" ? "text-amber-600 bg-amber-50" :
-                          "text-red-600 bg-red-50"
-                        }`}>
-                          {question.difficulty}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 

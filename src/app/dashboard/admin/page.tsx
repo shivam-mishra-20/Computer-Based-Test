@@ -14,6 +14,7 @@ import CreatePaperFlow from "@/components/teacher/CreatePaperFlow";
 import AdminPapers from "@/components/admin/AdminPapers";
 import SmartQuestionImport from "@/components/teacher/SmartQuestionImport";
 import AdminEODReports from "@/components/admin/AdminEODReports";
+import PublicTests from "@/components/admin/PublicTests";
 import DashboardHeader from "@/components/ui/dashboard-header";
 //import DashboardTabs from "@/components/ui/dashboard-tabs";
 const TABS = [
@@ -29,6 +30,11 @@ const TABS = [
   "smart-import",
   "automation",
   "questml",
+  // Public learning platform. Deliberately its own destination rather than a
+  // mode inside Exams: institute exams are class- and batch-scoped, these are
+  // published to the open internet, and one screen that could flip a paper
+  // between the two is the mistake the separate collections exist to prevent.
+  "public-tests",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -46,6 +52,7 @@ const tabLabels: Record<Tab, string> = {
   "smart-import": "Smart Import",
   automation: "EPUB Automation",
   questml: "QuestMl Ingest",
+  "public-tests": "Public Tests",
 };
 
 // Get icon for each tab
@@ -233,6 +240,25 @@ const getTabIcon = (tab: Tab) => {
           />
         </svg>
       );
+    case "public-tests":
+      // A globe: these are visible to the open internet, which is the one thing
+      // that distinguishes them from everything else in this dashboard.
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      );
   }
 };
 
@@ -316,6 +342,9 @@ export default function AdminDashboardPage() {
         { ssr: false }
       );
       content = <QuestMlDashboard />;
+      break;
+    case "public-tests":
+      content = <PublicTests />;
       break;
   }
 

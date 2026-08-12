@@ -17,6 +17,9 @@ import TeacherBatches from "@/components/teacher/TeacherBatches";
 import TeacherDoubts from "@/components/teacher/TeacherDoubts";
 import TeacherPerformance from "@/components/teacher/TeacherPerformance";
 import TeacherAnnouncements from "@/components/teacher/TeacherAnnouncements";
+// Shared with the admin dashboard — the authoring surface is identical for
+// both roles, and the backend enforces the role gate either way.
+import PublicTests from "@/components/admin/PublicTests";
 
 const TABS = [
   "dashboard",
@@ -33,6 +36,10 @@ const TABS = [
   "doubts",
   "performance",
   "announcements",
+  // Public learning platform. The backend already permits teachers to author
+  // these (requireRole('admin','teacher')); without this entry the surface
+  // existed but was unreachable from the teacher dashboard.
+  "public-tests",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -333,6 +340,9 @@ export default function TeacherDashboardPage() {
       break;
     case "announcements":
       content = <TeacherAnnouncements />;
+      break;
+    case "public-tests":
+      content = <PublicTests />;
       break;
   }
 

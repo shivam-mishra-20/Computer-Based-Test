@@ -6,6 +6,7 @@ import { apiFetch } from "../../lib/api";
 import Protected from "../Protected";
 import ElegantLoader, { InlineLoader } from "../ElegantLoader";
 import { MathText } from "../ui/MathText";
+import { getAnswerSync, syncStatusLabel, type SyncStatus } from "../../lib/answerSync";
 
 type PrimitiveResponse = string | number | string[] | undefined;
 
@@ -54,9 +55,14 @@ interface AttemptViewResponse {
     title: string;
     totalDurationMins?: number;
     schedule?: { startAt?: string; endAt?: string };
+    antiCheat?: boolean;
+    instructions?: string;
   };
   sections: { _id: string; title: string; questionIds: string[] }[];
   questions: Record<string, QuestionView>;
+  serverNow?: string;
+  deadlineAt?: string | null;
+  submitUnlockAt?: string | null;
 }
 
 interface Props {
@@ -106,26 +112,24 @@ function questionKind(q?: { type?: string; options?: { _id: string }[] }): QKind
 export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
   const [view, setView] = useState<AttemptViewResponse | null>(null);
   const [index, setIndex] = useState(0);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [violations, setViolations] = useState(0);
   const [violationMessage, setViolationMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(
+    typeof navigator !== "undefined" ? !navigator.onLine : false
+  );
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("synced");
   const [submitting, setSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<string | null>(null);
+  const [submitUnlockAt, setSubmitUnlockAt] = useState<number | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  // Per-question debounce timers + the latest pending payload for each question.
-  // A single shared timer would let a rapid change on question B cancel the
-  // still-unsaved answer for question A, silently dropping answers.
-  const autosaveTimersRef = useRef<Record<string, NodeJS.Timeout>>({});
-  const pendingSavesRef = useRef<Record<string, PrimitiveResponse>>({});
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const attemptEndRef = useRef<number | null>(null);
-  const pausedAtRef = useRef<number | null>(null);
   const submitGuardRef = useRef(false);
+  const answerSyncRef = useRef<ReturnType<typeof getAnswerSync> | null>(null);
 
   const updateTimeLeft = useCallback((end: number) => {
     function tick() {
@@ -140,16 +144,39 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     timerRef.current = setInterval(tick, 1000);
   }, []);
 
+  // One offline-answer-queue engine per attempt, subscribed for its lifetime.
+  useEffect(() => {
+    const engine = getAnswerSync(attemptId);
+    answerSyncRef.current = engine;
+    return engine.onStatusChange(setSyncStatus);
+  }, [attemptId]);
+
   const load = useCallback(async () => {
     try {
       const data = (await apiFetch(
         `/attempts/${attemptId}`
       )) as AttemptViewResponse;
+
+      // Recovery: overlay any locally-queued (not-yet-synced) answers onto the
+      // server view. Covers refresh / crash / offline recovery — an answer the
+      // student made never "disappears" just because it hadn't reached the
+      // server yet. These local records stay authoritative until synced.
+      const engine = getAnswerSync(attemptId);
+      const pending = await engine.listPending();
+      for (const rec of pending) {
+        const idx = data.attempt.answers.findIndex((a) => a.questionId === rec.questionId);
+        const merged = {
+          questionId: rec.questionId,
+          ...(idx >= 0 ? data.attempt.answers[idx] : {}),
+          ...rec.payload,
+        };
+        if (idx >= 0) data.attempt.answers[idx] = merged as AttemptCore["answers"][number];
+        else data.attempt.answers.push(merged as AttemptCore["answers"][number]);
+      }
+
       setView(data);
+      setSubmitUnlockAt(data.submitUnlockAt ? new Date(data.submitUnlockAt).getTime() : null);
       if (!data.attempt.submittedAt) {
-        const maybeAttemptEnd = (
-          data as unknown as { attempt?: { endAt?: string } }
-        )?.attempt?.endAt;
         const durMs = (data.exam.totalDurationMins || 0) * 60 * 1000;
         const startedMs = data.attempt.startedAt
           ? new Date(data.attempt.startedAt).getTime()
@@ -158,8 +185,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
           ? new Date(data.exam.schedule.endAt).getTime()
           : undefined;
         const candidates: number[] = [];
-        if (maybeAttemptEnd)
-          candidates.push(new Date(maybeAttemptEnd).getTime());
+        if (data.deadlineAt) candidates.push(new Date(data.deadlineAt).getTime());
         if (startedMs && durMs) candidates.push(startedMs + durMs);
         if (scheduleEndMs) candidates.push(scheduleEndMs);
         if (candidates.length) {
@@ -167,6 +193,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
           attemptEndRef.current = end;
           updateTimeLeft(end);
         }
+        if (pending.length) void engine.drain({ reconnect: true });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load attempt");
@@ -176,6 +203,13 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
   const submitAttempt = useCallback(
     async (opts?: { silent?: boolean; reason?: string }) => {
       const silent = opts?.silent ?? false;
+      const lockedUntil = submitUnlockAt;
+      if (!silent && lockedUntil !== null && Date.now() < lockedUntil) {
+        alert(
+          "You may submit your exam after completing the first half of the examination duration."
+        );
+        return;
+      }
       if (!silent) {
         const ok = confirm("Submit attempt? This cannot be undone.");
         if (!ok) return;
@@ -185,23 +219,59 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       submitGuardRef.current = true;
       setSubmitting(true);
       try {
-        // Flush any debounced answers so the last answers a student entered are
-        // persisted BEFORE the server grades the attempt.
-        await flushPendingSaves();
-        await apiFetch(`/attempts/${attemptId}/submit`, {
-          method: "POST",
-          body: JSON.stringify({ auto: silent, reason: opts?.reason }),
-        });
+        // Best-effort flush of any still-queued answers BEFORE the server
+        // grades the attempt; whatever's still unsynced after the budget rides
+        // along inline on the submit call itself so nothing queued is lost.
+        const engine = answerSyncRef.current ?? getAnswerSync(attemptId);
+        const remaining = await engine.flushAll(3000);
+        const inlineAnswers = remaining.map((r) => ({
+          questionId: r.questionId,
+          ...r.payload,
+          clientSeq: r.clientSeq,
+          clientTs: r.clientTs,
+        }));
+
+        // Retry-with-backoff until the server acknowledges the submit — covers
+        // "connection lost right at exam end". Only network-level failures are
+        // retried; a definitive server response (including SUBMIT_LOCKED) is
+        // surfaced immediately instead of looping forever.
+        let attemptNo = 0;
+        for (;;) {
+          try {
+            setSubmitStatus(attemptNo > 0 ? "Reconnecting — retrying submission..." : null);
+            await apiFetch(`/attempts/${attemptId}/submit`, {
+              method: "POST",
+              body: JSON.stringify({ auto: silent, reason: opts?.reason, answers: inlineAnswers }),
+            });
+            await engine.clearAll();
+            break;
+          } catch (e: unknown) {
+            const err = e as { status?: number; data?: { code?: string; message?: string } };
+            if (err?.status === 403 && err.data?.code === "SUBMIT_LOCKED") {
+              if (!silent) alert(err.data.message || "You may submit after completing the first half of the exam.");
+              break;
+            }
+            if (typeof err?.status === "number") {
+              // Definitive server rejection — retrying won't help.
+              if (!silent) alert(err.data?.message || "Submit failed");
+              break;
+            }
+            attemptNo += 1;
+            if (attemptNo > 20) {
+              if (!silent) alert("Submit failed — please check your connection and try again.");
+              break;
+            }
+            await new Promise((r) => setTimeout(r, Math.min(1000 * attemptNo, 8000)));
+          }
+        }
+        setSubmitStatus(null);
         await load();
-      } catch {
-        if (!silent) alert("Submit failed");
       } finally {
         submitGuardRef.current = false;
         setSubmitting(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [attemptId, load]
+    [attemptId, load, submitUnlockAt]
   );
 
   useEffect(() => {
@@ -211,7 +281,6 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
   useEffect(
     () => () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      Object.values(autosaveTimersRef.current).forEach((t) => clearTimeout(t));
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     },
     []
@@ -248,7 +317,8 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     const VIOLATION_THRESHOLD = 10;
     const handleViolation = (why: string) => {
       if (view?.attempt.submittedAt) return;
-      if (isPaused) return; // ignore violations while paused/offline
+      // Tab-switching/blurring is a violation regardless of connectivity — an
+      // offline period must never be a way to dodge anti-cheat detection.
       setViolations((v) => v + 1);
       setViolationMessage(
         "Exam security warning: Leaving or hiding the tab is not allowed."
@@ -284,50 +354,34 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("beforeunload", beforeUnload);
     };
-  }, [attemptId, view, mode, violations, submitAttempt, isPaused]);
+  }, [attemptId, view, mode, violations, submitAttempt]);
 
-  // Pause/resume exam on network disconnect/reconnect
+  // Track connectivity for the sync-status banner ONLY — the exam timer keeps
+  // running off the server-anchored deadline regardless (see `load`), and
+  // inputs stay enabled while offline so answers queue locally instead of
+  // being blocked (see `disabled` below). Deliberately does NOT pause the
+  // clock: an offline period must never buy a student extra time.
   useEffect(() => {
     if (mode === "review") return;
-    const onOffline = () => {
-      if (view?.attempt.submittedAt) return;
-      setIsPaused(true);
-      setOfflineMessage(
-        "Network disconnected — exam paused. Reconnect to resume."
-      );
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-      pausedAtRef.current = Date.now();
-    };
-    const onOnline = () => {
-      if (!isPaused) return;
-      const pausedAt = pausedAtRef.current;
-      const endAt = attemptEndRef.current;
-      if (pausedAt && endAt) {
-        const pauseDuration = Date.now() - pausedAt;
-        attemptEndRef.current = endAt + pauseDuration;
-        updateTimeLeft(attemptEndRef.current);
-      }
-      setIsPaused(false);
-      setOfflineMessage(null);
-    };
+    const onOffline = () => setIsOffline(true);
+    const onOnline = () => setIsOffline(false);
     window.addEventListener("offline", onOffline);
     window.addEventListener("online", onOnline);
     return () => {
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("online", onOnline);
     };
-  }, [mode, view, isPaused, updateTimeLeft]);
+  }, [mode]);
 
   const orderedQuestionIds = view
     ? view.sections.flatMap((sec) => sec.questionIds)
     : [];
+  // Recomputed on every render, which happens every second while the timer
+  // ticks — good enough resolution for a countdown without a second interval.
+  const submitLocked =
+    !view?.attempt.submittedAt &&
+    submitUnlockAt !== null &&
+    Date.now() < submitUnlockAt;
   const currentQid = orderedQuestionIds[index];
   const currentQuestion = currentQid ? view?.questions[currentQid] : undefined;
 
@@ -457,83 +511,45 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       cloned.attempt.answers[idx].textAnswer = undefined;
     }
     setView(cloned);
-    // Drop any pending debounced save for this question so it can't re-write it.
-    delete pendingSavesRef.current[currentQid];
-    if (autosaveTimersRef.current[currentQid]) {
-      clearTimeout(autosaveTimersRef.current[currentQid]);
-      delete autosaveTimersRef.current[currentQid];
-    }
-    setSaving(true);
+    // Drop any locally-queued (not-yet-synced) write for this question so it
+    // can't resurrect the cleared value once it syncs.
+    const engine = answerSyncRef.current ?? getAnswerSync(attemptId);
+    void engine.clearQuestion(currentQid);
     apiFetch(`/attempts/${attemptId}/answer`, {
       method: "POST",
       body: JSON.stringify({ questionId: currentQid, clear: true }),
-    })
-      .catch(() => {})
-      .finally(() => setSaving(false));
+    }).catch(() => {});
   }
 
+  // Write-through: persists to IndexedDB immediately, then the engine
+  // opportunistically syncs to the server (debounced while online, queued
+  // while offline, retried on reconnect). Never blocks on the network.
   function scheduleAutosave(qid: string, response: PrimitiveResponse) {
-    pendingSavesRef.current[qid] = response;
-    if (autosaveTimersRef.current[qid])
-      clearTimeout(autosaveTimersRef.current[qid]);
-    autosaveTimersRef.current[qid] = setTimeout(() => {
-      delete autosaveTimersRef.current[qid];
-      void saveAnswer(qid, response);
-    }, 800);
-  }
-
-  async function flushPendingSaves() {
-    const pendingQids = Object.keys(pendingSavesRef.current);
-    Object.values(autosaveTimersRef.current).forEach((t) => clearTimeout(t));
-    autosaveTimersRef.current = {};
-    await Promise.all(
-      pendingQids.map((qid) => saveAnswer(qid, pendingSavesRef.current[qid]))
-    );
-  }
-
-  async function saveAnswer(questionId: string, response: PrimitiveResponse) {
     if (mode === "review") return;
-    // We're persisting this question now; drop its pending marker so a later
-    // flush doesn't redundantly re-save it.
-    delete pendingSavesRef.current[questionId];
-    setSaving(true);
-    try {
-      // Resolve the question kind by id (not from the currently-viewed question)
-      // so a flushed answer for an off-screen question routes to the right field.
-      const single = questionKind(view?.questions[questionId]) === "single";
-      const payload: {
-        questionId: string;
-        chosenOptionId?: string;
-        textAnswer?: string;
-        isMarkedForReview?: boolean;
-      } = { questionId };
-      if (Array.isArray(response))
-        payload.textAnswer = JSON.stringify(response);
-      else if (typeof response === "string") {
-        if (single) payload.chosenOptionId = response;
-        else payload.textAnswer = response;
-      }
-      const currentMark = view?.attempt.answers.find(
-        (a) => a.questionId === questionId
-      )?.isMarkedForReview;
-      if (typeof currentMark !== "undefined")
-        payload.isMarkedForReview = currentMark;
-      await apiFetch(`/attempts/${attemptId}/answer`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-    } catch {
-    } finally {
-      setSaving(false);
+    const single = questionKind(view?.questions[qid]) === "single";
+    const payload: {
+      chosenOptionId?: string;
+      textAnswer?: string;
+      isMarkedForReview?: boolean;
+    } = {};
+    if (Array.isArray(response)) payload.textAnswer = JSON.stringify(response);
+    else if (typeof response === "string") {
+      if (single) payload.chosenOptionId = response;
+      else payload.textAnswer = response;
     }
+    const currentMark = view?.attempt.answers.find(
+      (a) => a.questionId === qid
+    )?.isMarkedForReview;
+    if (typeof currentMark !== "undefined") payload.isMarkedForReview = currentMark;
+    const engine = answerSyncRef.current ?? getAnswerSync(attemptId);
+    void engine.queueAnswer(qid, payload);
   }
 
   function renderResponseInput() {
     if (!currentQuestion) return null;
     const q = currentQuestion;
     const ans = existingAnswer;
-    const disabled =
-      mode === "review" || Boolean(view?.attempt.submittedAt) || isPaused;
+    const disabled = mode === "review" || Boolean(view?.attempt.submittedAt);
 
     switch (questionKind(q)) {
       case "single":
@@ -837,10 +853,11 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                 {!view?.attempt.submittedAt && (
                   <button
                     onClick={() => submitAttempt()}
-                    disabled={submitting}
+                    disabled={submitting || submitLocked}
+                    title={submitLocked ? "Available after the first half of the exam" : undefined}
                     className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white text-sm font-semibold rounded-full shadow-sm disabled:opacity-60"
                   >
-                    {submitting ? "..." : "Submit"}
+                    {submitting ? "..." : submitLocked ? "Locked" : "Submit"}
                   </button>
                 )}
               </div>
@@ -900,10 +917,12 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
-                      {saving && (
+                      {syncStatus !== "synced" && (
                         <div className="flex items-center gap-2 text-slate-600">
-                          <InlineLoader />
-                          <span className="text-sm">Saving...</span>
+                          {(syncStatus === "saving" || syncStatus === "syncing") && (
+                            <InlineLoader />
+                          )}
+                          <span className="text-sm">{syncStatusLabel[syncStatus]}</span>
                         </div>
                       )}
                       {timeLeft !== null && !view.attempt.submittedAt && (
@@ -926,10 +945,21 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                           onClick={() => submitAttempt()}
-                          disabled={submitting}
+                          disabled={submitting || submitLocked}
+                          title={
+                            submitLocked
+                              ? "You may submit after completing the first half of the exam duration"
+                              : undefined
+                          }
                           className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-semibold rounded-xl shadow-sm transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          {submitting ? "Submitting..." : "Submit Exam"}
+                          {submitting
+                            ? submitStatus || "Submitting..."
+                            : submitLocked
+                            ? `Submit available in ${formatTime(
+                                Math.max(0, (submitUnlockAt ?? 0) - Date.now())
+                              )}`
+                            : "Submit Exam"}
                         </motion.button>
                       )}
                     </div>
@@ -966,8 +996,9 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                     </motion.div>
                   )}
 
-                  {/* Offline/Paused Banner */}
-                  {offlineMessage && !view.attempt.submittedAt && (
+                  {/* Offline Banner — answers keep saving locally; the exam
+                      clock keeps running regardless of connectivity. */}
+                  {isOffline && !view.attempt.submittedAt && (
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -988,10 +1019,45 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                       </svg>
                       <div>
                         <p className="text-blue-800 font-medium">
-                          {offlineMessage}
+                          Offline – Answers Stored Locally
                         </p>
                         <p className="text-blue-700 text-sm mt-1">
-                          Your time won&apos;t count down while disconnected.
+                          Your answers are being saved on this device and will sync
+                          automatically once you&apos;re back online. The exam timer
+                          keeps running.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Submission-lock Banner */}
+                  {submitLocked && !view.attempt.submittedAt && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-slate-50 border-2 border-slate-200 rounded-xl p-4 flex items-start gap-3"
+                    >
+                      <svg
+                        className="w-6 h-6 text-slate-500 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6v6l4 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <div>
+                        <p className="text-slate-800 font-medium">
+                          You may submit your exam after completing the first half of
+                          the examination duration.
+                        </p>
+                        <p className="text-slate-600 text-sm mt-1">
+                          Submission available in{" "}
+                          {formatTime(Math.max(0, (submitUnlockAt ?? 0) - Date.now()))}
                         </p>
                       </div>
                     </motion.div>
@@ -1071,7 +1137,6 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
                             <button
                               type="button"
                               onClick={clearResponse}
-                              disabled={isPaused}
                               className="px-3 py-2 rounded-xl border-2 border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Deselect / clear your answer"
                             >

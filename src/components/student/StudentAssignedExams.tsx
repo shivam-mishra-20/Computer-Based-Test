@@ -100,21 +100,12 @@ export default function StudentAssignedExams() {
     setFilteredExams(filtered);
   }, [statusFilter, exams]);
 
-  async function startAttempt(examId: string) {
-    try {
-      const attemptResp = await apiFetch(`/attempts/${examId}/start`, {
-        method: "POST",
-      });
-      const attempt = attemptResp as AttemptLite;
-      setAttemptMap(
-        (m) => ({ ...m, [examId]: attempt } as Record<string, AttemptLite>)
-      );
-      if (attempt && attempt._id) {
-        window.location.href = `/dashboard/exam/${attempt._id}?attempt=1`;
-      }
-    } catch {
-      alert("Failed to start attempt");
-    }
+  // Starting an exam now goes through the waiting room first — it fetches the
+  // exam preview, shows a live countdown to schedule.startAt, and only calls
+  // POST /attempts/:examId/start (the actual timer-starting call) once the
+  // window is open. This never burns exam time just by clicking "Start".
+  function goToWaitingRoom(examId: string) {
+    window.location.href = `/dashboard/exam-waiting/${examId}`;
   }
 
   const formatDate = (dateString: string) => {
@@ -254,7 +245,7 @@ export default function StudentAssignedExams() {
       <motion.button
         whileHover={{ scale: 1.02, y: -1 }}
         whileTap={{ scale: 0.98 }}
-        onClick={() => startAttempt(ex._id)}
+        onClick={() => goToWaitingRoom(ex._id)}
         className="px-6 py-2.5 text-sm font-bold bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
       >
         <svg

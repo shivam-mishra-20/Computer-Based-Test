@@ -596,13 +596,21 @@ export default function TeacherAITools() {
               shuffleOptions: false,
             },
           ],
-          isPublished: autoPublish,
+          // Publishing now requires a schedule (server-enforced) that this
+          // quick-create flow doesn't collect, so it always saves as a draft
+          // regardless of "Auto Publish" — schedule it from the exam list
+          // afterward via Schedule & Publish.
+          isPublished: false,
           classLevel: classLevel || undefined,
           batch: batch || undefined,
           totalDurationMins: bankTimerMins ? Number(bankTimerMins) : undefined,
         }),
       });
-      alert("Exam created from question bank");
+      alert(
+        autoPublish
+          ? "Exam created as a draft. Publishing needs a schedule — use Schedule & Publish from the exam list."
+          : "Exam created from question bank"
+      );
       setBankExamOpen(false);
     } catch {
       alert("Create failed");
@@ -1024,13 +1032,21 @@ export default function TeacherAITools() {
               shuffleOptions: false,
             },
           ],
-          isPublished: autoPublish,
+          // Publishing now requires a schedule (server-enforced) that this
+          // quick-create flow doesn't collect, so it always saves as a draft
+          // regardless of "Auto Publish" — schedule it from the exam list
+          // afterward via Schedule & Publish.
+          isPublished: false,
           totalDurationMins: genTimerMins ? Number(genTimerMins) : undefined,
           classLevel: classLevel || undefined,
           batch: batch || undefined,
         }),
       });
-      alert("Exam created from generated questions");
+      alert(
+        autoPublish
+          ? "Exam created as a draft. Publishing needs a schedule — use Schedule & Publish from the exam list."
+          : "Exam created from generated questions"
+      );
       setGenExamOpen(false);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to create exam");
