@@ -2,8 +2,16 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useTenant } from "@/lib/tenant/context";
 
 export default function LoginPage() {
+  // Pre-authentication branding. `organizationName` is resolved from
+  // `/api/org/branding` by the tenant provider, using the request Host or a
+  // remembered hint — so a login page carries the institute's name before
+  // anyone has typed a credential. Falls back to what shipped before when no
+  // organization resolves, which is every api-legacy deployment.
+  const { organizationName } = useTenant();
+  const portalName = `${organizationName ?? "Abhigyan Gurukull"} Exam Portal`;
   // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -213,7 +221,7 @@ export default function LoginPage() {
           variants={itemVariants}
           transition={{ delay: 0.5 }}
         >
-          <p>© 2026 Abhigyan Gurukull Exam Portal</p>
+          <p>© {new Date().getFullYear()} {portalName}</p>
         </motion.div>
       </motion.div>
     </main>

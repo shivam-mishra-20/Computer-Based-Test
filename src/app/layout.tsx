@@ -4,6 +4,7 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import Navbar from "../components/navbar";
 import { Toaster } from "sonner";
+import { TenantProvider } from "../lib/tenant/context";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -35,19 +36,25 @@ export default function RootLayout({
         />
       </head>
       <body className={`${poppins.variable} antialiased`}>
-        {/* Navbar and other client components must be rendered inside a Suspense boundary
-            to allow client-side hooks like useSearchParams/usePathname to work during
-            server rendering without causing a CSR bailout error. */}
-        <Suspense fallback={<div style={{ height: 64 }} />}>
-          <Navbar />
-        </Suspense>
+        {/* One `/api/me/context` for the whole tree: organization, branding,
+            modules, permissions and configuration. It resolves to null on a
+            pinned api-legacy deployment, and everything below behaves exactly
+            as it did before tenancy existed when it does. */}
+        <TenantProvider>
+          {/* Navbar and other client components must be rendered inside a Suspense boundary
+              to allow client-side hooks like useSearchParams/usePathname to work during
+              server rendering without causing a CSR bailout error. */}
+          <Suspense fallback={<div style={{ height: 64 }} />}>
+            <Navbar />
+          </Suspense>
 
-        {/* Page content (children) may include client components too — wrap in Suspense */}
-        <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+          {/* Page content (children) may include client components too — wrap in Suspense */}
+          <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
 
-        <Suspense fallback={null}>
-          <Toaster richColors position="top-right" />
-        </Suspense>
+          <Suspense fallback={null}>
+            <Toaster richColors position="top-right" />
+          </Suspense>
+        </TenantProvider>
       </body>
     </html>
   );

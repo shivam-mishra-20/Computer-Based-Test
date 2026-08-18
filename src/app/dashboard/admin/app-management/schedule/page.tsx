@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import dynamic from "next/dynamic";
@@ -10,6 +10,7 @@ import { CalendarIcon, ClockIcon } from "lucide-react";
 import AdminTimeSlotsConfig from "@/components/admin/app-management/AdminTimeSlotsConfig";
 import ScheduleImportFlow from "@/components/admin/app-management/ScheduleImportFlow";
 import { toast } from "sonner";
+import { useClassLevels, useClassValues, useRooms } from "@/lib/tenant/context";
 
 // Dynamically import AdminBatchManagement to avoid SSR issues
 const AdminBatchManagement = dynamic(
@@ -81,7 +82,13 @@ const DAYS = [
   "Friday",
   "Saturday",
 ];
-const CLASS_LEVELS = ["7", "8", "9", "10", "11", "12"];
+/* Tenant-aware below: the organization's own list when it has configured one,
+   this list when it has not. See lib/tenant/context.ts. */
+const FALLBACK_CLASS_LEVELS = ["7", "8", "9", "10", "11", "12"];
+const FALLBACK_ROOMS = Array.from({ length: 11 }, (_, i) => ({
+  name: `Room ${i + 1}`,
+  capacity: 20,
+}));
 
 const DEFAULT_MORNING_TIME_SLOTS: TimeSlot[] = [
   { start: "10:30", end: "11:30", label: "10:30 AM - 11:30 AM" },
@@ -224,6 +231,26 @@ function getBatchDisplayLabel(schedule: Partial<Schedule>): string {
 }
 
 export default function ScheduleManagement() {
+  const CLASS_LEVELS = useClassValues(FALLBACK_CLASS_LEVELS);
+  const ROOM_OPTIONS = useRooms(FALLBACK_ROOMS);
+  const CLASS_LEVEL_DEFS = useClassLevels([]);
+
+  /**
+   * The organization's own label for a class key.
+   *
+   * `Class {key}` was fine while every key was a number. It is not fine for a
+   * coaching institute whose levels include "dropper", which rendered as
+   * "Class dropper" — the label is configured precisely so it does not have to
+   * be synthesised. Falls back to the old form for any key with no definition,
+   * so nothing regresses where configuration is absent.
+   */
+  const classLabel = useCallback(
+    (key: string | number) => {
+      const found = CLASS_LEVEL_DEFS.find((level) => level.key === String(key));
+      return found?.label ?? `Class ${key}`;
+    },
+    [CLASS_LEVEL_DEFS],
+  );
   const [activeTab, setActiveTab] = useState<"regular" | "custom" | "batches" | "daily_view">(
     "regular"
   );
@@ -1565,7 +1592,7 @@ export default function ScheduleManagement() {
               >
                 {CLASS_LEVELS.map((c) => (
                   <option key={c} value={c}>
-                    Class {c}
+                    {classLabel(c)}
                   </option>
                 ))}
               </select>
@@ -1828,7 +1855,7 @@ export default function ScheduleManagement() {
                     <tr key={`${row.classLevel}-${row.batchName || "no-batch"}`} className="hover:bg-slate-50/50 group">
                       <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-slate-50/50 border-r border-slate-200 z-10">
                         <div className="flex flex-col">
-                          <span className="font-semibold text-slate-700 text-sm">Class {row.classLevel}</span>
+                          <span className="font-semibold text-slate-700 text-sm">{classLabel(row.classLevel)}</span>
                           <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full w-fit mt-1">
                             {row.batchName || "No batch"}
                           </span>
@@ -1976,7 +2003,7 @@ export default function ScheduleManagement() {
                     <tr key={`${row.classLevel}-${row.batchName || "no-batch"}`} className="hover:bg-slate-50/50 group">
                       <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-slate-50/50 border-r border-slate-200 z-10">
                         <div className="flex flex-col">
-                          <span className="font-semibold text-slate-700 text-sm">Class {row.classLevel}</span>
+                          <span className="font-semibold text-slate-700 text-sm">{classLabel(row.classLevel)}</span>
                           <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full w-fit mt-1">
                             {row.batchName || "No batch"}
                           </span>
@@ -2135,7 +2162,7 @@ export default function ScheduleManagement() {
                     >
                       {CLASS_LEVELS.map((c) => (
                         <option key={c} value={c}>
-                          Class {c}
+                          {classLabel(c)}
                         </option>
                       ))}
                     </select>
@@ -2385,9 +2412,17 @@ export default function ScheduleManagement() {
                       }
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     >
-                      {Array.from({ length: 11 }, (_, i) => (
-                        <option key={i + 1} value={i + 1}>
-                          Room {i + 1}
+                      {/* The organization's own rooms. `roomNumber` stays a
+                          NUMBER on the wire — the schedule schema and every
+                          consumer of it are unchanged — so the option's value
+                          is the room's position and its label is the room's
+                          configured name. Abhigyan's rooms are named "Room 1"
+                          through "Room 11", so this renders exactly what it
+                          rendered before; an institute with a "Hall A" sees
+                          "Hall A". */}
+                      {ROOM_OPTIONS.map((room, i) => (
+                        <option key={room.name} value={i + 1}>
+                          {room.name}
                         </option>
                       ))}
                     </select>

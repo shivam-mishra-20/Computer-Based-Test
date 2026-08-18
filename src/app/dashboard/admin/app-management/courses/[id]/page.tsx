@@ -7,6 +7,12 @@ import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { toast } from "sonner";
+import { useClassLevels } from "@/lib/tenant/context";
+
+const FALLBACK_CLASS_OPTIONS = ["9", "10", "11", "12"].map((key) => ({
+  key,
+  label: `Class ${key}`,
+}));
 
 interface YoutubeMeta {
   durationSec: number;
@@ -55,6 +61,9 @@ interface PlaylistInfo {
 }
 
 export default function CourseDetailPage() {
+  // The organization's class levels; the four this page used to hardcode
+  // when none are configured.
+  const CLASS_OPTIONS = useClassLevels(FALLBACK_CLASS_OPTIONS);
   const router = useRouter();
   const params = useParams();
   const courseId = params?.id as string;
@@ -876,10 +885,11 @@ export default function CourseDetailPage() {
                         onChange={(e) => setCourseForm(prev => ({ ...prev, classLevel: e.target.value }))}
                         className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                       >
-                        <option value="9">Class 9</option>
-                        <option value="10">Class 10</option>
-                        <option value="11">Class 11</option>
-                        <option value="12">Class 12</option>
+                        {CLASS_OPTIONS.map((option) => (
+                          <option key={option.key} value={option.key}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>

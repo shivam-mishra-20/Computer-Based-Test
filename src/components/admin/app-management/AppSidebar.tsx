@@ -3,6 +3,10 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
+import { useMemo } from "react";
+import { useTenant } from "@/lib/tenant/context";
+import { visible } from "@/lib/tenant/access";
+import { gateForHref } from "@/lib/tenant/registry";
 
 interface AppSidebarProps {
   onClose?: () => void;
@@ -90,7 +94,41 @@ const Icon = ({ name, className }: { name: string; className?: string }) => {
 };
 
 export default function AppSidebar({ onClose }: AppSidebarProps) {
+  const tenant = useTenant();
+
+  // ── Module- and permission-driven sections ────────────────────────────────
+  // Each entry keeps its own gate in `lib/tenant/registry.ts`, and a whole
+  // CATEGORY disappears when nothing inside it survives — an "Operations"
+  // heading over an empty list reads as a rendering bug, not as a plan
+  // boundary.
+  //
+  // Nothing is filtered when no context has resolved, which is Abhigyan's
+  // deployment today: every entry that was here before is still here.
+  const sections = useMemo(() => {
+    return MENU_ITEMS.map((section) => ({
+      ...section,
+      items: visible(
+        tenant.context,
+        section.items.map((item) => ({ ...item, ...(gateForHref(item.href) ?? {}) })),
+      ),
+    })).filter((section) => section.items.length > 0);
+  }, [tenant.context]);
+
   const pathname = usePathname();
+
+  // Up to two initials from the organization's name; "AM" when there is no
+  // organization, which is exactly what this badge showed before.
+  const monogram = useMemo(() => {
+    const name = tenant.organizationName;
+    if (!name) return "AM";
+    const initials = name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase() ?? "")
+      .join("");
+    return initials || "AM";
+  }, [tenant.organizationName]);
 
   return (
     <motion.div 
@@ -102,12 +140,37 @@ export default function AppSidebar({ onClose }: AppSidebarProps) {
       <div className="p-5 border-b border-slate-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/25">
-              <span className="text-white text-sm font-bold">AM</span>
+            {/* The navbar is deliberately hidden in this section (it has its own
+                layout), which left it as the one place an administrator could
+                work all day without seeing whose institute they were in. The
+                monogram and the second line now come from the organization. */}
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg overflow-hidden"
+              style={{
+                background: "linear-gradient(to bottom right, var(--brand-primary), var(--brand-secondary))",
+              }}
+            >
+              {tenant.branding.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={tenant.branding.logoUrl}
+                  alt={tenant.organizationName ?? "Logo"}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span
+                  className="text-sm font-bold"
+                  style={{ color: "var(--brand-on-primary)" }}
+                >
+                  {monogram}
+                </span>
+              )}
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-800">App Mgmt</h2>
-              <p className="text-xs text-slate-400">Control Center</p>
+              <p className="text-xs text-slate-400" data-testid="brand-name">
+                {tenant.organizationName ?? "Control Center"}
+              </p>
             </div>
           </div>
           
@@ -125,7 +188,7 @@ export default function AppSidebar({ onClose }: AppSidebarProps) {
 
       {/* Navigation - Scrollable */}
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
-        {MENU_ITEMS.map((section, sectionIndex) => (
+        {sections.map((section, sectionIndex) => (
           <motion.div 
             key={section.category}
             initial={{ opacity: 0, y: 10 }}

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import Protected from "@/components/Protected";
+import { useClassValues } from "@/lib/tenant/context";
 
 interface Batch {
   _id: string;
@@ -19,9 +20,12 @@ interface BatchManagementProps {
   onBatchUpdate?: () => void;
 }
 
-const CLASS_LEVELS = ["7", "8", "9", "10", "11", "12"];
+/* Tenant-aware below: the organization's own list when it has configured one,
+   this list when it has not. See lib/tenant/context.ts. */
+const FALLBACK_CLASS_LEVELS = ["7", "8", "9", "10", "11", "12"];
 
 export default function BatchManagement({ onBatchUpdate }: BatchManagementProps) {
+  const CLASS_LEVELS = useClassValues(FALLBACK_CLASS_LEVELS);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);

@@ -3,13 +3,18 @@ import React from "react";
 import { motion } from "framer-motion";
 import { BookOpen, Calendar, Clock, Award, Building } from "lucide-react";
 import { PaperFormData } from "../CreatePaperFlow";
+import { useClassLevels, useSubjects } from "@/lib/tenant/context";
 
 interface PaperBasicInfoProps {
   formData: PaperFormData;
   updateFormData: (data: Partial<PaperFormData>) => void;
 }
 
-const classes = [
+/* Tenant-aware below: the organization's own list when it has configured one,
+   this list when it has not. Note these are LABELS, not keys — this picker
+   stores the label, so the label is what the organization's class levels
+   supply. See lib/tenant/context.ts. */
+const FALLBACK_CLASSES = [
   "Class 6",
   "Class 7",
   "Class 8",
@@ -19,7 +24,7 @@ const classes = [
   "Class 12",
 ];
 
-const subjects = [
+const FALLBACK_SUBJECTS = [
   "Mathematics",
   "Physics",
   "Chemistry",
@@ -37,6 +42,10 @@ export default function PaperBasicInfo({
   formData,
   updateFormData,
 }: PaperBasicInfoProps) {
+  const levels = useClassLevels([]);
+  const classes = levels.length ? levels.map((level) => level.label) : FALLBACK_CLASSES;
+  const subjects = useSubjects(FALLBACK_SUBJECTS);
+
   return (
     <div className="space-y-5">
       <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>

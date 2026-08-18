@@ -5,6 +5,14 @@ import Image from "next/image";
 import { getToken, getUser, fetchMe, logout, User } from "../lib/auth";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { useTenant } from "../lib/tenant/context";
+import { visible } from "../lib/tenant/access";
+import {
+  ADMIN_NAV_GATES,
+  STUDENT_NAV_GATES,
+  TEACHER_NAV_GATES,
+  gateForHref,
+} from "../lib/tenant/registry";
 
 type Role = "admin" | "teacher" | "student" | null;
 
@@ -15,6 +23,7 @@ export default function Navbar() {
   const [isAuthed, setAuthed] = useState(false);
   const [role, setRole] = useState<Role>(null);
   const [open, setOpen] = useState(false);
+  const tenant = useTenant();
 
   useEffect(() => {
     (async () => {
@@ -158,6 +167,33 @@ export default function Navbar() {
       },
     ];
   }, [isAuthed, role]);
+
+  // ── Module- and permission-driven navigation ───────────────────────────────
+  // The role still decides WHICH menu is built — that has not changed. What is
+  // new is that an entry survives only if the organization has the module
+  // behind it and the user holds a permission that entry leads to.
+  //
+  // An entry with no gate (the dashboard itself) always survives, and so does
+  // every entry when no context has resolved — which is the case on Abhigyan's
+  // own deployment today, and is why this filter is invisible there.
+  const gatedMenu = useMemo(() => {
+    const table =
+      role === "admin"
+        ? ADMIN_NAV_GATES
+        : role === "teacher"
+          ? TEACHER_NAV_GATES
+          : STUDENT_NAV_GATES;
+    // Touched so the memo recomputes when the context arrives.
+    void table;
+    return visible(
+      tenant.context,
+      menu.map((item) => ({ ...item, ...(gateForHref(item.href) ?? {}) })),
+    );
+  }, [menu, role, tenant.context]);
+
+  const branding = tenant.branding;
+  const brandName = tenant.organizationName ?? "Abhigyan Gurukull";
+  const brandTagline = branding.tagline ?? (tenant.isTenantResolved ? null : "Tree of Knowledge");
 
   // Helper to check if a menu item is active
   const isActive = (href: string) => {
@@ -411,28 +447,43 @@ export default function Navbar() {
             className="group flex items-center gap-3 hover:opacity-90 transition-opacity"
             aria-label="Go to home"
           >
-            <div className="relative overflow-hidden rounded-xl w-12 h-12 flex items-center justify-center bg-gradient-to-br from-green-600 to-emerald-700 shadow-lg shadow-green-500/25 transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl group-hover:shadow-green-500/35">
+            {/* Logo, name and tagline all come from the organization when it
+                has configured them, and fall back to what shipped before —
+                so an unbranded tenant and Abhigyan itself look unchanged. */}
+            <div
+              className="relative overflow-hidden rounded-xl w-12 h-12 flex items-center justify-center shadow-lg transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl"
+              style={{
+                background: `linear-gradient(to bottom right, var(--brand-primary), var(--brand-secondary))`,
+              }}
+            >
               <Image
-                src="/logo.png"
-                alt="Abhigyan Gurukull"
+                src={branding.logoUrl || "/logo.png"}
+                alt={brandName}
                 width={48}
                 height={48}
                 className="object-cover rounded-xl"
+                unoptimized={Boolean(branding.logoUrl)}
               />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-lg hidden sm:block bg-gradient-to-r from-gray-900 to-green-800 bg-clip-text text-transparent">
-                Abhigyan Gurukull
+              <span
+                className="font-bold text-lg hidden sm:block"
+                style={{ color: "var(--brand-accent)" }}
+                data-testid="brand-name"
+              >
+                {brandName}
               </span>
-              <span className="text-xs text-gray-600 hidden sm:block font-medium">
-                Tree of Knowledge
-              </span>
+              {brandTagline && (
+                <span className="text-xs text-gray-600 hidden sm:block font-medium">
+                  {brandTagline}
+                </span>
+              )}
             </div>
           </Link>
 
           {/* Enhanced Desktop menu with modern styling */}
           <div className="hidden md:flex items-center gap-2">
-            {menu.map((item) => {
+            {gatedMenu.map((item) => {
               const active = isActive(item.href);
               return (
                 <Link
@@ -514,7 +565,7 @@ export default function Navbar() {
           >
             <div className="bg-white shadow-lg border-t">
               <div className="px-4 py-2 space-y-1 max-h-[72vh] overflow-auto">
-                {menu.map((item) => {
+                {gatedMenu.map((item) => {
                   const active = isActive(item.href);
                   return (
                     <Link

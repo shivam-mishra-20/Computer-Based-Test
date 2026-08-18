@@ -5,6 +5,9 @@ import DashboardHeader from "@/components/ui/dashboard-header";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useTenant } from "@/lib/tenant/context";
+import { visible } from "@/lib/tenant/access";
+import { gateForHref } from "@/lib/tenant/registry";
 
 // Quick Action Card
 const QuickAction = ({ 
@@ -54,6 +57,123 @@ const MetricCard = ({
   if (!href) return content;
   return <Link href={href}>{content}</Link>;
 };
+
+/**
+ * Static, so the tile list is referentially stable across renders and the
+ * gating memo below does not recompute on every paint.
+ */
+const QUICK_ACTIONS = [
+  {
+    title: "Pending Registrations",
+    description: "Review & approve users",
+    href: "/dashboard/admin/app-management/registrations",
+    color: "bg-orange-100",
+    icon: (
+      <svg className="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    title: "User Management",
+    description: "View and manage users",
+    href: "/dashboard/admin/app-management/users",
+    color: "bg-emerald-100",
+    icon: (
+      <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Manage Courses",
+    description: "Add or edit courses",
+    href: "/dashboard/admin/app-management/courses",
+    color: "bg-blue-100",
+    icon: (
+      <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+      </svg>
+    ),
+  },
+  {
+    title: "Study Resources",
+    description: "Videos & study materials",
+    href: "/dashboard/admin/app-management/resources",
+    color: "bg-violet-100",
+    icon: (
+      <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+      </svg>
+    ),
+  },
+  {
+    title: "Manage Batches",
+    description: "Create & edit batches",
+    href: "/dashboard/admin/app-management/batches",
+    color: "bg-teal-100",
+    icon: (
+      <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+      </svg>
+    ),
+  },
+  {
+    title: "Schedule",
+    description: "Manage timetables",
+    href: "/dashboard/admin/app-management/schedule",
+    color: "bg-amber-100",
+    icon: (
+      <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Leaves",
+    description: "Manage teacher leaves",
+    href: "/dashboard/admin/app-management/leaves",
+    color: "bg-indigo-100",
+    icon: (
+      <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Holidays",
+    description: "Holidays & working days",
+    href: "/dashboard/admin/app-management/holidays",
+    color: "bg-red-100",
+    icon: (
+      <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Firebase Sync",
+    description: "Sync with Firebase DB",
+    href: "/dashboard/admin/app-management/sync",
+    color: "bg-rose-100",
+    icon: (
+      <svg className="w-5 h-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    ),
+  },
+  {
+    title: "EPUB Automation",
+    description: "Configure automation",
+    href: "/dashboard/admin/automation",
+    color: "bg-purple-100",
+    icon: (
+      <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+];
 
 export default function AppManagementPage() {
   const [loading, setLoading] = useState(true);
@@ -145,118 +265,25 @@ export default function AppManagementPage() {
     [counts, loading]
   );
 
-  const quickActions = [
-    {
-      title: "Pending Registrations",
-      description: "Review & approve users",
-      href: "/dashboard/admin/app-management/registrations",
-      color: "bg-orange-100",
-      icon: (
-        <svg className="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-    },
-    {
-      title: "User Management",
-      description: "View and manage users",
-      href: "/dashboard/admin/app-management/users",
-      color: "bg-emerald-100",
-      icon: (
-        <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-        </svg>
-      ),
-    },
-    {
-      title: "Manage Courses",
-      description: "Add or edit courses",
-      href: "/dashboard/admin/app-management/courses",
-      color: "bg-blue-100",
-      icon: (
-        <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-        </svg>
-      ),
-    },
-    {
-      title: "Study Resources",
-      description: "Videos & study materials",
-      href: "/dashboard/admin/app-management/resources",
-      color: "bg-violet-100",
-      icon: (
-        <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-      ),
-    },
-    {
-      title: "Manage Batches",
-      description: "Create & edit batches",
-      href: "/dashboard/admin/app-management/batches",
-      color: "bg-teal-100",
-      icon: (
-        <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-      ),
-    },
-    {
-      title: "Schedule",
-      description: "Manage timetables",
-      href: "/dashboard/admin/app-management/schedule",
-      color: "bg-amber-100",
-      icon: (
-        <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      ),
-    },
-    {
-      title: "Leaves",
-      description: "Manage teacher leaves",
-      href: "/dashboard/admin/app-management/leaves",
-      color: "bg-indigo-100",
-      icon: (
-        <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      ),
-    },
-    {
-      title: "Holidays",
-      description: "Holidays & working days",
-      href: "/dashboard/admin/app-management/holidays",
-      color: "bg-red-100",
-      icon: (
-        <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      ),
-    },
-    {
-      title: "Firebase Sync",
-      description: "Sync with Firebase DB",
-      href: "/dashboard/admin/app-management/sync",
-      color: "bg-rose-100",
-      icon: (
-        <svg className="w-5 h-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-      ),
-    },
-    {
-      title: "EPUB Automation",
-      description: "Configure automation",
-      href: "/dashboard/admin/automation",
-      color: "bg-purple-100",
-      icon: (
-        <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-    },
-  ];
+  // ── Tiles are navigation too ──────────────────────────────────────────────
+  // The sidebar already hides what this organization's plan or this role does
+  // not include. These tiles link to exactly the same routes, so leaving them
+  // ungated would put a "Firebase Sync" card on the dashboard of an institute
+  // whose plan has no integrations module — a dead end dressed as a feature.
+  //
+  // The same gate table drives both, so the two cannot drift apart.
+  const tenant = useTenant();
+
+  const quickActions = QUICK_ACTIONS;
+
+  const visibleQuickActions = useMemo(
+    () => visible(tenant.context, quickActions.map((a) => ({ ...a, ...(gateForHref(a.href) ?? {}) }))),
+    [tenant.context, quickActions],
+  );
+  const visibleMetrics = useMemo(
+    () => visible(tenant.context, metrics.map((m) => ({ ...m, ...(gateForHref(m.href) ?? {}) }))),
+    [tenant.context, metrics],
+  );
 
   return (
     <Protected requiredRole="admin">
@@ -296,7 +323,7 @@ export default function AppManagementPage() {
         <section className="mb-8">
           <h3 className="font-semibold text-slate-800 mb-3">At a glance</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {metrics.map((m) => (
+            {visibleMetrics.map((m) => (
               <motion.div
                 key={m.label}
                 initial={{ opacity: 0, y: 10 }}
@@ -314,7 +341,7 @@ export default function AppManagementPage() {
         <section>
           <h3 className="font-semibold text-slate-800 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {quickActions.map((action) => (
+            {visibleQuickActions.map((action) => (
               <motion.div key={action.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                 <QuickAction {...action} />
               </motion.div>

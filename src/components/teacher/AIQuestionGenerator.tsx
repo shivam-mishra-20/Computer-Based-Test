@@ -17,9 +17,10 @@ import { apiFetch } from "../../lib/api";
 import SmartImportPreviewModal from "./SmartImportPreviewModal";
 import MathText from "@/components/ui/MathText";
 import EquationEditor from "@/components/ui/EquationEditor";
+import { useClassValues, useSubjects } from "@/lib/tenant/context";
 
 // Reuse constants from Smart Import
-const SUBJECT_OPTIONS = [
+const FALLBACK_SUBJECT_OPTIONS = [
   "Mathematics",
   "Physics",
   "Chemistry",
@@ -37,7 +38,9 @@ const SUBJECT_OPTIONS = [
   "Civics",
 ];
 
-const CLASS_OPTIONS = ["6", "7", "8", "9", "10", "11", "12"];
+/* Tenant-aware below: the organization's own list when it has configured one,
+   this list when it has not. See lib/tenant/context.ts. */
+const FALLBACK_CLASS_OPTIONS = ["6", "7", "8", "9", "10", "11", "12"];
 
 const BOARD_OPTIONS = [
   "CBSE",
@@ -186,6 +189,8 @@ function SelectMenu({
 }
 
 const AIQuestionGenerator: React.FC<AIToolsProps> = ({ onClose }) => {
+  const CLASS_OPTIONS = useClassValues(FALLBACK_CLASS_OPTIONS);
+  const SUBJECT_OPTIONS = useSubjects(FALLBACK_SUBJECT_OPTIONS);
   // Form states
   const [subject, setSubject] = useState("");
   const [className, setClassName] = useState("");

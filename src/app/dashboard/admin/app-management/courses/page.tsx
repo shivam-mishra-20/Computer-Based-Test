@@ -6,6 +6,12 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useClassLevels } from "@/lib/tenant/context";
+
+const FALLBACK_CLASS_OPTIONS = ["9", "10", "11", "12"].map((key) => ({
+  key,
+  label: `Class ${key}`,
+}));
 
 interface Course {
   _id: string;
@@ -19,6 +25,9 @@ interface Course {
 }
 
 export default function CoursesListPage() {
+  // The organization's class levels; the four this page used to hardcode
+  // when none are configured.
+  const CLASS_OPTIONS = useClassLevels(FALLBACK_CLASS_OPTIONS);
   const router = useRouter();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,10 +121,11 @@ export default function CoursesListPage() {
             className="border border-slate-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           >
             <option value="">All Classes</option>
-            <option value="9">Class 9</option>
-            <option value="10">Class 10</option>
-            <option value="11">Class 11</option>
-            <option value="12">Class 12</option>
+            {CLASS_OPTIONS.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
           </select>
           <select
             value={filterSubject}

@@ -35,6 +35,7 @@ import {
   X,
   Check,
 } from "lucide-react";
+import { useClassLevels } from "@/lib/tenant/context";
 
 // ─── Professional custom filter dropdown ───────────────────────────────────
 interface FilterSelectOption { label: string; value: string; }
@@ -483,7 +484,15 @@ export default function AdminQuestionBank() {
 
   // Class selector for fetching from class-based collections
   const [selectedClass, setSelectedClass] = useState("11");
-  const availableClasses = ["6", "7", "8", "9", "10", "11", "12"];
+  // Tenant-aware: the organization's own class levels when it has configured
+  // them, this list when it has not.
+  const classLevels = useClassLevels([]);
+  const availableClasses = classLevels.length
+    ? classLevels.map((level) => level.key)
+    : ["6", "7", "8", "9", "10", "11", "12"];
+  const classOptions = classLevels.length
+    ? classLevels.map((level) => ({ value: level.key, label: level.label }))
+    : ["6", "7", "8", "9", "10", "11", "12"].map((c) => ({ value: c, label: `Class ${c}` }));
 
   // File upload state for diagrams
   const [pendingDiagramFile, setPendingDiagramFile] = useState<File | null>(
@@ -2752,13 +2761,11 @@ export default function AdminQuestionBank() {
                       className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-medium bg-white"
                     >
                       <option value="">Select Class</option>
-                      <option value="6">Class 6</option>
-                      <option value="7">Class 7</option>
-                      <option value="8">Class 8</option>
-                      <option value="9">Class 9</option>
-                      <option value="10">Class 10</option>
-                      <option value="11">Class 11</option>
-                      <option value="12">Class 12</option>
+                      {classOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-2">

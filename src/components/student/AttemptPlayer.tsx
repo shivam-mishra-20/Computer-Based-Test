@@ -7,6 +7,7 @@ import Protected from "../Protected";
 import ElegantLoader, { InlineLoader } from "../ElegantLoader";
 import { MathText } from "../ui/MathText";
 import { getAnswerSync, syncStatusLabel, type SyncStatus } from "../../lib/answerSync";
+import { useTenant } from "@/lib/tenant/context";
 
 type PrimitiveResponse = string | number | string[] | undefined;
 
@@ -110,6 +111,8 @@ function questionKind(q?: { type?: string; options?: { _id: string }[] }): QKind
 }
 
 export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
+  const { policy } = useTenant();
+  const examPolicy = policy?.exam;
   const [view, setView] = useState<AttemptViewResponse | null>(null);
   const [index, setIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -314,7 +317,11 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
 
   useEffect(() => {
     if (mode === "review") return;
-    const VIOLATION_THRESHOLD = 10;
+    // The organization's own tolerance, falling back to the 10 this player has
+    // always used. An institute running high-stakes selection tests sets it
+    // lower; one running practice tests sets it higher. Server-side the same
+    // policy field governs `exam.violationThreshold`, so the two agree.
+    const VIOLATION_THRESHOLD = examPolicy?.violationThreshold ?? 10;
     const handleViolation = (why: string) => {
       if (view?.attempt.submittedAt) return;
       // Tab-switching/blurring is a violation regardless of connectivity — an
@@ -354,7 +361,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("beforeunload", beforeUnload);
     };
-  }, [attemptId, view, mode, violations, submitAttempt]);
+  }, [attemptId, view, mode, violations, submitAttempt, examPolicy]);
 
   // Track connectivity for the sync-status banner ONLY — the exam timer keeps
   // running off the server-anchored deadline regardless (see `load`), and

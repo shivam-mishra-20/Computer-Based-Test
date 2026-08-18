@@ -2,7 +2,8 @@
 @import "katex/dist/katex.min.css";
 
 :root {
-  /* Calm & Elegant (Minimal Luxury) palette */
+  /* Calm & Elegant (Minimal Luxury) palette — Abhigyan's colours, and the
+     DEFAULT for every organization that has not configured its own. */
   --bg-whitesmoke: #FAFAFA; /* background */
   --sage-green: #A3B18A; /* primary soft tone */
   --moss-green: #588157; /* highlight / CTA */
@@ -11,7 +12,39 @@
 
   --background: var(--bg-whitesmoke);
   --foreground: var(--dark-olive);
+
+  /* ── Runtime branding ───────────────────────────────────────────────────
+     `lib/tenant/branding.ts` overwrites these on documentElement once
+     `/api/me/context` (or `/api/org/branding`, pre-login) resolves. They are
+     declared here so that:
+
+       - the page has a complete palette before any JavaScript runs, so an
+         unbranded organization never flashes an unstyled first paint;
+       - the three legacy names above are ALSO overwritten by branding, which
+         makes every existing component and every `.bg-primary` utility below
+         tenant-aware without being edited.
+
+     An organization with no branding configured gets exactly these values,
+     which are exactly what shipped before this file was touched. */
+  --brand-primary: var(--sage-green);
+  --brand-primary-hover: #8a9a70;
+  --brand-primary-soft: #eef1e8;
+  --brand-on-primary: #111111;
+  --brand-secondary: var(--moss-green);
+  --brand-secondary-hover: #4a6e49;
+  --brand-on-secondary: #ffffff;
+  --brand-accent: var(--dark-olive);
+  --brand-on-accent: #ffffff;
 }
+
+/* Brand-token utilities. Additive: nothing below repaints an existing class. */
+.bg-brand { background-color: var(--brand-primary); color: var(--brand-on-primary); }
+.bg-brand-secondary { background-color: var(--brand-secondary); color: var(--brand-on-secondary); }
+.bg-brand-accent { background-color: var(--brand-accent); color: var(--brand-on-accent); }
+.text-brand { color: var(--brand-primary); }
+.text-brand-accent { color: var(--brand-accent); }
+.border-brand { border-color: var(--brand-primary); }
+.ring-brand:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
 
 body {
   background: var(--background);

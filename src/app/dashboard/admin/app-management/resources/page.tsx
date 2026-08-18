@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { InlineLoader } from "@/components/ElegantLoader";
 import Image from "next/image";
+import { useClassValues, useSubjects } from "@/lib/tenant/context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,11 +87,13 @@ interface PlImportPreview {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SUBJECTS = [
+const FALLBACK_SUBJECTS = [
   "Physics","Chemistry","Mathematics","Biology","English","Hindi",
   "Accounts","Economics","Business Studies","History","Geography","Civics","Computer Science",
 ];
-const CLASSES = ["8","9","10","11","12"];
+/* Tenant-aware below: the organization's own list when it has configured one,
+   this list when it has not. See lib/tenant/context.ts. */
+const FALLBACK_CLASSES = ["8","9","10","11","12"];
 
 const EMPTY_FORM: FormState = {
   title:"", description:"", resourceUrl:"", thumbnailUrl:"",
@@ -193,6 +196,8 @@ function ResourceThumbnail({ resource, className = "" }: { resource: StudyResour
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ResourcesManagementPage() {
+  const CLASSES = useClassValues(FALLBACK_CLASSES);
+  const SUBJECTS = useSubjects(FALLBACK_SUBJECTS);
   const [resources, setResources] = useState<StudyResource[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"video" | "pdf">("video");

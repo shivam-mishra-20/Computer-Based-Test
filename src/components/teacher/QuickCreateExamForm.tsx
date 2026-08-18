@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { notify } from "@/components/ui/toast";
+import { useTenant } from "@/lib/tenant/context";
 
 interface ClassRule {
   classValue: string;
@@ -20,6 +21,11 @@ const MARKING_PRESETS = [
   { label: "+2 / -0.5 / 0", correct: 2, incorrect: -0.5, unattempted: 0 },
 ];
 
+function markingLabel(scheme: { correct: number; incorrect: number; unattempted: number }) {
+  const sign = (n: number) => (n > 0 ? `+${n}` : String(n));
+  return `${sign(scheme.correct)} / ${sign(scheme.incorrect)} / ${sign(scheme.unattempted)}`;
+}
+
 interface Props {
   // Caller navigates to the builder with the new exam's id.
   onCreated: (examId: string) => void;
@@ -33,15 +39,62 @@ interface Props {
 // modal — previously three separate implementations (a 3-step wizard plus two
 // title-only modals).
 export default function QuickCreateExamForm({ onCreated, onCancel }: Props) {
+  const { policy } = useTenant();
   const [title, setTitle] = useState("");
   const [classLevel, setClassLevel] = useState("");
   const [classOptions, setClassOptions] = useState<ClassRule[]>([CLASS_6, ...FALLBACK_CLASSES]);
   const [subject, setSubject] = useState("");
   const [subjectOptions, setSubjectOptions] = useState<string[]>([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
+  // ── Defaults from the organization's exam policy ─────────────────────────
+  // The institute's own default duration and marking scheme, offered as the
+  // FIRST preset and pre-selected, rather than the +1/0/0 that used to be
+  // hardcoded here. An institute running competitive tests should not have to
+  // change the marking on every paper it creates.
+  //
+  // The three built-in presets stay, and stay in the same order after the
+  // organization's own — a teacher who wants +4/-1/0 for one paper still has it
+  // one click away. When no policy resolves, `markingPresets` is exactly the
+  // old list and the selection is exactly the old default.
+  const orgExam = policy?.exam;
+  const orgScheme = orgExam?.markingScheme;
+  const markingPresets = useMemo(() => {
+    if (!orgScheme) return MARKING_PRESETS;
+    const own = {
+      label: `${markingLabel(orgScheme)} (Institute default)`,
+      correct: orgScheme.correct,
+      incorrect: orgScheme.incorrect,
+      unattempted: orgScheme.unattempted,
+    };
+    // A scheme that is already a built-in preset is promoted, not duplicated:
+    // offering "+1 / 0 / 0 (Institute default)" above an identical
+    // "+1 / 0 / 0 (Practice)" is a menu that looks broken.
+    const rest = MARKING_PRESETS.filter(
+      (preset) =>
+        !(
+          preset.correct === orgScheme.correct &&
+          preset.incorrect === orgScheme.incorrect &&
+          preset.unattempted === orgScheme.unattempted
+        ),
+    );
+    return [own, ...rest];
+  }, [orgScheme]);
+
   const [duration, setDuration] = useState(60);
   const [customDuration, setCustomDuration] = useState("");
   const [markingIdx, setMarkingIdx] = useState(1);
+
+  // Applied once the context arrives, and only while the teacher has not yet
+  // touched the field — overriding a deliberate choice a second after it was
+  // made would be worse than not personalising the default at all.
+  const policyApplied = useRef(false);
+  useEffect(() => {
+    if (policyApplied.current) return;
+    if (!orgExam) return;
+    policyApplied.current = true;
+    if (orgExam.defaultDurationMins) setDuration(orgExam.defaultDurationMins);
+    if (orgScheme) setMarkingIdx(0);
+  }, [orgExam, orgScheme]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,7 +143,7 @@ export default function QuickCreateExamForm({ onCreated, onCancel }: Props) {
   }, [classLevel]);
 
   const effectiveDuration = customDuration.trim() ? Number(customDuration) || 0 : duration;
-  const marking = useMemo(() => MARKING_PRESETS[markingIdx], [markingIdx]);
+  const marking = useMemo(() => markingPresets[markingIdx], [markingPresets, markingIdx]);
 
   const create = async () => {
     setError(null);
@@ -197,7 +250,7 @@ export default function QuickCreateExamForm({ onCreated, onCancel }: Props) {
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-2">Marking Scheme</label>
         <div className="flex flex-wrap gap-2">
-          {MARKING_PRESETS.map((m, i) => (
+          {markingPresets.map((m, i) => (
             <button
               key={m.label}
               type="button"

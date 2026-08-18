@@ -3,6 +3,7 @@ import React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, easeInOut } from "framer-motion";
+import { useTenant } from "@/lib/tenant/context";
 
 // Animation variants for reusability
 const containerVariants = {
@@ -69,6 +70,10 @@ const logoVariants = {
 };
 
 export default function Home() {
+  // Pre-authentication branding, from `/api/org/branding`. Resolves to null
+  // on a pinned api-legacy deployment, where this renders exactly as before.
+  const { organizationName, branding } = useTenant();
+  const brandName = organizationName ?? "Abhigyan Gurukull";
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50/30 p-4 relative overflow-hidden">
       {/* Enhanced background with depth */}
@@ -145,11 +150,12 @@ export default function Home() {
             >
               <div className="h-24 w-24 rounded-full overflow-hidden bg-gradient-to-br from-white to-gray-50 shadow-lg ring-4 ring-white/50">
                 <Image
-                  src="/logo.png"
-                  alt="Abhigyan Gurukull Logo"
+                  src={branding.logoUrl || "/logo.png"}
+                  alt={`${brandName} Logo`}
                   width={96}
                   height={96}
                   className="h-full w-full object-cover rounded-full"
+                  unoptimized={Boolean(branding.logoUrl)}
                 />
               </div>
             </motion.div>
@@ -157,10 +163,12 @@ export default function Home() {
             {/* Header section */}
             <motion.header className="mb-8 text-center" variants={itemVariants}>
               <motion.h1
-                className="text-3xl md:text-4xl font-bold mb-3 bg-gradient-to-r from-gray-800 via-green-700 to-emerald-600 bg-clip-text text-transparent leading-tight"
+                className="text-3xl md:text-4xl font-bold mb-3 leading-tight"
+                style={{ color: "var(--brand-accent)" }}
                 variants={itemVariants}
+                data-testid="landing-brand"
               >
-                Abhigyan Gurukull
+                {brandName}
                 <br />
                 <span className="text-2xl md:text-3xl">Exam Portal</span>
               </motion.h1>
@@ -336,7 +344,7 @@ export default function Home() {
             whileHover={{ scale: 1.05 }}
             transition={{ type: "spring", stiffness: 400, damping: 17 }}
           >
-            © 2026 Abhigyan Gurukull Exam Portal | All Rights Reserved
+            © {new Date().getFullYear()} {brandName} Exam Portal | All Rights Reserved
           </motion.p>
         </motion.footer>
       </motion.div>

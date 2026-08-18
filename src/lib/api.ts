@@ -1,3 +1,5 @@
+import { getOrgHint } from './tenant/orgHint';
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
@@ -20,6 +22,26 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 		}
 	} catch {
 		// ignore in SSR
+	}
+
+	// ── Pre-authentication tenant routing ────────────────────────────────────
+	// Only sent when the browser has actually learned an organization, and only
+	// as a routing hint — the server rejects it outright if it disagrees with a
+	// signed token, and re-derives the organization from the claim whenever one
+	// exists. Its single job is letting a login screen be branded before there
+	// is a credential to brand it with. See lib/tenant/orgHint.ts.
+	// Sent ONLY when there is no token. With a token the signed `orgId` claim is
+	// authoritative and a hint alongside it is at best redundant — and at worst
+	// a 400, because the server rejects a hint that disagrees with a claim
+	// rather than reconciling the two, and the remembered hint is a slug while
+	// the claim is an id.
+	if (!token && !headers.has('X-Org-Id')) {
+		try {
+			const hint = getOrgHint();
+			if (hint) headers.set('X-Org-Id', hint);
+		} catch {
+			// never block a request over a cosmetic hint
+		}
 	}
 
 	if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {

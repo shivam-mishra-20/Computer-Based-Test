@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import Image from "next/image";
+import { useClassValues, useSubjects } from "@/lib/tenant/context";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -46,8 +47,10 @@ function formatDuration(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-const CLASSES = ["8", "9", "10", "11", "12"];
-const SUBJECTS = ["Science","Physics", "Chemistry", "Mathematics", "Biology", "English", "Hindi", "Accounts", "Economics", "Business Studies", "History", "Geography", "Civics"];
+/* Tenant-aware below: the organization's own list when it has configured one,
+   this list when it has not. See lib/tenant/context.ts. */
+const FALLBACK_CLASSES = ["8", "9", "10", "11", "12"];
+const FALLBACK_SUBJECTS = ["Science","Physics", "Chemistry", "Mathematics", "Biology", "English", "Hindi", "Accounts", "Economics", "Business Studies", "History", "Geography", "Civics"];
 
 // ─── Step indicators ───────────────────────────────────────────────────────
 
@@ -83,6 +86,8 @@ function StepDot({ n, current, label }: { n: number; current: number; label: str
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 export default function ImportPlaylistPage() {
+  const CLASSES = useClassValues(FALLBACK_CLASSES);
+  const SUBJECTS = useSubjects(FALLBACK_SUBJECTS);
   const router = useRouter();
   const [step, setStep] = useState(1);
 

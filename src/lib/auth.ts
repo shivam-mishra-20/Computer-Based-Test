@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { notifyAuthChanged, resetTenantState } from './tenant/context';
 
 export type Credentials = { email: string; password: string };
 export type User = { id?: string; email?: string; role?: 'admin' | 'teacher' | 'student' | string; name?: string; classLevel?: string; batch?: string; firebaseUid?: string };
@@ -21,6 +22,11 @@ export async function login(credentials: Credentials) {
 										// store user with extra firebase fields if present
 										localStorage.setItem('user', JSON.stringify((rec['user'] as User) ?? null));
 					}
+					// The token just changed, so the tenant context belongs to a
+					// different session. Without this the provider keeps serving
+					// the previous user's modules and permissions until a full
+					// page reload — and in a single-page app that may be never.
+					notifyAuthChanged();
 				}
 			}
 	return data;
@@ -31,6 +37,12 @@ export function logout() {
 		if (typeof window !== 'undefined') {
 			localStorage.removeItem('accessToken');
 			localStorage.removeItem('user');
+			// Clears the cached context, forgets the organization hint and puts
+			// the default palette back. The next person at this browser may
+			// belong to a different institute, and leaving the previous one's
+			// colours and cached modules on screen would be both wrong and a
+			// small disclosure.
+			resetTenantState();
 		}
 	} catch {
 		// ignore

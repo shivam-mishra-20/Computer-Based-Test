@@ -1,6 +1,9 @@
 "use client";
 import React, { useState } from "react";
+import { usePathname } from "next/navigation";
 import AppSidebar from "@/components/admin/app-management/AppSidebar";
+import { gateForHref } from "@/lib/tenant/registry";
+import { GatedScreen, ReadOnlyNotice } from "@/lib/tenant/guards";
 
 export default function AppManagementLayout({
   children,
@@ -8,6 +11,7 @@ export default function AppManagementLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
@@ -55,7 +59,20 @@ export default function AppManagementLayout({
 
           {/* Main content */}
           <main className="flex-1">
-            {children}
+            {/* ── The destination, not just the link ─────────────────────────
+                The sidebar already hides what this organization or this role
+                cannot reach. This gate is for the ways people arrive without
+                clicking a link: a bookmark, a shared URL, a typed path, or a
+                deep link in an email sent before the plan changed. A blank
+                screen at a real URL reads as a broken product; an explanation
+                that distinguishes "not in your plan" from "not in your role"
+                tells the person which of two very different things to do. */}
+            <GatedScreen gate={gateForHref(pathname ?? "")}>
+              <div className="px-4 pt-4 lg:px-6">
+                <ReadOnlyNotice />
+              </div>
+              {children}
+            </GatedScreen>
           </main>
         </div>
       </div>

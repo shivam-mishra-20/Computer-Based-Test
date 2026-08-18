@@ -5,8 +5,17 @@ import DashboardHeader from "@/components/ui/dashboard-header";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { motion } from "framer-motion";
+import { useClassLevels } from "@/lib/tenant/context";
+
+const FALLBACK_CLASS_OPTIONS = ["9", "10", "11", "12"].map((key) => ({
+  key,
+  label: `Class ${key}`,
+}));
 
 export default function NewCoursePage() {
+  // The organization's class levels; the four this page used to hardcode
+  // when none are configured.
+  const CLASS_OPTIONS = useClassLevels(FALLBACK_CLASS_OPTIONS);
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -134,10 +143,11 @@ export default function NewCoursePage() {
                   className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
                   <option value="">Select Class</option>
-                  <option value="9">Class 9</option>
-                  <option value="10">Class 10</option>
-                  <option value="11">Class 11</option>
-                  <option value="12">Class 12</option>
+                  {CLASS_OPTIONS.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

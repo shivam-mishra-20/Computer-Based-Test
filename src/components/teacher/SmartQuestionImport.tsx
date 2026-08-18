@@ -13,9 +13,10 @@ import { apiFetch } from "../../lib/api";
 import Router from "next/router";
 import Image from "next/image";
 import SmartImportPreviewModal from "./SmartImportPreviewModal";
+import { useClassValues, useSubjects } from "@/lib/tenant/context";
 
 // Static option sets
-const SUBJECT_OPTIONS = [
+const FALLBACK_SUBJECT_OPTIONS = [
   "Mathematics",
   "Physics",
   "Chemistry",
@@ -33,7 +34,9 @@ const SUBJECT_OPTIONS = [
   "Civics",
 ];
 
-const CLASS_OPTIONS = ["6", "7", "8", "9", "10", "11", "12"];
+/* Tenant-aware below: the organization's own list when it has configured one,
+   this list when it has not. See lib/tenant/context.ts. */
+const FALLBACK_CLASS_OPTIONS = ["6", "7", "8", "9", "10", "11", "12"];
 
 const BOARD_OPTIONS = [
   "CBSE",
@@ -108,6 +111,8 @@ interface SmartImportProps {
 }
 
 const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
+  const CLASS_OPTIONS = useClassValues(FALLBACK_CLASS_OPTIONS);
+  const SUBJECT_OPTIONS = useSubjects(FALLBACK_SUBJECT_OPTIONS);
   // States
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
