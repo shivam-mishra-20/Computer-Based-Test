@@ -84,6 +84,13 @@ const DAYS = [
 ];
 /* Tenant-aware below: the organization's own list when it has configured one,
    this list when it has not. See lib/tenant/context.ts. */
+interface LeaveRecord {
+  teacherId: string;
+  teacherName?: string;
+  startDate: string;
+  endDate: string;
+}
+
 const FALLBACK_CLASS_LEVELS = ["7", "8", "9", "10", "11", "12"];
 const FALLBACK_ROOMS = Array.from({ length: 11 }, (_, i) => ({
   name: `Room ${i + 1}`,
@@ -694,7 +701,7 @@ export default function ScheduleManagement() {
 
   const fetchTeachersOnLeave = async (date: string) => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
       const token = localStorage.getItem("accessToken");
       
       if (!token) {
@@ -705,48 +712,34 @@ export default function ScheduleManagement() {
 
       console.log("Fetching teachers on leave for date:", date);
 
-      const response = await fetch(
-        `${apiUrl}/api/leaves?status=approved`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      // ── Through the shared client ────────────────────────────────────────
+      // This used `process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"`
+      // — a SECOND environment variable nothing else in this application sets,
+      // with a hardcoded port as its fallback. Every deployment whose API is
+      // not on localhost:5000 logged an error here and showed nobody on leave.
+      //
+      // It also bypassed `apiFetch`, which is what attaches the Authorization
+      // header and the pre-authentication `X-Org-Id` routing hint. A raw fetch
+      // is a request that leaves this app not knowing which organization it
+      // belongs to.
+      const leaves = (await apiFetch("/leaves?status=approved")) as LeaveRecord[];
 
-      if (response.ok) {
-        const leaves = await response.json();
-        console.log("All approved leaves:", leaves);
-        
-        // Parse the target date
-        const checkDate = new Date(date);
-        checkDate.setHours(0, 0, 0, 0);
-        
-        // Extract teacher IDs from approved leaves that overlap with the selected date
-        const teacherIds = leaves
-          .filter((leave: any) => {
-            const leaveStart = new Date(leave.startDate);
-            leaveStart.setHours(0, 0, 0, 0);
-            const leaveEnd = new Date(leave.endDate);
-            leaveEnd.setHours(23, 59, 59, 999);
-            
-            const overlaps = checkDate >= leaveStart && checkDate <= leaveEnd;
-            if (overlaps) {
-              console.log(`Teacher ${leave.teacherId} (${leave.teacherName}) is on leave on ${date}`);
-            }
-            return overlaps;
-          })
-          .map((leave: any) => leave.teacherId)
-          .filter(Boolean); // Remove any undefined values
-        
-        console.log("Teacher IDs on leave:", teacherIds);
-        console.log("All teacher IDs in dropdown:", teachers.map(t => t.id));
-        setTeachersOnLeave(teacherIds);
-      } else {
-        console.error("Failed to fetch leaves, status:", response.status);
-        setTeachersOnLeave([]);
-      }
+      const checkDate = new Date(date);
+      checkDate.setHours(0, 0, 0, 0);
+
+      // Teachers whose approved leave overlaps the selected date.
+      const teacherIds = (Array.isArray(leaves) ? leaves : [])
+        .filter((leave) => {
+          const leaveStart = new Date(leave.startDate);
+          leaveStart.setHours(0, 0, 0, 0);
+          const leaveEnd = new Date(leave.endDate);
+          leaveEnd.setHours(23, 59, 59, 999);
+          return checkDate >= leaveStart && checkDate <= leaveEnd;
+        })
+        .map((leave) => leave.teacherId)
+        .filter(Boolean);
+
+      setTeachersOnLeave(teacherIds);
     } catch (error) {
       console.error("Error fetching teachers on leave:", error);
       setTeachersOnLeave([]);

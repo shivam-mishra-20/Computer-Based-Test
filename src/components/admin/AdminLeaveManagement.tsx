@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { apiFetch } from "@/lib/api";
 import { Calendar, Clock, X, Check, AlertCircle, Filter } from "lucide-react";
 
 const LEAVE_TYPES: Record<string, { label: string; color: string }> = {
@@ -51,23 +52,16 @@ export default function AdminLeaveManagement() {
   const fetchLeaves = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("accessToken");
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const url =
-        filter === "all"
-          ? `${apiUrl}/api/leaves`
-          : `${apiUrl}/api/leaves?status=${filter}`;
-
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch leaves");
-
-      const data = await response.json();
-      setLeaves(data);
+      // Through the shared client. This used a second environment variable —
+      // NEXT_PUBLIC_API_URL, which nothing else in this application sets — with
+      // a hardcoded localhost:5000 fallback, so it broke on every deployment
+      // whose API lives anywhere else. `apiFetch` also attaches the
+      // Authorization header and the pre-auth organization hint, which a raw
+      // fetch does not.
+      const data = (await apiFetch(
+        filter === "all" ? "/leaves" : `/leaves?status=${filter}`,
+      )) as Leave[];
+      setLeaves(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error fetching leaves:", error);
       alert("Failed to load leave requests");
@@ -83,21 +77,10 @@ export default function AdminLeaveManagement() {
   const handleAction = async (leaveId: string, status: string, reason = "") => {
     setProcessing(true);
     try {
-      const token = localStorage.getItem("accessToken");
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const response = await fetch(
-        `${apiUrl}/api/leaves/${leaveId}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status, rejectionReason: reason }),
-        }
-      );
-
-      if (!response.ok) throw new Error("Failed to update leave status");
+      await apiFetch(`/leaves/${leaveId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, rejectionReason: reason }),
+      });
 
       alert(`Leave ${status === "approved" ? "approved" : "rejected"} successfully`);
       setActionModal(null);

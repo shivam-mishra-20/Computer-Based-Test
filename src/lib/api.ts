@@ -2,6 +2,20 @@ import { getOrgHint } from './tenant/orgHint';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
 
+/**
+ * The API ORIGIN, without the `/api` suffix.
+ *
+ * For the handful of callers that cannot go through `apiFetch` — an
+ * EventSource stream, which takes a URL and not a fetch — and which therefore
+ * have to build their own. They used to read a second environment variable,
+ * `NEXT_PUBLIC_API_URL`, that nothing else in this application sets, with a
+ * hardcoded `http://localhost:5000` fallback; every deployment whose API lived
+ * anywhere else silently talked to nothing.
+ *
+ * One base, derived from the one variable that is actually configured.
+ */
+export const API_ORIGIN = API_BASE.replace(/\/api\/?$/, '');
+
 export async function apiFetch(path: string, options: RequestInit = {}) {
 	const url = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 

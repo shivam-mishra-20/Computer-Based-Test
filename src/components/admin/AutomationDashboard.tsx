@@ -4,8 +4,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { getToken } from '@/lib/auth';
+import { API_ORIGIN } from '@/lib/api';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+// Derived from the one configured base rather than from a second environment
+// variable with a hardcoded localhost fallback. Several calls below are an
+// EventSource stream and cannot go through `apiFetch`, which is why this file
+// still builds URLs by hand — but it no longer builds them from a guess.
+const API_BASE_URL = API_ORIGIN;
 
 interface AutomationStatus {
   isEnabled: boolean;
