@@ -42,8 +42,22 @@ const escapeHtml = (s: unknown) =>
 // relative asset URLs like /uploads/... when Puppeteer renders the page.
 export function renderPaperHtml(
   paper: PdfPaper,
-  opts?: { baseHref?: string; assetBase?: string }
+  opts?: {
+    baseHref?: string;
+    assetBase?: string;
+    /**
+     * The institute printed on the paper.
+     *
+     * A generated paper is printed, photocopied and handed out — it leaves the
+     * building. Another institute's name on it is the most visible way a
+     * white-label platform can fail. The caller supplies it because this module
+     * has no tenant context of its own; it falls back to what shipped, so an
+     * unbranded deployment renders exactly as before.
+     */
+    instituteName?: string;
+  }
 ): string {
+  const instituteName = (opts?.instituteName || '').trim() || 'Abhigyan Gurukull';
   const baseHref = opts?.baseHref;
   const assetBase = opts?.assetBase?.replace(/\/?$/, "");
   const escapeAttr = (s: unknown) => String(s ?? "").replace(/"/g, "&quot;");
@@ -190,9 +204,9 @@ export function renderPaperHtml(
     </style>
   </head>
   <body>
-  <div class="watermark">Abhigyan Gurukull</div>
+  <div class="watermark">${escapeHtml(instituteName)}</div>
     <div class="container">
-      <div class="first-page-heading">Abhigyan Gurukull</div>
+      <div class="first-page-heading">${escapeHtml(instituteName)}</div>
       ${paper.examTitle ? `<h1>${escapeHtml(paper.examTitle)}</h1>` : ""}
       ${paper.subject ? `<div class="subject">Subject: ${escapeHtml(paper.subject)}</div>` : ""}
       ${(paper.totalMarks || paper.durationMins) ? `<div class="subject">${paper.totalMarks ? `Total Marks: ${escapeHtml(paper.totalMarks)}` : ''}${paper.totalMarks && paper.durationMins ? ' | ' : ''}${paper.durationMins ? `Time: ${escapeHtml(paper.durationMins)} mins` : ''}</div>` : ''}

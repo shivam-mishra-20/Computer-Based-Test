@@ -10,7 +10,7 @@ import { CalendarIcon, ClockIcon } from "lucide-react";
 import AdminTimeSlotsConfig from "@/components/admin/app-management/AdminTimeSlotsConfig";
 import ScheduleImportFlow from "@/components/admin/app-management/ScheduleImportFlow";
 import { toast } from "sonner";
-import { useClassLevels, useClassValues, useRooms } from "@/lib/tenant/context";
+import { useClassLevels, useClassValues, useRooms, useTenant } from "@/lib/tenant/context";
 
 // Dynamically import AdminBatchManagement to avoid SSR issues
 const AdminBatchManagement = dynamic(
@@ -241,6 +241,14 @@ export default function ScheduleManagement() {
   const CLASS_LEVELS = useClassValues(FALLBACK_CLASS_LEVELS);
   const ROOM_OPTIONS = useRooms(FALLBACK_ROOMS);
   const CLASS_LEVEL_DEFS = useClassLevels([]);
+
+  // ── The institute printed on exported spreadsheets ───────────────────────
+  // An exported duty chart or timetable leaves the building — it is printed and
+  // circulated. Five places hardcoded "Abhigyan Gurukull" into workbook
+  // metadata and footers, so every tenant's export carried another institute's
+  // name. Falls back to what shipped when no organization resolves.
+  const { organizationName } = useTenant();
+  const instituteName = organizationName ?? "Abhigyan Gurukull";
 
   /**
    * The organization's own label for a class key.
@@ -884,7 +892,7 @@ export default function ScheduleManagement() {
       const { saveAs } = await import("file-saver");
 
       const wb = new ExcelJS.Workbook();
-      wb.creator = "Abhigyan Gurukull";
+      wb.creator = instituteName;
       wb.created = new Date();
 
       // ── Shared color system ──────────────────────────────────────────────────
@@ -978,7 +986,7 @@ export default function ScheduleManagement() {
 
       // ── Helper: footer row ───────────────────────────────────────────────────
       const addFooter = (ws: import("exceljs").Worksheet, rowIdx: number) => {
-        ws.addRow([`© Abhigyan Gurukull  |  Confidential — For Internal Use Only  |  ${new Date().toLocaleDateString("en-IN")}`]);
+        ws.addRow([`© ${instituteName}  |  Confidential — For Internal Use Only  |  ${new Date().toLocaleDateString("en-IN")}`]);
         ws.mergeCells(rowIdx, 1, rowIdx, ws.columnCount || 1);
         const cell = ws.getCell(rowIdx, 1);
         cell.font      = { italic: true, size: 8, color: { argb: C_TEXT_LIGHT }, name: "Calibri" };
@@ -1210,7 +1218,7 @@ export default function ScheduleManagement() {
 
         // Footer row 36
         cov.mergeCells(36, 1, 36, COV_COLS);
-        cov.getCell(36, 1).value     = `Generated on ${new Date().toLocaleDateString("en-IN", { dateStyle: "full" })}  ·  Abhigyan Gurukull  ·  Confidential`;
+        cov.getCell(36, 1).value     = `Generated on ${new Date().toLocaleDateString("en-IN", { dateStyle: "full" })}  ·  ${instituteName}  ·  Confidential`;
         cov.getCell(36, 1).font      = { name: "Calibri", italic: true, size: 8, color: { argb: C_TEXT_LIGHT } };
         cov.getCell(36, 1).fill      = solidFill(C_GRAY_LIGHT);
         cov.getCell(36, 1).alignment = { horizontal: "center", vertical: "middle" };
@@ -1303,7 +1311,7 @@ export default function ScheduleManagement() {
         for (let c = 1; c <= numCols; c++) ws.getCell(wsR, c).fill = solidFill(C_EMERALD);
         ws.getRow(wsR).height = 4; wsR++;
         ws.mergeCells(wsR, 1, wsR, numCols);
-        ws.getCell(wsR, 1).value     = `© Abhigyan Gurukull  ·  ${new Date().toLocaleDateString("en-IN", { dateStyle: "full" })}  ·  For Internal Use Only`;
+        ws.getCell(wsR, 1).value     = `© ${instituteName}  ·  ${new Date().toLocaleDateString("en-IN", { dateStyle: "full" })}  ·  For Internal Use Only`;
         ws.getCell(wsR, 1).font      = { name: "Calibri", italic: true, size: 8, color: { argb: C_TEXT_LIGHT } };
         ws.getCell(wsR, 1).fill      = solidFill(C_GRAY_LIGHT);
         ws.getCell(wsR, 1).alignment = { horizontal: "center", vertical: "middle" };
@@ -1383,7 +1391,7 @@ export default function ScheduleManagement() {
 
         const tFR = teacherNames.length + 6;
         tWs.mergeCells(tFR, 1, tFR, tNumCols);
-        tWs.getCell(tFR, 1).value     = `© Abhigyan Gurukull  ·  Teacher Duty Chart  ·  ${dateStr}`;
+        tWs.getCell(tFR, 1).value     = `© ${instituteName}  ·  Teacher Duty Chart  ·  ${dateStr}`;
         tWs.getCell(tFR, 1).font      = { name: "Calibri", italic: true, size: 8, color: { argb: C_TEXT_LIGHT } };
         tWs.getCell(tFR, 1).fill      = solidFill(C_GRAY_LIGHT);
         tWs.getCell(tFR, 1).alignment = { horizontal: "center", vertical: "middle" };

@@ -11,7 +11,16 @@ export async function POST(req: NextRequest) {
   let content: string | undefined;
   try {
     const body = await req.json();
-    const { html, paper } = body as { html?: string; paper?: PdfPaper };
+    const { html, paper, instituteName } = body as {
+      html?: string;
+      paper?: PdfPaper;
+      /**
+       * Supplied by the caller, which has the tenant context this route does
+       * not: it runs server-side in Next and never sees the user's token.
+       * Absent means "render as before".
+       */
+      instituteName?: string;
+    };
     // Derive a base URL so that relative assets like /uploads/... resolve.
     const reqUrl = new URL(req.url);
     const baseHref = `${reqUrl.protocol}//${reqUrl.host}`;
@@ -20,7 +29,8 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_API_BASE_URL ||
       process.env.PUBLIC_BASE_URL ||
       baseHref;
-    content = html || (paper ? renderPaperHtml(paper, { baseHref, assetBase }) : undefined);
+    content =
+      html || (paper ? renderPaperHtml(paper, { baseHref, assetBase, instituteName }) : undefined);
     if (!content) {
       return NextResponse.json({ error: 'html or paper required' }, { status: 400 });
     }

@@ -34,66 +34,13 @@ export const DEFAULT_BRAND = {
   background: '#FAFAFA', // --bg-whitesmoke
 } as const;
 
-const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
-
-/** `#abc` and `abcdef` both accepted; anything else is rejected rather than guessed. */
-export function normalizeHex(value: string | undefined | null): string | null {
-  if (!value || typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  if (!HEX.test(trimmed)) return null;
-  const body = trimmed.replace('#', '');
-  const full =
-    body.length === 3
-      ? body
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : body;
-  return `#${full.toLowerCase()}`;
-}
-
-function channels(hex: string): [number, number, number] {
-  const body = hex.replace('#', '');
-  return [
-    parseInt(body.slice(0, 2), 16),
-    parseInt(body.slice(2, 4), 16),
-    parseInt(body.slice(4, 6), 16),
-  ];
-}
-
-/** WCAG relative luminance. */
-export function luminance(hex: string): number {
-  const srgb = channels(hex).map((c) => {
-    const v = c / 255;
-    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
-}
-
-/**
- * The text colour to put ON a background, chosen by contrast ratio rather than
- * by "is it dark". A mid-saturation brand blue reads as dark to a brightness
- * check and still needs white text.
- */
-export function readableOn(hex: string): string {
-  const l = luminance(hex);
-  const withWhite = 1.05 / (l + 0.05);
-  const withBlack = (l + 0.05) / 0.05;
-  return withWhite >= withBlack ? '#ffffff' : '#111111';
-}
-
-/** Mix toward white (amount > 0) or black (amount < 0). */
-export function shade(hex: string, amount: number): string {
-  const target = amount >= 0 ? 255 : 0;
-  const ratio = Math.abs(amount);
-  const mixed = channels(hex).map((c) => Math.round(c + (target - c) * ratio));
-  return `#${mixed.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
-}
-
-/** `#a3b18a` -> `163 177 138`, for `rgb(var(--x) / 0.1)` alpha compositing. */
-function triplet(hex: string): string {
-  return channels(hex).join(' ');
-}
+// Shared with client-platform-app. Validity, luminance, contrast-based
+// foreground choice and shading must agree between the two clients, or the same
+// institute is legible on one and not the other. Only the MATHS is shared — the
+// output differs, because this writes CSS custom properties and the mobile
+// client builds a theme object.
+export { normalizeHex, luminance, readableOn, shade } from '@platform/client-core';
+import { normalizeHex, readableOn, shade, rgbTriplet } from '@platform/client-core';
 
 export interface BrandTokens {
   [cssVariable: string]: string;
@@ -111,18 +58,18 @@ export function brandTokens(branding: TenantBranding | null | undefined): BrandT
 
   return {
     '--brand-primary': primary,
-    '--brand-primary-rgb': triplet(primary),
+    '--brand-primary-rgb': rgbTriplet(primary),
     '--brand-primary-hover': shade(primary, -0.15),
     '--brand-primary-soft': shade(primary, 0.85),
     '--brand-on-primary': readableOn(primary),
 
     '--brand-secondary': secondary,
-    '--brand-secondary-rgb': triplet(secondary),
+    '--brand-secondary-rgb': rgbTriplet(secondary),
     '--brand-secondary-hover': shade(secondary, -0.15),
     '--brand-on-secondary': readableOn(secondary),
 
     '--brand-accent': accent,
-    '--brand-accent-rgb': triplet(accent),
+    '--brand-accent-rgb': rgbTriplet(accent),
     '--brand-on-accent': readableOn(accent),
 
     // The legacy names, repointed. Components that already use these — and
