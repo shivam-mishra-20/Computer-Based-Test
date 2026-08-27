@@ -24,12 +24,21 @@ export type PublicTestKind = "TEST" | "QUIZ" | "MOCK" | "SERIES_PAPER";
 export type PublicTestStatus = "draft" | "published" | "archived";
 export type PublicTestDifficulty = "easy" | "medium" | "hard" | "mixed";
 
-export interface MarkingScheme {
-  correct: number;
-  /** Negative marking is stored as a negative number, e.g. -1. */
-  incorrect: number;
-  unattempted: number;
-}
+/**
+ * Re-exported, not restated.
+ *
+ * `MarkingScheme` is part of the server contract both clients read, so it
+ * belongs to `@platform/client-core` — the whole reason that package exists is
+ * that a second, structurally identical copy is invisible until the day the
+ * two stop being identical. This file had one.
+ *
+ * The note the local copy carried is worth keeping: negative marking is stored
+ * as a NEGATIVE number, e.g. `-1`, not as a magnitude to subtract.
+ */
+export type { MarkingScheme } from '@platform/client-core';
+// The re-export above publishes it; this import is what lets the rest of
+// this file refer to it.
+import type { MarkingScheme } from '@platform/client-core';
 
 export interface PublicTestSection {
   _id?: string;
