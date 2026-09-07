@@ -32,11 +32,11 @@ interface EODReport {
   };
   reviewedAt?: string;
   reviewNotes?: string;
-  status: "pending" | "reviewed" | "flagged";
+  status: "pending" | "approved" | "rejected";
 }
 
 interface Stats {
-  statusCounts: { pending?: number; reviewed?: number; flagged?: number };
+  statusCounts: { pending?: number; approved?: number; rejected?: number };
   submissionStats: {
     totalSubmissions?: number;
     avgClassesPerDay?: number;
@@ -64,7 +64,7 @@ export default function AdminEODReports() {
   });
   const [reviewModal, setReviewModal] = useState(false);
   const [reviewData, setReviewData] = useState({
-    status: "reviewed" as "reviewed" | "flagged",
+    status: "approved" as "approved" | "rejected",
     notes: "",
   });
   const [submitting, setSubmitting] = useState(false);
@@ -110,7 +110,7 @@ export default function AdminEODReports() {
     try {
       setSubmitting(true);
       const updated = await apiFetch(
-        `/eod/admin/${selectedReport._id}/review`,
+        `/eod/admin/${selectedReport._id}/status`,
         {
           method: "PUT",
           body: JSON.stringify({
@@ -126,7 +126,7 @@ export default function AdminEODReports() {
       );
       setReviewModal(false);
       setSelectedReport(null);
-      setReviewData({ status: "reviewed", notes: "" });
+      setReviewData({ status: "approved", notes: "" });
       fetchStats();
     } catch (error) {
       alert((error as Error).message || "Failed to review EOD");
@@ -139,9 +139,9 @@ export default function AdminEODReports() {
     switch (status) {
       case "pending":
         return "bg-amber-100 text-amber-700 border-amber-200";
-      case "reviewed":
+      case "approved":
         return "bg-green-100 text-green-700 border-green-200";
-      case "flagged":
+      case "rejected":
         return "bg-red-100 text-red-700 border-red-200";
       default:
         return "bg-gray-100 text-gray-700 border-gray-200";
@@ -332,8 +332,8 @@ export default function AdminEODReports() {
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
-              <option value="reviewed">Reviewed</option>
-              <option value="flagged">Flagged</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
             </select>
           </div>
         </div>
@@ -449,12 +449,13 @@ export default function AdminEODReports() {
                             setSelectedReport(report);
                             setReviewModal(true);
                             setReviewData({
+                              // Approve is the default proposal; a rejected
+                              // report reopens on Reject so its state is not
+                              // silently flipped by opening the dialog.
                               status:
-                                report.status === "pending"
-                                  ? "reviewed"
-                                  : report.status === "flagged"
-                                  ? "reviewed"
-                                  : "reviewed",
+                                report.status === "rejected"
+                                  ? "rejected"
+                                  : "approved",
                               notes: report.reviewNotes || "",
                             });
                           }}
@@ -643,10 +644,10 @@ export default function AdminEODReports() {
                       <div className="flex gap-3">
                         <button
                           onClick={() =>
-                            setReviewData({ ...reviewData, status: "reviewed" })
+                            setReviewData({ ...reviewData, status: "approved" })
                           }
                           className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                            reviewData.status === "reviewed"
+                            reviewData.status === "approved"
                               ? "bg-green-600 text-white"
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
@@ -655,15 +656,15 @@ export default function AdminEODReports() {
                         </button>
                         <button
                           onClick={() =>
-                            setReviewData({ ...reviewData, status: "flagged" })
+                            setReviewData({ ...reviewData, status: "rejected" })
                           }
                           className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                            reviewData.status === "flagged"
+                            reviewData.status === "rejected"
                               ? "bg-red-600 text-white"
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
                         >
-                          ⚠ Flag for Review
+                          ⚠ Reject
                         </button>
                       </div>
                     </div>

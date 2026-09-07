@@ -78,6 +78,15 @@ export default function ScheduleImportFlow({
   const [imageUrl, setImageUrl] = useState("");
   const [scheduleDate, setScheduleDate] = useState(defaultDate);
   const [entries, setEntries] = useState<ScheduleImportEntry[]>([]);
+  // The backend already reports which transcribed cells it refused to turn into
+  // entries. Not rendering it meant a partial extraction looked identical to a
+  // complete one, which is why "only some rows came through" went unnoticed.
+  const [extractNotice, setExtractNotice] = useState<{
+    warnings: string[];
+    declaredCells: number;
+    totalFound: number;
+    rejectedCount: number;
+  } | null>(null);
   const [issues, setIssues] = useState<ScheduleImportIssue[]>([]);
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -151,6 +160,7 @@ export default function ScheduleImportFlow({
     if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
     setFilePreviewUrl(null);
     setExtractError(null);
+    setExtractNotice(null);
     setImageUrl("");
     setEntries([]);
     setIssues([]);
@@ -215,6 +225,12 @@ export default function ScheduleImportFlow({
       setImageUrl(data.imageUrl);
       setScheduleDate(data.scheduleDate);
       setEntries(data.entries || []);
+      setExtractNotice({
+        warnings: Array.isArray(data.warnings) ? data.warnings : [],
+        declaredCells: data?.meta?.declaredCells ?? 0,
+        totalFound: data?.meta?.totalFound ?? (data.entries || []).length,
+        rejectedCount: data?.meta?.rejectedCount ?? 0,
+      });
       setStep("review");
     } catch (err) {
       setExtractError(err instanceof Error ? err.message : "Extraction failed.");
@@ -427,6 +443,25 @@ export default function ScheduleImportFlow({
 
             {step === "review" && (
               <>
+                {extractNotice && extractNotice.rejectedCount > 0 && (
+                  <div className="shrink-0 mx-4 sm:mx-5 mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+                    <p className="text-sm font-semibold text-amber-900">
+                      {extractNotice.totalFound} of {extractNotice.declaredCells} cells read from the
+                      image became entries — {extractNotice.rejectedCount} were not.
+                    </p>
+                    <p className="mt-0.5 text-xs text-amber-800">
+                      Compare against the photo before saving. Anything missing can be added with
+                      Add Row.
+                    </p>
+                    {extractNotice.warnings.length > 0 && (
+                      <ul className="mt-1 list-inside list-disc text-xs text-amber-800">
+                        {extractNotice.warnings.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 <div className="flex-1 overflow-hidden">
                   <ScheduleImportReviewPanel
                     imageUrl={imageUrl}
