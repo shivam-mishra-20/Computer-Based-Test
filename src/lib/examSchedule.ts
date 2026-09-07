@@ -1,5 +1,5 @@
 // Shared "when should this exam be available" logic for SchedulePublishPanel.
-// schedule.endAt is an ENTRY-WINDOW cutoff only (cbt-exam-be's
+// schedule.endAt is an ENTRY-WINDOW cutoff only (central-be's
 // getStartWindowState/getDeadline) — a student who starts before endAt always
 // gets their full totalDurationMins regardless of how close to endAt they
 // started. So "Start Now" can simply size the entry window to the exam's own

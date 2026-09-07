@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import MathText from "@/components/ui/MathText";
+import { API_ORIGIN } from "@/lib/api";
 import {
   DocumentTextIcon,
   XMarkIcon,
@@ -71,7 +72,7 @@ export default function SmartImportPreviewModal({
   >({});
 
   const baseUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000",
+    () => API_ORIGIN,
     []
   );
 

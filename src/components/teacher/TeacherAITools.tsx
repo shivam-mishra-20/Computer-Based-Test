@@ -2,7 +2,7 @@
 "use client";
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, API_BASE } from "../../lib/api";
 import BlueprintModal, {
   SavedBlueprint as ModalBlueprint,
 } from "./modals/BlueprintModal";
@@ -661,7 +661,7 @@ export default function TeacherAITools() {
         else form.append(k, String(v));
       });
       const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        API_BASE;
       const res = await fetch(base + "/ai/generate/pdf", {
         method: "POST",
         headers: {
@@ -695,7 +695,7 @@ export default function TeacherAITools() {
         else form.append(k, String(v));
       });
       const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        API_BASE;
       const res = await fetch(base + "/ai/generate/image", {
         method: "POST",
         headers: {
@@ -818,7 +818,7 @@ export default function TeacherAITools() {
                 })
               );
               const base =
-                process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+                API_BASE;
               const resp = await fetch(base + "/upload/image", {
                 method: "POST",
                 headers: {
@@ -969,7 +969,7 @@ export default function TeacherAITools() {
                 })
               );
               const base =
-                process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+                API_BASE;
               const resp = await fetch(base + "/upload/image", {
                 method: "POST",
                 headers: {
@@ -1151,7 +1151,7 @@ export default function TeacherAITools() {
         form.append("file", paperPdfFile);
         form.append("blueprint", JSON.stringify(paperBlueprint));
         const base =
-          process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+          API_BASE;
         const res = await fetch(base + "/ai/generate/paper-pdf", {
           method: "POST",
           headers: {
@@ -1192,7 +1192,7 @@ export default function TeacherAITools() {
         form.append("image", paperImageFile);
         form.append("blueprint", JSON.stringify(paperBlueprint));
         const base =
-          process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+          API_BASE;
         const res = await fetch(base + "/ai/generate/paper-image", {
           method: "POST",
           headers: {
@@ -1373,7 +1373,7 @@ export default function TeacherAITools() {
     try {
       // Convert LaTeX to MathML before sending to server so exported PDF contains proper MathML
       const mathmlPaper = convertPaperToMathMLHtml(paperResult);
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api"}/pdf`, {
+      const res = await fetch(`${API_BASE}/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paper: mathmlPaper, mathFormat: "mathml" }),
@@ -1411,7 +1411,7 @@ export default function TeacherAITools() {
     try {
       // Convert LaTeX to MathML prior to Word export
       const mathmlPaper = convertPaperToMathMLHtml(paperResult);
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api"}/word`, {
+      const res = await fetch(`${API_BASE}/word`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paper: mathmlPaper, mathFormat: "mathml" }),

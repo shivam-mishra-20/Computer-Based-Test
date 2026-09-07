@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import Protected from "../../../components/Protected";
+import { API_ORIGIN } from "@/lib/api";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import TeacherDashboardHome from "@/components/teacher/TeacherDashboardHome";
@@ -250,7 +251,7 @@ export default function TeacherDashboardPage() {
     (async () => {
       try {
         const data = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000"}`,
+          `${API_ORIGIN}`,
           {
             headers: {
               Authorization: `Bearer ${

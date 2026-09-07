@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, API_BASE } from "../../lib/api";
 import Protected from "../Protected";
 import ElegantLoader, { InlineLoader } from "../ElegantLoader";
 import { MathText } from "../ui/MathText";
@@ -342,7 +342,7 @@ export default function AttemptPlayer({ attemptId, mode = "attempt" }: Props) {
     const beforeUnload = (e: BeforeUnloadEvent) => {
       if (view?.attempt.submittedAt) return;
       try {
-        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        const base = API_BASE;
         navigator.sendBeacon?.(
           `${base}/attempts/${attemptId}/submit`,
           new Blob([JSON.stringify({ auto: true, reason: "unload" })], {

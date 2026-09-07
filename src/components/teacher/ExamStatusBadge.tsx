@@ -14,7 +14,7 @@ const LABELS: Record<ExamStatus, string> = {
   completed: "Completed",
 };
 
-// Server-derived (Exam.status from cbt-exam-be's deriveExamStatus) — never
+// Server-derived (Exam.status from central-be's deriveExamStatus) — never
 // re-computed client-side, so this always agrees with what the backend
 // actually enforces for start-window access.
 export default function ExamStatusBadge({ status }: { status: ExamStatus | string }) {

@@ -18,6 +18,10 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Compiler output from `npm run verify`. .gitignore already excludes it;
+      // eslint did not, so `npm run lint` failed on generated JavaScript
+      // whenever the verify suites had been run first.
+      ".verify/**",
     ],
   },
 ];

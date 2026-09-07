@@ -248,6 +248,10 @@ export default function ScheduleManagement() {
   // metadata and footers, so every tenant's export carried another institute's
   // name. Falls back to what shipped when no organization resolves.
   const { organizationName } = useTenant();
+  // Used by the workbook metadata, the footers AND the five headline
+  // banners. The banners were literal until this consolidation, which
+  // meant a printed duty chart could carry one institute's name in the
+  // heading and another's in the footer.
   const instituteName = organizationName ?? "Abhigyan Gurukull";
 
   /**
@@ -1013,7 +1017,7 @@ export default function ScheduleManagement() {
         visibleTimeSlots.forEach((_, i) => { ws.getColumn(i + 2).width = 26; });
 
         // ── Banner rows ──────────────────────────────────────────────────────────
-        addBanner(ws, "ABHIGYAN GURUKULL", 1, 52, { size: 22, bold: true, fill: C_BRAND });
+        addBanner(ws, instituteName.toUpperCase(), 1, 52, { size: 22, bold: true, fill: C_BRAND });
         addBanner(ws, "WEEKLY CLASS TIMETABLE", 2, 30, { size: 14, bold: true, fill: C_BRAND_MID });
         const filterLabel = `Class ${filterClass}${filterBatch ? "  |  Batch: " + filterBatch : ""}  |  Generated: ${new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`;
         addBanner(ws, filterLabel, 3, 22, { size: 9, italic: true, fill: C_BRAND, color: C_BRAND_LITE });
@@ -1140,7 +1144,7 @@ export default function ScheduleManagement() {
 
         // Rows 1–12: deep-navy brand header block
         for (let r = 1; r <= 12; r++) paintRow(cov, r, C_NAVY, r === 1 || r === 12 ? 10 : 28, COV_COLS);
-        msc(cov, 2, 1, 7, COV_COLS, "ABHIGYAN GURUKULL", { size: 30, bold: true });
+        msc(cov, 2, 1, 7, COV_COLS, instituteName.toUpperCase(), { size: 30, bold: true });
         msc(cov, 8, 1, 10, COV_COLS, "Excellence in Education  ·  Institute Management System",
           { size: 11, italic: true, color: C_MINT });
         // Emerald accent row 11
@@ -1235,7 +1239,7 @@ export default function ScheduleManagement() {
         visibleTimeSlots.forEach((_, i) => { ws.getColumn(i + 2).width = 22; });
 
         paintRow(ws, 1, C_NAVY, 8, numCols);
-        msc(ws, 2, 1, 3, numCols, "ABHIGYAN GURUKULL", { size: 18, bold: true });
+        msc(ws, 2, 1, 3, numCols, instituteName.toUpperCase(), { size: 18, bold: true });
         ws.getRow(2).height = 30; ws.getRow(3).height = 30;
         msc(ws, 4, 1, 4, numCols, `INSTITUTE DAILY SCHEDULE  ·  ${dateLbl.toUpperCase()}`,
           { size: 10, bold: true, fill: C_EMERALD });
@@ -1339,7 +1343,7 @@ export default function ScheduleManagement() {
         const teacherNames = Object.keys(teacherMap).sort();
 
         paintRow(tWs, 1, C_NAVY, 8, tNumCols);
-        msc(tWs, 2, 1, 3, tNumCols, "ABHIGYAN GURUKULL", { size: 18, bold: true });
+        msc(tWs, 2, 1, 3, tNumCols, instituteName.toUpperCase(), { size: 18, bold: true });
         tWs.getRow(2).height = 30; tWs.getRow(3).height = 30;
         msc(tWs, 4, 1, 4, tNumCols, `TEACHER DUTY CHART  ·  ${dateLbl.toUpperCase()}`,
           { size: 10, bold: true, fill: C_EMERALD_BRT });
@@ -1417,7 +1421,7 @@ export default function ScheduleManagement() {
         custWs.getColumn(1).width = 22;
         visibleTimeSlots.forEach((_, i) => { custWs.getColumn(i + 2).width = 24; });
 
-        addBanner(custWs, "ABHIGYAN GURUKULL", 1, 52, { size: 22, bold: true, fill: C_BRAND });
+        addBanner(custWs, instituteName.toUpperCase(), 1, 52, { size: 22, bold: true, fill: C_BRAND });
         addBanner(custWs, "CUSTOM CLASS SCHEDULE", 2, 30, { size: 14, bold: true, fill: C_BRAND_MID });
         addBanner(custWs, custDateLbl, 3, 22, { size: 9, italic: true, fill: C_BRAND, color: C_BRAND_LITE });
         custWs.addRow([]); custWs.getRow(4).height = 8;

@@ -11,7 +11,7 @@ import {
 import { Modal } from "../ui/modal";
 import { notify } from "../ui/toast";
 import { MathText } from "../ui/MathText";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, API_ORIGIN } from "@/lib/api";
 import {
   DocumentTextIcon,
   SparklesIcon,
@@ -187,7 +187,7 @@ export default function QuestionPapers() {
     setDownloading(`${p._id}:${type}`);
     try {
       const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+        API_ORIGIN;
       const url = `${base}/api/papers/${p._id}/export/${type}${
         type === "pdf" ? "?solutions=true" : ""
       }`;

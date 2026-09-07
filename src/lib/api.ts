@@ -1,6 +1,44 @@
 import { getOrgHint } from './tenant/orgHint';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+/**
+ * The API base, including the `/api` suffix.
+ *
+ * ── Why a production build refuses to guess ─────────────────────────────────
+ * This used to read `process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api'`,
+ * and that fallback was repeated inline at twenty other call sites.
+ *
+ * `NEXT_PUBLIC_*` is inlined by Next at BUILD time. So a production build made
+ * without the variable set does not fail at deploy, and does not fail at boot —
+ * it ships a bundle in which every request is addressed to `localhost:5000`,
+ * which in a browser means the VIEWER's own machine. Every call fails as a
+ * network error, and the application looks exactly as it would if the backend
+ * were down. The cause is invisible from the symptom.
+ *
+ * In development that fallback is genuinely useful and is kept. In a production
+ * build it resolves to an empty string instead: `apiFetch` then throws with the
+ * reason named, rather than silently addressing a machine that was never meant
+ * to serve anyone. A misconfigured deployment should be obviously misconfigured.
+ */
+const CONFIGURED_API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || '').trim().replace(/\/+$/, '');
+
+export const API_BASE =
+	CONFIGURED_API_BASE || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000/api');
+
+/** True when this build shipped with no address configured. */
+export const API_BASE_CONFIGURED = API_BASE !== '';
+
+const UNCONFIGURED =
+	'NEXT_PUBLIC_API_BASE_URL was not set when this build was created, so it has no API address. ' +
+	'Set it in the build environment and rebuild — it is inlined at build time, not read at runtime.';
+
+/**
+ * The base, or a thrown explanation. For callers that build their own URL and
+ * would otherwise produce a same-origin path that 404s against this app.
+ */
+export function requireApiBase(): string {
+	if (!API_BASE) throw new Error(UNCONFIGURED);
+	return API_BASE;
+}
 
 /**
  * The API ORIGIN, without the `/api` suffix.
@@ -17,7 +55,7 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhos
 export const API_ORIGIN = API_BASE.replace(/\/api\/?$/, '');
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
-	const url = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+	const url = path.startsWith('http') ? path : `${requireApiBase()}${path.startsWith('/') ? path : `/${path}`}`;
 
 	const headers = new Headers(options.headers || {});
 	let token: string | null = null;

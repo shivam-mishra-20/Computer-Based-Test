@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, API_BASE } from "../../lib/api";
 import { Modal } from "../ui/modal";
 import { notify } from "../ui/toast";
 import { Skeleton } from "../ui/skeleton";
@@ -608,7 +608,7 @@ export default function AdminQuestionBank() {
       if (filters.pyqYear) queryParams.append("pyqYear", filters.pyqYear);
       if (filters.pyqExam) queryParams.append("pyqExam", filters.pyqExam);
 
-      const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+      const base = API_BASE;
       const url = `${base}/ai/questions/class/${selectedClass}?${queryParams.toString()}`;
       const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
 
@@ -707,7 +707,7 @@ export default function AdminQuestionBank() {
   useEffect(() => {
     async function fetchSubjects() {
       try {
-        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        const base = API_BASE;
         const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
         const res = await fetch(`${base}/ai/questions/class/${selectedClass}/filters`, {
           headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -736,7 +736,7 @@ export default function AdminQuestionBank() {
   useEffect(() => {
     async function fetchCascaded() {
       try {
-        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        const base = API_BASE;
         const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
         const qs = filters.subject ? `?subject=${encodeURIComponent(filters.subject)}` : "";
         const res = await fetch(`${base}/ai/questions/class/${selectedClass}/filters${qs}`, {
@@ -853,7 +853,7 @@ export default function AdminQuestionBank() {
         setUploadingDiagram(true);
         try {
           const base =
-            process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+            API_BASE;
           const formData = new FormData();
           formData.append("image", pendingDiagramFile);
           const resp = await fetch(`${base}/uploads/image`, {

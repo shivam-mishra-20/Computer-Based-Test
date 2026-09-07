@@ -5,7 +5,7 @@ import { Download, Save, Loader2, CheckCircle, Printer, X } from "lucide-react";
 import Image from "next/image";
 import { PaperFormData } from "../CreatePaperFlow";
 import { Button } from "../../ui/button";
-import { apiFetch } from "../../../lib/api";
+import { apiFetch, API_BASE } from "../../../lib/api";
 import { notify } from "../../ui/toast";
 import { MathText } from "../../ui/MathText";
 // Avoid SSR issues: dynamically import browser-only libs when needed
@@ -164,7 +164,7 @@ export default function PaperPreview({ formData }: PaperPreviewProps) {
             const fullHtml = `<!doctype html><html><head>${base}${headHtml}</head><body style="margin:0;background:#ffffff">${element.outerHTML}</body></html>`;
 
             // POST to server API which will generate a PDF using Puppeteer
-            const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+            const apiBase = API_BASE;
             const resp = await fetch(`${apiBase}/pdf`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },

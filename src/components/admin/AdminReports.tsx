@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback } from "react";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, API_BASE } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 
 type AttendanceRow = {
@@ -135,8 +135,7 @@ export default function AdminReports() {
             onClick={(e) => {
               e.preventDefault();
             const apiBase =
-              process.env.NEXT_PUBLIC_API_BASE_URL ||
-              "http://localhost:5000/api";
+              API_BASE;
             window.open(
               `${apiBase}/reports/exams/${examId}/results.csv`,
               "_blank"

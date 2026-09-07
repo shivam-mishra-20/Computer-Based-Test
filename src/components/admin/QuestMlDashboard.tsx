@@ -411,7 +411,7 @@ export default function QuestMlDashboard() {
               <div className="lg:col-span-2">
                 <label className="block text-xs font-medium text-gray-500 mb-1">File path on the QuestMl server</label>
                 <input value={sourcePath} onChange={e => setSourcePath(e.target.value)}
-                  placeholder="C:\Users\Shivam\cbt-exam-be\class_12\book.pdf"
+                  placeholder="C:\Users\Shivam\central-be\class_12\book.pdf"
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
               </div>
             ) : (

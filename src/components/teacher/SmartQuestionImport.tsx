@@ -8,7 +8,7 @@ import {
   ExclamationTriangleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, API_BASE } from "../../lib/api";
 // Removed inline preview dependencies (MathText/Image) for modal-only flow
 import Router from "next/router";
 import Image from "next/image";
@@ -375,7 +375,7 @@ const SmartQuestionImport: React.FC<SmartImportProps> = ({ onClose }) => {
       if (marks.trim()) formData.append("marks", marks.trim());
 
       const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+        API_BASE;
       const response = await fetch(`${base}/import-paper`, {
         method: "POST",
         headers: {
