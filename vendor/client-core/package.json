@@ -1,0 +1,8 @@
+{
+  "name": "@platform/client-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tenant contracts and access rules shared by client-platform-web and client-platform-app.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts"
+}

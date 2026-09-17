@@ -1,19 +1,22 @@
-import path from "path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /**
-   * `@platform/client-core` is a local `file:` dependency, which npm installs
-   * as a symlink to a sibling directory. Turbopack will not follow a resolution
-   * out of the project root unless told where the real root is, so the build
-   * failed with "Can't resolve '@platform/client-core'" on every file that
-   * imports it.
+   * `@platform/client-core` is vendored into this repository at
+   * `vendor/client-core` and installed from there (`file:./vendor/client-core`),
+   * so npm symlinks it to a path INSIDE the project root.
    *
-   * Pointing `root` at the directory that contains BOTH repositories makes the
-   * symlink target an in-root path. It changes nothing about the output.
+   * This used to be `file:../platform-client-core` — a sibling repo that exists
+   * only on a developer machine. Turbopack will not follow a resolution out of
+   * the project root, so the root was widened to the parent directory to make
+   * that symlink reachable. On Vercel the parent directory holds no such
+   * sibling, and the build failed with "Can't resolve '@platform/client-core'"
+   * on every file that imports it.
+   *
+   * The root is the project itself again. Nothing resolves outside it.
    */
   turbopack: {
-    root: path.join(__dirname, ".."),
+    root: __dirname,
   },
   transpilePackages: ["@platform/client-core"],
   serverExternalPackages: [

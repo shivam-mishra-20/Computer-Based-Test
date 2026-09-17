@@ -9,7 +9,9 @@
     "pdf-server": "node server/pdf-server.js",
     "lint": "eslint",
     "verify:public-tests": "tsc scripts/verify-public-test-admin.ts src/lib/publicTests.ts src/lib/api.ts --outDir .verify --module commonjs --target es2020 --moduleResolution node --lib es2020,dom --skipLibCheck --esModuleInterop --types node && node .verify/scripts/verify-public-test-admin.js",
-    "verify": "npm run verify:public-tests && npm run verify:tenant",
+    "sync:client-core": "node scripts/sync-client-core.js",
+    "verify:client-core": "node scripts/sync-client-core.js --check",
+    "verify": "npm run verify:public-tests && npm run verify:tenant && npm run verify:client-core",
     "verify:tenant": "tsc scripts/verify-tenant-access.ts src/lib/tenant/access.ts src/lib/tenant/registry.ts src/lib/tenant/branding.ts --outDir .verify --module commonjs --target es2020 --moduleResolution node --lib es2020,dom --skipLibCheck --esModuleInterop --types node && node .verify/scripts/verify-tenant-access.js"
   },
   "dependencies": {
@@ -45,7 +47,7 @@
     "tesseract.js": "^6.0.1",
     "tesseract.js-node": "^0.1.0",
     "xlsx": "^0.18.5",
-    "@platform/client-core": "file:../platform-client-core"
+    "@platform/client-core": "file:./vendor/client-core"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

@@ -37,6 +37,7 @@
   ],
   "exclude": [
     "node_modules",
+    "vendor",
     ".next/types/validator.ts"
   ]
 }
