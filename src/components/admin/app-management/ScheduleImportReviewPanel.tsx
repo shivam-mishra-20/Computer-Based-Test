@@ -5,6 +5,7 @@ import {
   ZoomOut,
   Maximize2,
   ExternalLink,
+  ImageOff,
   Trash2,
   Plus,
   AlertTriangle,
@@ -18,8 +19,31 @@ export interface ScheduleImportEntry {
   tempId: string;
   classLevel: string;
   classLevelRaw?: string;
+  /** An EXISTING batch name, or "". Never text read off the photograph. */
   batch: string;
-  batchRaw?: string;
+  /**
+   * Every batch this session is for.
+   *
+   * A class can legitimately run for several batches at once — same teacher,
+   * same room, same slot — which the schedule policy treats as one combined
+   * session. `batch` stays as the first of these for the queries that still
+   * read the single field.
+   */
+  batches?: string[];
+  /** Leftover row text from the image ("jee even"). Diagnostic only. */
+  batchHint?: string;
+  /** Why the batch is or is not set — see scheduleBatchResolver.ts. */
+  batchStatus?:
+    | "resolved-single"
+    | "resolved-hint"
+    | "needs-selection"
+    | "no-batches"
+    | "unknown-class"
+    | "no-org-context";
+  /** The organization's real batches for this class. */
+  availableBatches?: string[];
+  /** Existing batches the hint might mean. Ordering help, never a decision. */
+  batchSuggestions?: string[];
   startTimeSlot: string;
   endTimeSlot: string;
   roomNumber: number | null;
@@ -72,7 +96,7 @@ interface ScheduleImportReviewPanelProps {
 
 const FIELD_LABELS: Record<string, string> = {
   classLevel: "Class unclear",
-  batch: "Batch unmatched",
+  batch: "Existing batch selection required",
   teacherName: "Teacher unmatched",
   roomNumber: "Room unclear",
   startTimeSlot: "Start time unclear",
@@ -91,12 +115,19 @@ function to12h(hhmm: string): string {
   return `${h12}:${m} ${period}`;
 }
 
+/** Every batch on an entry, tolerating the older single-value shape. */
+function batchesOf(e: ScheduleImportEntry): string[] {
+  const raw = [...(e.batches ?? []), e.batch];
+  return Array.from(new Set(raw.map((b) => (b ?? "").trim()).filter(Boolean)));
+}
+
 function groupKeyOf(e: ScheduleImportEntry): string {
-  return `${e.classLevel}|${e.batch}`;
+  return `${e.classLevel}|${batchesOf(e).join("+")}`;
 }
 
 function groupLabelOf(e: ScheduleImportEntry): string {
-  return `Class ${e.classLevel || "?"}${e.batch ? " " + e.batch : ""}`;
+  const names = batchesOf(e);
+  return `Class ${e.classLevel || "?"}${names.length ? " " + names.join(" + ") : ""}`;
 }
 
 function newBlankEntry(defaultClassLevel: string): ScheduleImportEntry {
@@ -104,6 +135,7 @@ function newBlankEntry(defaultClassLevel: string): ScheduleImportEntry {
     tempId: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     classLevel: defaultClassLevel,
     batch: "",
+    batches: [],
     startTimeSlot: "",
     endTimeSlot: "",
     roomNumber: null,
@@ -211,6 +243,41 @@ export default function ScheduleImportReviewPanel({
     );
   }
 
+  /** The EXISTING batches offerable for a row — server list first, page list as fallback. */
+  function batchOptionsFor(entry: ScheduleImportEntry): string[] {
+    return entry.availableBatches && entry.availableBatches.length
+      ? entry.availableBatches
+      : batchNamesForClass(entry.classLevel);
+  }
+
+  /**
+   * Set the batch selection for every row in a group.
+   *
+   * `batch` is kept as the first selected name because a lot of existing code —
+   * queries, indexes, the student audience clause — still reads the single
+   * field; `batches` is the real answer. Choosing at least one also clears the
+   * row's `batch` review flag, so the badge stops demanding a selection the
+   * admin has just made.
+   */
+  function setGroupBatches(rows: ScheduleImportEntry[], names: string[]) {
+    const selected = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
+    onEntriesChange(
+      entries.map((e) => {
+        if (!rows.some((r) => r.tempId === e.tempId)) return e;
+        const uncertain = selected.length
+          ? e.uncertainFields.filter((f) => f !== "batch")
+          : Array.from(new Set([...e.uncertainFields, "batch"]));
+        return {
+          ...e,
+          batches: selected,
+          batch: selected[0] || "",
+          uncertainFields: uncertain,
+          needsReview: uncertain.length > 0,
+        };
+      })
+    );
+  }
+
   function toggleGroup(key: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -312,50 +379,67 @@ export default function ScheduleImportReviewPanel({
             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
               Original upload
             </span>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => { setFitWidth(false); setZoom((z) => Math.max(0.25, z - 0.25)); }}
-                className="p-1.5 rounded hover:bg-slate-100 text-slate-600"
-                title="Zoom out"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => { setFitWidth(false); setZoom((z) => Math.min(5, z + 0.25)); }}
-                className="p-1.5 rounded hover:bg-slate-100 text-slate-600"
-                title="Zoom in"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => { setFitWidth(true); setZoom(1); }}
-                className={`p-1.5 rounded hover:bg-slate-100 ${fitWidth ? "text-emerald-600" : "text-slate-600"}`}
-                title="Fit to width"
-              >
-                <Maximize2 className="w-4 h-4" />
-              </button>
-              <a
-                href={imageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="p-1.5 rounded hover:bg-slate-100 text-slate-600"
-                title="Open original in new tab"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            </div>
+            {/* Keeping the original is optional — the server skips it when the
+                session carries no organization, and says so in `warnings`. The
+                zoom controls have nothing to act on then, so they are hidden
+                rather than left as dead buttons over a broken image. */}
+            {imageUrl && (
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setFitWidth(false); setZoom((z) => Math.max(0.25, z - 0.25)); }}
+                  className="p-1.5 rounded hover:bg-slate-100 text-slate-600"
+                  title="Zoom out"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFitWidth(false); setZoom((z) => Math.min(5, z + 0.25)); }}
+                  className="p-1.5 rounded hover:bg-slate-100 text-slate-600"
+                  title="Zoom in"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFitWidth(true); setZoom(1); }}
+                  className={`p-1.5 rounded hover:bg-slate-100 ${fitWidth ? "text-emerald-600" : "text-slate-600"}`}
+                  title="Fit to width"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+                <a
+                  href={imageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-1.5 rounded hover:bg-slate-100 text-slate-600"
+                  title="Open original in new tab"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-auto p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imageUrl}
-              alt="Uploaded timetable"
-              className={fitWidth ? "w-full h-auto" : "max-w-none"}
-              style={fitWidth ? undefined : { width: `${zoom * 100}%` }}
-            />
+            {imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={imageUrl}
+                alt="Uploaded timetable"
+                className={fitWidth ? "w-full h-auto" : "max-w-none"}
+                style={fitWidth ? undefined : { width: `${zoom * 100}%` }}
+              />
+            ) : (
+              <div className="h-full min-h-[180px] flex flex-col items-center justify-center gap-1.5 text-center px-4">
+                <ImageOff className="w-6 h-6 text-slate-300" />
+                <p className="text-xs font-medium text-slate-500">Original not saved</p>
+                <p className="text-[11px] text-slate-400 max-w-[240px]">
+                  The extracted classes on the right are complete — you just can&apos;t
+                  compare them against the photo here.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -626,7 +710,11 @@ export default function ScheduleImportReviewPanel({
                                   onChange={(e) => {
                                     const v = e.target.value;
                                     group.rows.forEach((r) =>
-                                      updateEntry(r.tempId, { classLevel: v, batch: "" })
+                                      updateEntry(r.tempId, {
+                                        classLevel: v,
+                                        batch: "",
+                                        batches: [],
+                                      })
                                     );
                                   }}
                                   className="px-1.5 py-0.5 rounded border border-slate-200 text-[12px]"
@@ -638,33 +726,102 @@ export default function ScheduleImportReviewPanel({
                                     </option>
                                   ))}
                                 </select>
-                                <select
-                                  value={group.rows[0]?.batch || ""}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    group.rows.forEach((r) => updateEntry(r.tempId, { batch: v }));
-                                  }}
-                                  className="px-1.5 py-0.5 rounded border border-slate-200 text-[12px]"
-                                >
-                                  <option value="">No batch</option>
-                                  {(() => {
-                                    const first = group.rows[0];
-                                    if (!first) return null;
-                                    const opts = batchNamesForClass(first.classLevel);
-                                    const all =
-                                      first.batch && !opts.includes(first.batch)
-                                        ? [first.batch, ...opts]
-                                        : opts;
-                                    return all.map((n) => (
-                                      <option key={n} value={n}>
-                                        {n}
-                                      </option>
-                                    ));
-                                  })()}
-                                </select>
+                                {/* ── Multi-select, because a class can run for
+                                    SEVERAL batches at once ────────────────────
+                                    Two batches sharing a teacher, room and slot
+                                    is one combined session, which the schedule
+                                    policy already treats as valid. A dropdown
+                                    could only ever express one, so the options
+                                    are toggles: each click adds or removes a
+                                    batch, and the current selection is visible
+                                    without opening anything.
+
+                                    EXISTING batches only. The server sends this
+                                    organization's list for the class; the Batch
+                                    records loaded by the page are the fallback.
+                                    A name in neither — such as text read off the
+                                    photograph — is never offered. */}
+                                {(() => {
+                                  const first = group.rows[0];
+                                  if (!first) return null;
+                                  const opts = batchOptionsFor(first);
+                                  const selected = batchesOf(first);
+                                  if (!opts.length) {
+                                    return (
+                                      <span className="text-[11px] text-slate-400">
+                                        no batches configured for this class
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span className="inline-flex flex-wrap items-center gap-1">
+                                      {opts.map((n) => {
+                                        const on = selected.includes(n);
+                                        return (
+                                          <button
+                                            key={n}
+                                            type="button"
+                                            aria-pressed={on}
+                                            onClick={() =>
+                                              setGroupBatches(
+                                                group.rows,
+                                                on
+                                                  ? selected.filter((b) => b !== n)
+                                                  : [...selected, n]
+                                              )
+                                            }
+                                            className={`px-2 py-0.5 rounded-full border text-[12px] transition-colors ${
+                                              on
+                                                ? "bg-emerald-600 border-emerald-600 text-white"
+                                                : "bg-white border-slate-200 text-slate-600 hover:border-emerald-400"
+                                            }`}
+                                          >
+                                            {on ? "✓ " : ""}
+                                            {n}
+                                            {!on && first.batchSuggestions?.[0] === n
+                                              ? " · likely"
+                                              : ""}
+                                          </button>
+                                        );
+                                      })}
+                                      {selected.length > 1 && (
+                                        <span className="text-[11px] text-emerald-700 font-medium">
+                                          combined session · {selected.length} batches
+                                        </span>
+                                      )}
+                                    </span>
+                                  );
+                                })()}
                                 <span className="text-[11px] text-slate-300">
                                   applies to all {group.rows.length} rows in this group
                                 </span>
+                                {/* The photo's own words, shown as evidence and
+                                    never as an option. */}
+                                {group.rows[0]?.batchHint ? (
+                                  <span className="text-[11px] text-slate-400">
+                                    photo said &ldquo;{group.rows[0].batchHint}&rdquo;
+                                  </span>
+                                ) : null}
+                                {group.rows[0]?.batchStatus === "needs-selection" &&
+                                batchesOf(group.rows[0]).length === 0 ? (
+                                  <span className="text-[11px] font-medium text-amber-700">
+                                    Existing batch selection required
+                                  </span>
+                                ) : null}
+                                {/* Only when there is genuinely nothing to pick
+                                    from. The server could not supply this
+                                    organization's list, but the Batch records
+                                    the page already loaded are a valid
+                                    fallback — announcing "unavailable" above a
+                                    populated list of batches contradicts what
+                                    the admin can plainly see. */}
+                                {group.rows[0]?.batchStatus === "no-org-context" &&
+                                group.rows[0] &&
+                                batchOptionsFor(group.rows[0]).length === 0 ? (
+                                  <span className="text-[11px] text-slate-400">
+                                    batch list unavailable — sign in with an organization to assign
+                                  </span>
+                                ) : null}
                               </div>
                             </td>
                           </tr>

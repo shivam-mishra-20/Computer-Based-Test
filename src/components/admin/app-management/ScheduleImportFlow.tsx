@@ -86,7 +86,26 @@ export default function ScheduleImportFlow({
     declaredCells: number;
     totalFound: number;
     rejectedCount: number;
+    // What the server says it DETECTED, as opposed to what it produced. Without
+    // this, one entry out of a 23x8 grid looked exactly like one entry out of a
+    // one-class day — which is how a reading that stopped after a single cell
+    // reached an admin described as complete.
+    summary: {
+      sections: number;
+      rowLabels: number;
+      timeColumns: number;
+      populatedCells: number;
+      offCells: number;
+      rejectedCells: number;
+      entries: number;
+      needsReview: number;
+      resolved: number;
+    } | null;
+    incomplete: boolean;
   } | null>(null);
+  // Set when the server judged the reading too thin to trust. One-click save is
+  // withheld until the admin explicitly confirms they have checked it.
+  const [incompleteAcknowledged, setIncompleteAcknowledged] = useState(false);
   const [issues, setIssues] = useState<ScheduleImportIssue[]>([]);
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -230,7 +249,10 @@ export default function ScheduleImportFlow({
         declaredCells: data?.meta?.declaredCells ?? 0,
         totalFound: data?.meta?.totalFound ?? (data.entries || []).length,
         rejectedCount: data?.meta?.rejectedCount ?? 0,
+        summary: data?.summary ?? null,
+        incomplete: Boolean(data?.incomplete),
       });
+      setIncompleteAcknowledged(false);
       setStep("review");
     } catch (err) {
       setExtractError(err instanceof Error ? err.message : "Extraction failed.");
@@ -265,6 +287,11 @@ export default function ScheduleImportFlow({
   }
 
   const hasBlockingIssue = issues.some((i) => i.severity === "error");
+  // A reading the server judged incomplete cannot be committed in one click.
+  // Saving a timetable that was never fully read writes a day of classes that
+  // silently never existed, and nothing downstream can tell that apart from a
+  // genuinely quiet day — so the admin confirms first.
+  const saveBlockedByIncomplete = Boolean(extractNotice?.incomplete) && !incompleteAcknowledged;
   const unresolvedCount = entries.filter(
     (e) => e.needsReview || issues.some((i) => i.tempId === e.tempId)
   ).length;
@@ -443,22 +470,71 @@ export default function ScheduleImportFlow({
 
             {step === "review" && (
               <>
-                {extractNotice && extractNotice.rejectedCount > 0 && (
-                  <div className="shrink-0 mx-4 sm:mx-5 mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-                    <p className="text-sm font-semibold text-amber-900">
-                      {extractNotice.totalFound} of {extractNotice.declaredCells} cells read from the
-                      image became entries — {extractNotice.rejectedCount} were not.
+                {/* What was DETECTED, always — not only when something was
+                    rejected. A silent summary is what let a one-cell reading of
+                    a 23-row timetable pass as a finished job. */}
+                {extractNotice?.summary && (
+                  <div
+                    className={`shrink-0 mx-4 sm:mx-5 mt-3 rounded-lg border px-3 py-2 ${
+                      extractNotice.incomplete
+                        ? "border-red-300 bg-red-50"
+                        : extractNotice.summary.needsReview > 0 || extractNotice.rejectedCount > 0
+                          ? "border-amber-300 bg-amber-50"
+                          : "border-emerald-200 bg-emerald-50"
+                    }`}
+                  >
+                    <p
+                      className={`text-sm font-semibold ${
+                        extractNotice.incomplete
+                          ? "text-red-900"
+                          : extractNotice.summary.needsReview > 0 || extractNotice.rejectedCount > 0
+                            ? "text-amber-900"
+                            : "text-emerald-900"
+                      }`}
+                    >
+                      {extractNotice.incomplete
+                        ? "This reading looks incomplete"
+                        : `Detected ${extractNotice.summary.sections} timetable section${
+                            extractNotice.summary.sections === 1 ? "" : "s"
+                          }`}
                     </p>
-                    <p className="mt-0.5 text-xs text-amber-800">
-                      Compare against the photo before saving. Anything missing can be added with
-                      Add Row.
-                    </p>
+                    <ul className="mt-1 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5 text-xs text-slate-700">
+                      <li>{extractNotice.summary.sections} timetable sections</li>
+                      <li>{extractNotice.summary.rowLabels} class/batch rows</li>
+                      <li>{extractNotice.summary.timeColumns} time slots</li>
+                      <li>{extractNotice.summary.populatedCells} populated cells</li>
+                      <li>{extractNotice.summary.offCells} OFF cells ignored</li>
+                      <li>{extractNotice.summary.rejectedCells} cells rejected</li>
+                      <li className="font-medium text-emerald-800">
+                        {extractNotice.summary.resolved} extracted
+                      </li>
+                      <li className="font-medium text-amber-800">
+                        {extractNotice.summary.needsReview} need review
+                      </li>
+                      <li className="font-medium text-slate-800">
+                        {extractNotice.summary.entries} entries total
+                      </li>
+                    </ul>
                     {extractNotice.warnings.length > 0 && (
-                      <ul className="mt-1 list-inside list-disc text-xs text-amber-800">
+                      <ul className="mt-1.5 list-inside list-disc text-xs text-slate-700">
                         {extractNotice.warnings.map((w, i) => (
                           <li key={i}>{w}</li>
                         ))}
                       </ul>
+                    )}
+                    {extractNotice.incomplete && (
+                      <label className="mt-2 flex items-start gap-2 text-xs text-red-900">
+                        <input
+                          type="checkbox"
+                          checked={incompleteAcknowledged}
+                          onChange={(e) => setIncompleteAcknowledged(e.target.checked)}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          I have compared this against the photo and the classes above are correct.
+                          Anything missing can be added with Add Row.
+                        </span>
+                      </label>
                     )}
                   </div>
                 )}
@@ -499,7 +575,7 @@ export default function ScheduleImportFlow({
                     )}
                     <button
                       onClick={handleConfirmSave}
-                      disabled={saving || validating || hasBlockingIssue || entries.length === 0}
+                      disabled={saving || validating || hasBlockingIssue || entries.length === 0 || saveBlockedByIncomplete}
                       className="px-4 py-1.5 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       {saving ? "Saving…" : "Save Schedule"}

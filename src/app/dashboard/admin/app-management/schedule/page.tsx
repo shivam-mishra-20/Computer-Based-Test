@@ -500,17 +500,30 @@ export default function ScheduleManagement() {
   }, [visibleTimeSlots, isModalOpen, formData.scheduleType, formData.startTimeSlot, allowCustomRegularTime]);
 
   useEffect(() => {
-    if (activeTab === "daily_view") {
-       loadTimetable();
-    } else if (filterClass && (activeTab === "custom" || activeTab === "regular")) {
-      if (activeTab === "regular" || activeTab === "custom") {
-        loadTimetable();
-      }
+    // ── Only the REGULAR tab needs a class before it can load ─────────────
+    // Its query is per-class (`/schedule/timetable?classLevel=…`). The custom
+    // and daily grids fetch a whole DAY and need no class at all, but were
+    // sharing the regular tab's `filterClass` guard — so with no class picked
+    // (the normal way to view a day) the custom grid never refetched, and a
+    // freshly imported day sat in the database invisible to the admin who had
+    // just imported it.
+    if (activeTab === "custom" || activeTab === "daily_view") {
+      loadTimetable();
+    } else if (activeTab === "regular" && filterClass) {
+      loadTimetable();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, filterClass, filterBatch, filterDay, customWeekStart]);
 
-  const loadTimetable = async () => {
+  /**
+   * @param dateOverride Load this date instead of `customWeekStart`.
+   *
+   * `setCustomWeekStart(...)` does not take effect until the next render, so a
+   * caller that sets the date and immediately refreshes — which is exactly what
+   * finishing an import does — would otherwise re-fetch the date being left
+   * behind, and the newly imported day would never appear.
+   */
+  const loadTimetable = async (dateOverride?: string) => {
     try {
       if (activeTab === "regular") {
         const params = new URLSearchParams({ classLevel: filterClass });
@@ -548,8 +561,7 @@ export default function ScheduleManagement() {
           )
         );
       } else if (activeTab === "custom") {
-        const start = new Date(customWeekStart);
-        const dateStr = start.toISOString().split('T')[0];
+        const dateStr = dateOverride || customWeekStart.toISOString().split('T')[0];
         const schedules = await apiFetch(`/schedule?scheduleType=custom&startDate=${dateStr}&endDate=${dateStr}`);
         
         const grid: Record<string, Record<string, Record<string, Schedule>>> = {};
@@ -575,8 +587,7 @@ export default function ScheduleManagement() {
         }
         setTimetableGrid(grid);
       } else if (activeTab === "daily_view") {
-        const start = new Date(customWeekStart);
-        const dateStr = start.toISOString().split('T')[0];
+        const dateStr = dateOverride || customWeekStart.toISOString().split('T')[0];
         const schedules = await apiFetch(`/schedule/institute-view?date=${dateStr}`);
         
         const grid: Record<string, Record<string, Record<string, Schedule>>> = {};
@@ -692,6 +703,73 @@ export default function ScheduleManagement() {
       setFormError((error as Error).message || "Failed to save schedule. Please try again.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const [clearingDay, setClearingDay] = useState(false);
+
+  /**
+   * Remove every custom class on the displayed date — WITHOUT notifying anyone.
+   *
+   * A day is usually cleared because it was entered wrongly (a bad photo
+   * import, a duplicated day). Deleting the sessions one by one would fire a
+   * "Class Cancelled" push at every affected student for each row, about
+   * classes that were never really theirs. The endpoint sends none, which is
+   * the reason it exists rather than this looping over DELETE /:id.
+   *
+   * Weekly (regular) slots are untouched — one bad Tuesday must not cancel
+   * every future Tuesday.
+   */
+  const handleClearDay = async () => {
+    const dateStr = customWeekStart.toISOString().split("T")[0];
+    const dateLabel = customWeekStart.toLocaleDateString("en-IN", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    const count = Object.values(timetableGrid).reduce(
+      (n, byBatch) =>
+        n +
+        Object.values(byBatch as Record<string, Record<string, Schedule>>).reduce(
+          (m, slots) => m + Object.keys(slots).length,
+          0
+        ),
+      0
+    );
+    if (count === 0) {
+      toast("No classes scheduled on this date.");
+      return;
+    }
+    if (
+      !confirm(
+        `Clear all classes on ${dateLabel}?
+
+` +
+          `${count} class${count === 1 ? "" : "es"} will be removed from this date. ` +
+          `No notification is sent to students or teachers.
+
+` +
+          `Weekly (regular) classes are not affected.`
+      )
+    ) {
+      return;
+    }
+
+    setClearingDay(true);
+    try {
+      const result = (await apiFetch(`/schedule/date/${dateStr}`, { method: "DELETE" })) as {
+        cleared?: number;
+      };
+      toast.success(
+        `Cleared ${result?.cleared ?? 0} class${result?.cleared === 1 ? "" : "es"} — no notifications sent`
+      );
+      await loadTimetable(dateStr);
+      await loadSchedules();
+    } catch (error) {
+      toast.error((error as Error).message || "Failed to clear the day");
+    } finally {
+      setClearingDay(false);
     }
   };
 
@@ -1800,6 +1878,19 @@ export default function ScheduleManagement() {
                 </svg>
                 Export Excel
               </button>
+              {/* Destructive, so it is styled as such and sits apart from the
+                  additive actions. Silent by design — see handleClearDay. */}
+              <button
+                onClick={handleClearDay}
+                disabled={clearingDay}
+                className="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Remove every class on this date. No notifications are sent."
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+                {clearingDay ? "Clearing…" : "Clear Day"}
+              </button>
               <button
                 onClick={() => setIsImportOpen(true)}
                 className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm hover:shadow-md transition-all duration-200"
@@ -2603,8 +2694,12 @@ export default function ScheduleManagement() {
         visibleTimeSlots={visibleTimeSlots}
         classLevels={CLASS_LEVELS}
         onImported={(importedDate) => {
+          // Show the day that was just imported. The date is passed explicitly
+          // as well as set, because the state change lands on the next render
+          // and this refresh happens now.
           setCustomWeekStart(new Date(importedDate));
-          loadTimetable();
+          setActiveTab("custom");
+          loadTimetable(importedDate);
           loadSchedules();
           setIsImportOpen(false);
         }}

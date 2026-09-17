@@ -146,6 +146,7 @@ export default function CoursesListPage() {
             <option value="History">History</option>
             <option value="Geography">Geography</option>
             <option value="Civics">Civics</option>
+            <option value="Social Science">Social Science</option>
 
           </select>
           <select
